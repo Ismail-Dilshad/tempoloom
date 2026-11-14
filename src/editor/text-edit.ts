@@ -222,7 +222,7 @@ export async function exportDoc(id:string,to:import('./timeline-export.js').Targ
  const {edl}=compile(d,{broll:await brollFiles(d)}),f=path.join(dir,'timeline.edit.json');fs.writeFileSync(f,JSON.stringify(edl,null,1)+'\n');
  const r=await exportTimeline(f,{to,out:o.out??path.join(dir,'timeline'),name:d.title});
  const notes=[...r.notes,...(d.blur?['The blur is made only when the edit is made here; blur in the editor, or export the made edit.']:[])];
- const e=readDoc(id);e.timeline={folder:r.folder,files:Object.values(r.files).filter((x,i,a)=>a.indexOf(x)===i).map(x=>path.basename(x)).concat('README.txt'),at:now(),notes};save(e);
+ const e=readDoc(id);e.timeline={folder:r.folder,files:Object.values(r.files).filter((x,i,a)=>a.indexOf(x)===i).flatMap(x=>fs.statSync(x).isDirectory()?fs.readdirSync(x).sort().map(n=>path.basename(x)+'/'+n):[path.basename(x)]).concat('README.txt'),at:now(),notes};save(e);
  return {...r,notes};}
 /** A file of the latest timeline export (by its name only). */
 export function timelineFile(id:string,name:string){const t=readDoc(id).timeline;if(!t||!t.files.includes(name))throw new Error('No such file');return path.join(t.folder,name);}

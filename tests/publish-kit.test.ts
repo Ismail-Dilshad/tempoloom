@@ -40,13 +40,16 @@ describe('a timeline for another editor',()=>{
  it('writes Premiere and Resolve XML, FCPXML, an EDL and the captions, into a new folder',async()=>{
   const X=await import('../src/editor/timeline-export.js'),d=await media(),f=path.join(d,'talk.edit.json');fs.writeFileSync(f,JSON.stringify(edit));
   const r=await X.exportTimeline(f,{to:['premiere','resolve','fcp','edl','capcut']});
-  expect(path.basename(r.folder)).toBe('talk-timeline');expect(Object.keys(r.files).sort()).toEqual(['captions','edl','fcp','premiere','resolve']);
+  expect(path.basename(r.folder)).toBe('talk-timeline');expect(Object.keys(r.files).sort()).toEqual(['capcut','captions','edl','fcp','premiere','resolve']);
+  // CapCut: the parts as numbered files, each cut on the frame, and what goes on top named by when.
+  expect(fs.readdirSync(r.files.capcut!).sort()).toEqual(['01-talk.mp4','02-talk.mp4','03-talk.mp4','on-top-at-0m00.0s-music-music.m4a','on-top-at-0m00.0s-overlay-logo.png','on-top-at-0m02.0s-overlay-broll.mp4']);
+  const {mediaInfo}=await import('../src/editor/editor.js');expect((await mediaInfo(path.join(r.files.capcut!,'02-talk.mp4'))).duration).toBeCloseTo(2.5,1);
   const xml=fs.readFileSync(r.files.premiere!,'utf8');
   expect(xml.match(/<clipitem /g)).toHaveLength(9); // 3 picture, their 3 sounds, the b-roll, the logo and the music
   expect(xml).toMatch(/<in>180<\/in><out>225<\/out>/);expect(xml).toMatch(/<pathurl>file:\/\/localhost\//);
   const edl=fs.readFileSync(r.files.edl!,'utf8');expect(edl).toMatch(/^001  R001     AA\/V  C        00:00:06:00 00:00:07:15 00:00:00:00 00:00:01:15$/m);
   expect(fs.readFileSync(r.files.captions!,'utf8')).toMatch(/00:00:00,200 --> 00:00:01,400\nFirst, the end/);
-  const readme=fs.readFileSync(path.join(r.folder,'README.txt'),'utf8');expect(readme).toMatch(/CapCut cannot open a timeline/);expect(readme).toMatch(/Made only in the render.*steady picture/);
+  const readme=fs.readFileSync(path.join(r.folder,'README.txt'),'utf8');expect(readme).toMatch(/CapCut: select every file in the CapCut folder/);expect(readme).toMatch(/Made only in the render.*steady picture/);
   // Never over an earlier export.
   expect(path.basename((await X.exportTimeline(f,{to:['edl']})).folder)).toBe('talk-timeline-2');
   // FCPXML against Apple's own document type, when it is at hand (TEMPOLOOM_FCPXML_DTD).
@@ -70,6 +73,20 @@ print(json.dumps(out))`;
  },90000);
 });
 
+describe('a speed change in another editor',()=>{
+ it('is a time map in the FCPXML (new local time plays the original time), and an M2 line in the EDL',async()=>{
+  const X=await import('../src/editor/timeline-export.js'),d=await media(),f=path.join(d,'fast.edit.json');
+  fs.writeFileSync(f,JSON.stringify({version:1,input:'talk.mp4',operations:[{op:'trim',start:1,end:7},{op:'speed',factor:2}]}));
+  const r=await X.exportTimeline(f,{to:['premiere','fcp','edl']}),fcp=fs.readFileSync(r.files.fcp!,'utf8');
+  // 1 to 7 s at 2x: 3 s long, starting at the retimed 0.5 s; the map runs the whole 10 s source in 5 s.
+  expect(fcp).toMatch(/start="1500\/3000s" duration="9000\/3000s" tcFormat="NDF"><timeMap><timept time="0s" value="0s" interp="linear"\/><timept time="15000\/3000s" value="30000\/3000s" interp="linear"\/><\/timeMap>/);
+  expect(fs.readFileSync(r.files.edl!,'utf8')).toMatch(/^M2   R001\s+60\.0\s+00:00:01:00$/m);
+  expect(fs.readFileSync(r.files.premiere!,'utf8')).not.toMatch(/timeremap/);
+  expect(r.notes.join(' ')).toMatch(/talk\.xml \(Premiere\) keeps the clips at normal speed: set them to 200%.*talk\.fcpxml and talk\.edl carry the speed/);
+  const dtd=process.env.TEMPOLOOM_FCPXML_DTD;if(dtd)execFileSync('xmllint',['--noout','--dtdvalid',dtd,r.files.fcp!]);
+ },60000);
+});
+
 describe('an edit by text, in another editor',()=>{
  it('exports its cuts as a timeline, from the terminal and the page',async()=>{
   const T=await import('../src/editor/text-edit.js'),d=await media(),{serve}=await import('../src/teach/server.js');
@@ -84,6 +101,10 @@ describe('an edit by text, in another editor',()=>{
    expect(v.timeline.files).toEqual(['Two-lines.xml','Two-lines.fcpxml','Two-lines.srt','README.txt']);
    expect((await fetch(`${base}/text-file/${doc.id}/timeline/Two-lines.xml`,{headers:{'x-teach-key':s.key}})).status).toBe(200);
    expect((await fetch(`${base}/text-file/${doc.id}/timeline/doc.json`,{headers:{'x-teach-key':s.key}})).status).toBe(404);
+   const cc=await (await fetch(`${base}/api/text/${doc.id}`,{method:'POST',headers:h,body:JSON.stringify({action:'export',to:['capcut']})})).json() as {timeline:{files:string[]}};
+   expect(cc.timeline.files).toContain('CapCut/01-talk.mp4');
+   expect((await fetch(`${base}/text-file/${doc.id}/timeline/${encodeURIComponent('CapCut/01-talk.mp4')}`,{headers:{'x-teach-key':s.key}})).status).toBe(200);
+   expect((await fetch(`${base}/text-file/${doc.id}/timeline/${encodeURIComponent('CapCut/../../doc.json')}`,{headers:{'x-teach-key':s.key}})).status).toBe(404);
    expect((await fetch(`${base}/api/text/${doc.id}`,{method:'POST',headers:h,body:JSON.stringify({action:'export',to:['avid']})})).status).toBe(400);
   }finally{await s.close();}
  },90000);

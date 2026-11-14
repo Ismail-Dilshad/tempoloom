@@ -52,14 +52,15 @@ them. The footage is not copied; the timeline links to it where it is.
 | DaVinci Resolve | `NAME.xml` or `NAME.fcpxml` | File, Import, Timeline |
 | Final Cut Pro | `NAME.fcpxml` (FCPXML 1.10) | File, Import, XML |
 | Any editor | `NAME.edl` (CMX 3600, one picture track) | Import the EDL, then link each reel to the file named under it |
-| CapCut | `README.txt` cut list and `NAME.srt` | CapCut cannot open another editor's timeline: add the clips in the cut list's order and import the captions |
+| CapCut | `CapCut/`: the edit's parts as numbered clips (cut on the exact frame), then the b-roll and music named by when they start, and `NAME.srt` | Add the numbered clips together (they land in order), place the rest at their times, import the captions. CapCut opens no other editor's timeline, and current versions reject projects written by other tools, so the parts come as files |
 
 What carries over: every cut, trim, split and rearrangement (a part played twice is there twice),
 clips joined before or after, b-roll and images on the tracks above (with their size; a position
 off the centre is in the cut list), the music below with its level, and the captions as SubRip.
 What only the render makes is listed in `README.txt`: a steady picture, blur, reframing, zooms,
 colour, fades, loudness, the sound layer, the logo and end card. A speed change is carried by the
-EDL; the XML timelines keep normal speed and say which speed to set.
+FCPXML (as a time map, the way Apple's FCPXML reference defines it) and the EDL; Premiere's XML keeps
+normal speed and says which speed to set, because how Premiere reads speed from XML is not documented.
 
 The files were checked by reading them back with OpenTimelineIO (the picture, the overlays and the
 music land where the edit puts them) and the FCPXML against Apple's FCPXML 1.10 document type.

@@ -5,6 +5,7 @@
 // from another editor, so it gets the clips and the captions file only. What only a render can make
 // (a steady picture, blur, captions burned in, a reframe) is listed, not imitated.
 import fs from 'node:fs/promises';
+import {constants as fsConst} from 'node:fs';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {edlSchema,aspectSizes,type Operation} from './edl.js';
@@ -110,6 +111,7 @@ export function toXmeml(tl:Timeline){
 // ---------- FCPXML (Final Cut Pro, DaVinci Resolve) ----------
 export function toFcpxml(tl:Timeline){
  const r=rate(tl.fps),fps=r.base*(r.ntsc?1000/1001:1),fr=(t:number)=>F(t,fps),T=(t:number)=>R(fr(t),r);
+ const startIn=(s:Seg)=>s.speed===1?fr(s.in):Math.round(fr(s.in)/s.speed);
  const assets=[...new Set([...tl.segments.map(s=>s.file),...tl.items.map(i=>i.file)])],aid=(f:string)=>`r${assets.indexOf(f)+2}`;
  const res=assets.map(f=>{const m=tl.files[f]!;return `<asset id="${aid(f)}" name="${x(path.basename(f))}" start="0s" duration="${m.still?'0s':T(m.duration)}" hasVideo="${m.audio&&!m.width&&!m.still?0:1}" hasAudio="${m.audio?1:0}"${m.width&&!m.still?' format="r1"':''}${m.audio?' audioSources="1" audioChannels="2" audioRate="48000"':''}><media-rep kind="original-media" src="${x(pathToFileURL(f).href)}"/></asset>`;});
  // The spine: the source clips in order. Overlays and music are connected to the clip they start in.
@@ -118,15 +120,19 @@ export function toFcpxml(tl:Timeline){
  const laneOf=(it:Item)=>it.kind==='music'?-1:lanes.findIndex(l=>l.includes(it))+1;
  const children=new Map<number,string[]>();
  for(const it of tl.items){const k=Math.max(0,spine.findIndex(p=>it.start>=p.at-1e-6&&it.start<p.at+p.dur-1e-6)),p=spine[k];if(!p)continue;
-  // A connected clip's offset is in its parent's own time (the parent's start in its source, plus how far in).
-  const off=fr(p.s.in)+(fr(it.start)-fr(p.at)),m=tl.files[it.file]!;
+  // A connected clip's offset is in its parent's own time (the parent's start, plus how far in); a
+  // retimed parent's own time is the retimed one (Apple: a time map moves its anchored items' offsets).
+  const off=startIn(p.s)+(fr(it.start)-fr(p.at)),m=tl.files[it.file]!;
   const tr=it.kind==='overlay'&&it.width!==undefined&&m.width?(()=>{const sc=+(it.width!*tl.width/m.width!).toFixed(4),dx=+(((it.x??.5)-.5)*100*tl.width/tl.height).toFixed(3),dy=+((.5-(it.y??.5))*100).toFixed(3);
    return sc===1&&!dx&&!dy?'':`<adjust-transform position="${dx} ${dy}" scale="${sc} ${sc}"/>`;})():'';
   const vol=it.kind==='music'&&it.gainDb!==undefined?`<adjust-volume amount="${it.gainDb}dB"/>`:'';
   const tag=m.still?'video':'asset-clip';
   (children.get(k)??children.set(k,[]).get(k)!).push(`<${tag} ref="${aid(it.file)}" lane="${laneOf(it)}" offset="${R(off,r)}" name="${x(path.basename(it.file))}" start="${T(it.srcIn)}" duration="${R(fr(it.end)-fr(it.start),r)}"${it.kind==='music'?' audioRole="music"':''}>${tr}${vol}</${tag}>`);}
  const clips=spine.map((p,k)=>{const d=fr(p.at+p.dur)-fr(p.at),inner=(children.get(k)??[]).join('');
-  return `<asset-clip ref="${aid(p.s.file)}" offset="${R(fr(p.at),r)}" name="${x(path.basename(p.s.file))}" start="${T(p.s.in)}" duration="${R(d,r)}" tcFormat="NDF">${inner}</asset-clip>`;});
+  // A speed change is a time map over the whole clip: its new local time (time) plays the original
+  // time (value), as Apple's FCPXML reference defines it; the clip's start is in the new time.
+  const sp=p.s.speed===1?'':(()=>{const all=fr(tl.files[p.s.file]!.duration);return `<timeMap><timept time="0s" value="0s" interp="linear"/><timept time="${R(Math.round(all/p.s.speed),r)}" value="${R(all,r)}" interp="linear"/></timeMap>`;})();
+  return `<asset-clip ref="${aid(p.s.file)}" offset="${R(fr(p.at),r)}" name="${x(path.basename(p.s.file))}" start="${R(startIn(p.s),r)}" duration="${R(d,r)}" tcFormat="NDF">${sp}${inner}</asset-clip>`;});
  const total=R(fr(t),r);
  return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE fcpxml>\n<fcpxml version="1.10"><resources><format id="r1" name="FFVideoFormat${tl.height}p${r.base}" frameDuration="${R(1,r)}" width="${tl.width}" height="${tl.height}"/>${res.join('')}</resources><library><event name="Tempoloom"><project name="${x(tl.name)}"><sequence format="r1" duration="${total}" tcStart="0s" tcFormat="NDF" audioLayout="stereo" audioRate="48k"><spine>${clips.join('')}</spine></sequence></project></event></library></fcpxml>\n`;
 }
@@ -147,6 +153,22 @@ const clock=(t:number)=>`${Math.floor(t/60)}:${(t%60).toFixed(2).padStart(5,'0')
 /** The edit as plain lines: each part of a source, where it plays. */
 export function cutList(tl:Timeline){let t=0;return tl.segments.map((s,i)=>{const d=(s.out-s.in)/s.speed,line=`${i+1}. ${clock(t)} to ${clock(t+d)}: ${path.basename(s.file)} from ${clock(s.in)} to ${clock(s.out)}${s.speed!==1?` at ${s.speed}x speed`:''}`;t+=d;return line;})
  .concat(tl.items.map(it=>`On top, ${clock(it.start)} to ${clock(it.end)}: ${it.kind==='music'?'music ':''}${path.basename(it.file)}${it.kind==='overlay'&&it.width!==undefined&&it.width<1?` (${Math.round(it.width*100)}% wide, centred at ${Math.round((it.x??.5)*100)}% across, ${Math.round((it.y??.5)*100)}% down)`:''}`));}
+/** The edit's parts as files, for an editor that imports clips but no timeline (CapCut): each part
+ *  cut exactly (encoded again, so the cut lands on the frame, not the nearest keyframe), numbered in
+ *  play order, and each file laid on top named with when it starts. */
+async function capcutKit(tl:Timeline,dir:string){
+ const {ffmpeg,run}=await import('../renderer/ffmpeg-encoder.js');await fs.mkdir(dir,{recursive:true});
+ const pad=String(tl.segments.length).length,files:string[]=[];let t=0;
+ for(const [i,s] of tl.segments.entries()){const d=(s.out-s.in)/s.speed,name=`${String(i+1).padStart(Math.max(2,pad),'0')}-${path.basename(s.file).replace(/\.[^.]+$/,'')}.mp4`,f=path.join(dir,name);
+  const atempo=(x:number)=>{const parts:string[]=[];let r=x;while(r>2){parts.push('atempo=2');r/=2;}while(r<.5){parts.push('atempo=0.5');r/=.5;}parts.push(`atempo=${r.toFixed(4)}`);return parts.join(',');};
+  await run(ffmpeg,['-v','error','-n','-ss',s.in.toFixed(3),'-i',s.file,'-t',(s.out-s.in).toFixed(3),...(s.speed!==1?['-vf',`setpts=PTS/${s.speed}`,...(tl.files[s.file]!.audio?['-af',atempo(s.speed)]:[])]:[]),
+   '-c:v','libx264','-preset','medium','-crf','16','-pix_fmt','yuv420p',...(tl.files[s.file]!.audio?['-c:a','aac','-b:a','256k']:['-an']),'-movflags','+faststart',f]);
+  files.push(name);t+=d;}
+ const clock=(x:number)=>`${Math.floor(x/60)}m${(x%60).toFixed(1).padStart(4,'0')}s`;
+ for(const it of tl.items){const ext=path.extname(it.file),name=`on-top-at-${clock(it.start)}-${it.kind}-${path.basename(it.file,ext)}${ext}`;
+  await fs.copyFile(it.file,path.join(dir,name),fsConst.COPYFILE_EXCL).catch(()=>{});files.push(name);}
+ return dir;
+}
 /** Writes the timeline for an editor into a new folder: the timeline file(s), the captions, and a
  *  note of what only the render has. Never writes over anything. */
 export async function exportTimeline(edlFile:string,o:{to:Target[];out?:string;name?:string}){
@@ -157,18 +179,21 @@ export async function exportTimeline(edlFile:string,o:{to:Target[];out?:string;n
  const safe=tl.name.replace(/[^\p{L}\p{N}._-]+/gu,'-').replace(/^-|-$/g,'')||'timeline',written:Record<string,string>={};
  const put=async(name:string,text:string)=>{const f=path.join(dir,name);await fs.writeFile(f,text,{flag:'wx'});return f;};
  const want=new Set(o.to),speeds=(edl.operations??[]).filter((x:{op:string})=>x.op==='speed') as {factor:number}[];
- // A speed change is carried by the EDL (its M2 line); the XML timelines keep the clips at their own
- // speed, so the editor's own speed control sets it (how each editor reads speed in XML differs).
+ // A speed change is carried by the EDL (its M2 line) and the FCPXML (a time map, as Apple defines it).
+ // Premiere's XML keeps the clips at their own speed: how it reads Time Remap is not documented.
  const plain=speeds.length?await timelineOf({...edl,operations:edl.operations.filter((x:{op:string})=>x.op!=='speed')},path.dirname(file),{name:o.name}):tl;
  if(want.has('premiere')||want.has('resolve'))written.premiere=written.resolve=await put(`${safe}.xml`,toXmeml(plain));
- if(want.has('fcp')||want.has('resolve'))written.fcp=await put(`${safe}.fcpxml`,toFcpxml(plain));
- if(speeds.length&&(want.has('premiere')||want.has('resolve')||want.has('fcp')))tl.notes.push(`The edit plays at ${speeds.reduce((a,b)=>a*b.factor,1)}x speed; the XML timeline is at normal speed, so set the clips' speed to ${Math.round(speeds.reduce((a,b)=>a*b.factor,1)*100)}% there (the EDL carries it).`);
+ if(want.has('fcp')||want.has('resolve'))written.fcp=await put(`${safe}.fcpxml`,toFcpxml(tl));
+ if(speeds.length&&(want.has('premiere')||want.has('resolve')))tl.notes.push(`The edit plays at ${speeds.reduce((a,b)=>a*b.factor,1)}x speed. ${safe}.xml (Premiere) keeps the clips at normal speed: set them to ${Math.round(speeds.reduce((a,b)=>a*b.factor,1)*100)}% there. ${[want.has('fcp')||want.has('resolve')?`${safe}.fcpxml`:'',want.has('edl')?`${safe}.edl`:''].filter(Boolean).join(' and ')||'An FCPXML (--to fcp)'} carr${[want.has('fcp')||want.has('resolve'),want.has('edl')].filter(Boolean).length>1?'y':'ies'} the speed${want.has('resolve')?' (Resolve can open it)':''}.`);
  if(want.has('edl'))written.edl=await put(`${safe}.edl`,toCmx(tl));
  if(tl.cues.length)written.captions=await put(`${safe}.srt`,writeSrt(tl.cues.map(c=>({...c}))));
+ // CapCut opens no other editor's timeline (and rejects drafts other tools write), but it takes
+ // files: each part of the edit as its own numbered clip, cut exactly, plus what goes on top.
+ if(want.has('capcut'))written.capcut=await capcutKit(tl,path.join(dir,'CapCut'));
  const how:Record<Target,string>={premiere:`Premiere Pro: File, Import, choose ${safe}.xml (the clips are linked where they are).`,
   resolve:`DaVinci Resolve: File, Import, Timeline, choose ${safe}.xml (or ${safe}.fcpxml).`,fcp:`Final Cut Pro: File, Import, XML, choose ${safe}.fcpxml.`,
   edl:`Any editor: import ${safe}.edl, then link each reel (R001, R002...) to the source file named under it. It has one picture track; overlays and music are not in it.`,
-  capcut:`CapCut cannot open a timeline from another editor. Add the clips in the order of the cut list below${tl.cues.length?`, and import ${safe}.srt (Text, Local captions)`:''}.`};
+  capcut:`CapCut: select every file in the CapCut folder whose name starts with a number and add them to the timeline together; they land in order (the parts of the edit, each cut already). Then add the b-roll and music files at the times in the cut list${tl.cues.length?`, and import ${safe}.srt (Text, Local captions)`:''}. CapCut cannot open other editors' timelines and rejects projects other tools write, so the parts come as files.`};
  const notes=[...o.to.map(t=>how[t]),...(tl.renderOnly.length?[`Made only in the render, not in the timeline: ${tl.renderOnly.join(', ')}.`]:[]),...tl.notes,
   ...(tl.cues.length?[`Captions are in ${safe}.srt (import it as captions or subtitles).`]:[])];
  const sources=[...new Set([...tl.segments.map(s=>s.file),...tl.items.map(i=>i.file)])];
