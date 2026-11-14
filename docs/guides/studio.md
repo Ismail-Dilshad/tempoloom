@@ -259,8 +259,35 @@ optional: with no key, your terminal agent does the work as before.
 - **What may leave this computer**: frames only (the default), short clips, full videos, or
   nothing (local models and free sources only).
 
-Settings are kept in `.tempoloom/settings.json` (no keys in it). For now your terminal agent
-drives every job; the browser studio's own agents are the next step and will use these settings.
+Settings are kept in `.tempoloom/settings.json` (no keys in it).
+
+## The page works on it
+
+**Who works on new videos** (Settings) is your terminal agent (the default, no key needed), **this
+page**, or **ask each time** (you choose when you send each video). Any job also has **Run it
+here** on its page.
+
+When the page works on a job, each ready step runs here with the main model (or the role's own
+model), the way a terminal agent runs it: `studio start` gives the role's playbook, inputs, lessons
+and your feedback; the role works with Tempoloom's own commands, reads files, looks at frames (when
+the model sees pictures and Settings let frames leave this computer), writes inside the job's
+folder, says what it is doing on the live page, and finishes with `studio done`. Each step starts
+with a fresh conversation, so the reviewer judges the work without the makers' notes.
+
+- **Only you** approve, choose a version, rate, give feedback, delete, restore, clear space or
+  undo. The page's agents cannot run those commands, nor skip a check (`--anyway`, `--yes`), nor
+  use ElevenLabs unless you asked for a voice. Keys are never read.
+- It **stops at every approval** and choice, and carries on by itself when you approve or choose.
+- **Money**: every model call is checked first and recorded after (OpenRouter says what each call
+  cost; other services by the model's price per million tokens). A job asks you on its page
+  (**Go ahead**) before it spends past the "ask me" amount, and stops at the per-video and per-day
+  budgets. A model whose price is not known is not used (test the service to load prices); models
+  on your computer cost nothing.
+- **Nothing may leave this computer** (Settings) allows local models only.
+- **Stop** stops it at once; **Run it again** continues from the step it was on. A step that runs
+  80 turns without finishing stops, so it never runs up a bill.
+
+Spending is kept in `.tempoloom/spend.jsonl`.
 
 ## The Gallery
 

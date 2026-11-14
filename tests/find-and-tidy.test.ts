@@ -41,6 +41,30 @@ describe('one search over everything',()=>{
  },120000);
 });
 
+describe('helping search see and hear',()=>{
+ it('finds a video by what someone said it shows, and gives a frame sheet for the ones nobody described',async()=>{
+  const F=await import('../src/engine/find.js'),G=await import('../src/engine/gallery.js');
+  const promo=(await G.gallery()).items.find(i=>i.name==='spring-promo.mp4')!;
+  const before=await F.unseen();expect(before.count).toBeGreaterThan(0);expect(fs.existsSync(before.videos[0]!.sheet)).toBe(true);
+  await F.describe(promo.id,'A bunch of tulips on a kitchen table, the shop sign in Kurdish: گوڵفرۆشی','agent');
+  const r=await F.find('tulips table');expect(r.hits[0]!.title).toBe('spring promo');expect(r.hits[0]!.why).toContain('in what it shows');
+  expect((await F.find('گوڵفرۆشی')).hits[0]!.id).toBe(promo.id);
+  expect((await G.gallery()).items.find(i=>i.id===promo.id)!.shows).toMatch(/tulips/);
+  expect((await F.unseen()).count).toBe(before.count-1);
+ },60000);
+ it('says what writing the words would cost, and stays within the budgets',async()=>{
+  const F=await import('../src/engine/find.js'),S=await import('../src/engine/models/spend.js');
+  const plan=await F.listen();expect(plan.videos).toBeGreaterThan(0);expect(plan.usd).toBeCloseTo(plan.minutes/60*.2,3);expect(plan.done).toBe(0);
+  const key=process.env.ELEVENLABS_API_KEY;delete process.env.ELEVENLABS_API_KEY;
+  try{await expect(F.listen({go:true})).rejects.toThrow(/ElevenLabs key/);}finally{if(key)process.env.ELEVENLABS_API_KEY=key;}
+  // The budgets: $10 a day, $2 a job, asked above $0.50 (the defaults).
+  expect(S.allow(.3)).toEqual({ok:true});expect(S.allow(.8)).toMatchObject({ok:false,ask:true});expect(S.allow(.8,{approved:true})).toEqual({ok:true});
+  S.record({usd:1.9,what:'test',service:'test',job:'j1'});expect(S.allow(.2,{job:'j1',approved:true})).toMatchObject({ok:false,ask:false});
+  S.record({usd:8,what:'test',service:'test'});expect(S.allow(.2,{approved:true})).toMatchObject({ok:false,ask:false,why:expect.stringMatching(/a day/)});
+  expect(S.spent({today:true})).toBeCloseTo(9.9,5);
+ });
+});
+
 describe('the same thing twice',()=>{
  it('groups the same video exported again, keeping the sharpest; lessons that say the same, keeping the proven one',async()=>{
   const T=await import('../src/engine/tidy.js'),B=await import('../src/engine/brain/brain.js');

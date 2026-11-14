@@ -69,6 +69,10 @@ over footage). It plans the eight stages as tasks, each owned by the role that i
 - Find and tidy (docs/guides/find-and-tidy.md): before a new video or edit, look for earlier work
   with `pnpm tempoloom find WORDS`. When the user asks to tidy, show `tidy duplicates` and
   `tidy storage` and act only on what they choose; clearing space cannot be undone, so ask first.
+  When you finish a video, say what it shows for search: `find unseen`, look at the sheet, then
+  `find describe ID "what it shows" --agent`.
+- The Studio page can also work on a job itself with the user's model (Settings, Who works on new
+  videos). A job its page drives shows "Run it here" / "Stop"; do not work on it at the same time.
 - A job that stopped mid-step (a new session, a failure): `studio resume JOB`, then start the step
   again; a render continues from its last finished scene, an edit from its last finished step.
   Every version of a step is kept (`studio versions JOB TASK`), and the user can undo any change to

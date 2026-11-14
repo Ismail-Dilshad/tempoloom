@@ -50,6 +50,7 @@ function galleryDetail(i){
    <dl class="kv"><dt>Length</dt><dd>${i.seconds?fmtS(i.seconds):'unknown'}</dd><dt>Size</dt><dd>${i.width?`${i.width}×${i.height}, `:''}${mb(i.bytes)}</dd><dt>Made</dt><dd>${new Date(i.made).toLocaleString()}</dd>
     <dt>Sorted as</dt><dd>${esc((App.screens['studio/gallery'].data.categories.find(c=>c.id===i.category)||{}).label||'Other videos')}${i.tags.length?` <span class="muted">(${i.tags.map(esc).join(', ')})</span>`:''}</dd>
     ${i.check?`<dt>Its own check</dt><dd>${i.check.passed} match${i.check.near?`, ${i.check.near} close`:''}${i.check.off?`, ${i.check.off} off`:''} your taste</dd>`:''}
+    <dt>What it shows</dt><dd><textarea id="gal-shows" dir="auto" rows="2" maxlength="1200" placeholder="People, places, objects, what happens. Search finds it by these words.">${esc(i.shows||'')}</textarea><button class="btn small" style="margin-top:6px" onclick="galleryShows('${i.id}')">Save</button></dd>
     <dt>File</dt><dd style="overflow-wrap:anywhere">${esc(i.file)} <button class="iconbtn" style="vertical-align:middle" aria-label="Copy the file path" onclick="copyText(${esc(JSON.stringify(i.file))})">${I.copy}</button></dd></dl>
    <div style="margin-top:16px"><div class="teach-section-head" style="margin-bottom:8px"><h3>Your rating</h3><span class="muted small">${i.rating?(i.ratedHere?'rated here':'from its step in the studio'):'not rated yet'}</span></div>
     ${rateButtons(i,true)}${i.note?`<p class="muted small" dir="auto" style="margin:8px 0 0">“${esc(i.note)}”</p>`:''}
@@ -117,3 +118,4 @@ window.galleryPublish=id=>{const i=App.screens['studio/gallery'].data.items.find
    $('#pb-pout').innerHTML=`<div class="tx-made">${r.files.map(f=>`<div class="row"><span class="small">${esc(f)}</span><a class="btn small ghost" style="margin-left:auto" href="${pf(r.key,f,true)}" download>${I.down} Download</a></div>`).join('')}</div><p class="muted small">${r.ready?'Ready to post.':'Fix what is marked before posting.'} Saved in ${esc(r.folder)}</p>`;
    $('#pb-pstate').textContent='';}catch(e){$('#pb-pstate').textContent='';toast(e.message,true);}b.disabled=false;};
 };
+window.galleryShows=id=>act(()=>api(`/api/gallery/${id}/shows`,{method:'POST',body:JSON.stringify({text:$('#gal-shows').value})}),'Saved: search finds it by these words');

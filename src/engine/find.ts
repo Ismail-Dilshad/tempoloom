@@ -13,7 +13,7 @@ import {ffmpeg} from '../renderer/ffmpeg-encoder.js';
 export const kinds=['video','scene','lesson','taught','clip'] as const;
 export type FindKind=typeof kinds[number];
 export const KIND_LABEL:Record<FindKind,string>={video:'Video',scene:'Scene',lesson:'Lesson',taught:'Taught video',clip:'Your clip'};
-type Field={text:string;weight:number;as:'title'|'says'|'looks'|'notes'};
+type Field={text:string;weight:number;as:'title'|'says'|'looks'|'notes'|'shows'};
 export type Entry={kind:FindKind;id:string;title:string;open:string;file?:string;at?:number;fields:Field[];when:string};
 export type Hit={kind:FindKind;id:string;title:string;open:string;file?:string;at?:number;score:number;why:string[];snippet:string;when:string};
 
@@ -67,22 +67,27 @@ export async function videoLooks(file:string,seconds:number|null){
 
 // ---------- what there is ----------
 /** Everything search looks through, read fresh each time (videos' looks are remembered). */
-export async function entries(o:{looks?:boolean}={}):Promise<Entry[]>{
- const out:Entry[]=[];
- // Transcripts already made (speech to text is never run for a search) say what a video says.
+/** What each file says, from transcripts already made and edits by text (search itself never runs
+ *  speech to text; `find listen` does, when asked). */
+export async function spoken(){
  const said=new Map<string,string>();
  try{const dir=path.resolve(ROOT,process.env.VIDEO_WORKSPACE||'workspace','cache','transcripts');
   for(const n of fs.readdirSync(dir).filter(n=>n.endsWith('.json'))){try{const t=JSON.parse(fs.readFileSync(path.join(dir,n),'utf8')) as {source?:string;text?:string};if(t.source&&t.text)said.set(path.resolve(t.source),t.text);}catch{/* skip */}}}catch{/* none */}
  const {docs}=await import('../editor/text-edit.js').catch(()=>({docs:()=>[] as never[]}));
  const edits=(()=>{try{return docs();}catch{return [];}})();
  for(const d of edits){const text=d.sentences.map(s=>s.text).join(' ');said.set(path.resolve(d.input),text);for(const r of d.renders)said.set(path.resolve(r.output),text);}
+ return said;
+}
+export async function entries(o:{looks?:boolean}={}):Promise<Entry[]>{
+ const out:Entry[]=[],said=await spoken(),pics=readPictures();
  // Videos the studio made.
  const G=await import('./gallery.js'),g=await G.gallery();let changed=false;
  for(const i of g.items){const abs=path.resolve(ROOT,i.file),key=Object.keys(readLooks()).length;
   const look=o.looks===false?[]:await videoLooks(abs,i.seconds);if(Object.keys(readLooks()).length!==key)changed=true;
   out.push({kind:'video',id:i.id,title:i.title,open:'#/studio/gallery/'+i.id,file:i.file,when:i.made,fields:[
    {text:i.title+' '+i.name.replace(/[-_.]+/g,' '),weight:3,as:'title'},{text:said.get(abs)??'',weight:1.5,as:'says'},
-   {text:[...look,...shapeWords(i.width,i.height),...lengthWords(i.seconds),i.category,...i.tags,i.mode==='edit'?'edit footage':'motion animation',i.kind].join(' '),weight:1.2,as:'looks'}]});}
+   {text:[...look,...shapeWords(i.width,i.height),...lengthWords(i.seconds),i.category,...i.tags,i.mode==='edit'?'edit footage':'motion animation',i.kind].join(' '),weight:1.2,as:'looks'},
+   {text:pics[i.id]?.text??'',weight:2,as:'shows'}]});}
  if(changed)saveLooks();
  // The scenes of motion videos.
  try{const {studioRoot,readPlan}=await import('./studio.js'),{projectScenes}=await import('./studio-versions.js');
@@ -110,7 +115,7 @@ export async function entries(o:{looks?:boolean}={}):Promise<Entry[]>{
 const snippetOf=(text:string,q:string[])=>{const t=text.replace(/\s+/g,' ').trim();if(!t)return '';const n=normal(t);let at=-1;
  for(const w of q){const i=n.indexOf(w);if(i>=0&&(at<0||i<at))at=i;}
  if(at<0)return t.slice(0,140);const from=Math.max(0,at-50);return (from?'…':'')+t.slice(from,from+150).trim()+(from+150<t.length?'…':'');};
-const WHY:Record<Field['as'],string>={title:'in its title',says:'in what it says',looks:'in how it looks',notes:'in its notes'};
+const WHY:Record<Field['as'],string>={title:'in its title',says:'in what it says',looks:'in how it looks',notes:'in its notes',shows:'in what it shows'};
 /** The best matches for what the user typed: every word counts, rare words more, a word's start
  *  matches ("cam" finds "camera"), and the whole phrase together counts most. */
 export async function find(query:string,o:{kinds?:FindKind[];limit?:number;looks?:boolean}={}){
@@ -136,4 +141,54 @@ export async function find(query:string,o:{kinds?:FindKind[];limit?:number;looks
  hits.sort((a,b)=>b.score-a.score||b.when.localeCompare(a.when));
  const counts=Object.fromEntries(kinds.map(k=>[k,hits.filter(h=>h.kind===k).length])) as Record<FindKind,number>;
  return {query,hits:hits.slice(0,o.limit??40),counts};
+}
+
+// ---------- what a video shows (written by the agent or the user after looking at its frames) ----------
+type Picture={text:string;by:'you'|'agent';at:string;bytes:number};
+const picturesFile=()=>path.join(path.dirname(dbPath()),'find-pictures.json');
+export function readPictures():Record<string,Picture>{try{return JSON.parse(fs.readFileSync(picturesFile(),'utf8'));}catch{return {};}}
+/** Says what a gallery video shows (people, places, objects, what happens), so search finds it. */
+export async function describe(id:string,text:string,by:'you'|'agent'='you'){
+ const t=text.replace(/\s+/g,' ').trim();if(t.length>1200)throw new Error('Keep it under 1200 characters');
+ const G=await import('./gallery.js'),i=(await G.gallery({hidden:true})).items.find(x=>x.id===id);if(!i)throw new Error('No such video in the gallery');
+ const all=readPictures();if(t)all[id]={text:t,by,at:new Date().toISOString(),bytes:i.bytes};else delete all[id];
+ fs.mkdirSync(path.dirname(picturesFile()),{recursive:true});fs.writeFileSync(picturesFile(),JSON.stringify(all,null,1)+'\n');
+ return {id,title:i.title,shows:t||null,by};
+}
+/** One sheet of six frames of a video, to look at before saying what it shows. Made once. */
+export async function frameSheet(id:string){
+ const G=await import('./gallery.js'),i=(await G.gallery({hidden:true})).items.find(x=>x.id===id);if(!i)throw new Error('No such video in the gallery');
+ const dir=path.resolve(ROOT,process.env.VIDEO_WORKSPACE||'workspace','cache','find-sheets');fs.mkdirSync(dir,{recursive:true});
+ const f=path.join(dir,`${id}-${i.bytes}.jpg`);if(fs.existsSync(f))return f;
+ const d=i.seconds&&i.seconds>0?i.seconds:6,{run}=await import('../renderer/ffmpeg-encoder.js');
+ await run(ffmpeg,['-v','error','-y','-i',path.resolve(ROOT,i.file),'-vf',`fps=${(6/d).toFixed(5)},scale=360:-2,tile=3x2:padding=6:color=black`,'-frames:v','1','-q:v','4',f]);
+ return f;
+}
+/** Videos nobody has said what they show yet, each with its frame sheet to look at. */
+export async function unseen(o:{limit?:number}={}){
+ const G=await import('./gallery.js'),pics=readPictures(),items=(await G.gallery()).items.filter(i=>!pics[i.id]);
+ const out:{id:string;title:string;file:string;sheet:string}[]=[];
+ for(const i of items.slice(0,o.limit??12))out.push({id:i.id,title:i.title,file:i.file,sheet:await frameSheet(i.id)});
+ return {count:items.length,videos:out,next:'Look at each sheet, then: pnpm tempoloom find describe ID "what it shows" --agent (people, places, objects, what happens; in the video\'s language or English).'};
+}
+
+// ---------- what a video says, made when asked (speech to text costs money) ----------
+export const LISTEN_USD_PER_HOUR=.2; // ElevenLabs Scribe v2, checked 2026-11-14
+/** Gallery videos with sound but no words yet, what writing their words would cost, and (when
+ *  `go`) writing them, within the budgets. */
+export async function listen(o:{go?:boolean;approved?:boolean;limit?:number}={}){
+ const G=await import('./gallery.js'),said=await spoken(),{transcribe,hasApiKey}=await import('./transcribe.js'),{inspect}=await import('./teach/measure.js');
+ const todo:{id:string;title:string;file:string;seconds:number}[]=[];
+ for(const i of (await G.gallery()).items){const abs=path.resolve(ROOT,i.file);if(said.has(abs))continue;
+  const m=await inspect(abs).catch(()=>null);if(!m||!(m as {audio?:boolean}).audio)continue;todo.push({id:i.id,title:i.title,file:i.file,seconds:m.seconds});
+  if(todo.length>=(o.limit??50))break;}
+ const seconds=todo.reduce((t,x)=>t+x.seconds,0),usd=+(seconds/3600*LISTEN_USD_PER_HOUR).toFixed(4);
+ const {allow,record}=await import('./models/spend.js'),verdict=allow(usd,{approved:o.approved});
+ const plan={videos:todo.length,minutes:+(seconds/60).toFixed(1),usd,verdict};
+ if(!o.go||!todo.length)return {...plan,done:0,next:todo.length?`Writes the words of ${todo.length} video${todo.length>1?'s':''} (${plan.minutes} min) with ElevenLabs for about $${usd.toFixed(2)}: pnpm tempoloom find listen --go`:'Every video with sound has its words already.'};
+ if(!hasApiKey())throw new Error('Add your ElevenLabs key in Settings first (it writes the words).');
+ if(!verdict.ok)throw new Error(verdict.why+(verdict.ask?' Run it again with --yes to go ahead.':''));
+ let done=0;const failed:string[]=[];
+ for(const v of todo){try{const t=await transcribe(path.resolve(ROOT,v.file));if(!t.cached)record({usd:v.seconds/3600*LISTEN_USD_PER_HOUR,what:'Words of '+v.title+' for search',service:'elevenlabs'});done++;}catch(e){failed.push(`${v.title}: ${(e as Error).message.slice(0,140)}`);}}
+ return {...plan,done,failed};
 }

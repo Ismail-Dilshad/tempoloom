@@ -1,6 +1,6 @@
 // Find and tidy: one search over everything the studio keeps; the same video or lesson kept once;
 // space the studio can make again, cleared in one confirmed step.
-const Find={q:'',kind:'all',got:null,asked:null,busy:false,dups:null,dupBusy:false,space:null,spaceBusy:false,off:new Set()};
+const Find={more:null,moreBusy:false,q:'',kind:'all',got:null,asked:null,busy:false,dups:null,dupBusy:false,space:null,spaceBusy:false,off:new Set()};
 const FIND_KIND={video:'Video',scene:'Scene',lesson:'Lesson',taught:'Taught video',clip:'Your clip'};
 App.nav.splice(App.nav.findIndex(n=>n[0]==='studio/gallery')+1,0,['find','Find and tidy','search','Studio']);
 window.findGo=q=>{q=String(q||'').trim();Find.q=q;App.go('find',q||undefined);};
@@ -22,6 +22,8 @@ App.register('find',{
       ${h.snippet&&h.snippet!==h.title?`<p class="small" dir="auto">${esc(h.snippet)}</p>`:''}<p class="muted small">Found ${h.why.join(', ')}</p></div></li>`).join('')}</ol>`
      :`<div class="empty small"><h3>Nothing matches "${esc(Find.q)}"</h3><p>Try fewer words, another word for the same thing, or a colour or shape (red, dark, vertical, short).</p></div>`}`:''}
   </section>
+  <section class="card"><div class="teach-section-head"><h3>Help search see and hear</h3></div>
+   ${Find.more?findMore(Find.more):`<p class="muted" style="margin-top:0">Search reads what each video shows once someone has said it, and what it says once its words are written.</p><button class="btn" onclick="findMoreLoad()" ${Find.moreBusy?'disabled':''}>${Find.moreBusy?'<span class="spin"></span> Checking':'Check what is missing'}</button>`}</section>
   <section class="card"><div class="teach-section-head"><h3>The same thing twice</h3>${Find.dups?`<span class="muted small">${Find.dups.videos.length+Find.dups.lessons.length} group${Find.dups.videos.length+Find.dups.lessons.length===1?'':'s'}</span>`:''}</div>
    ${Find.dups?findDups(Find.dups):`<p class="muted" style="margin-top:0">Videos exported more than once (the same file, or the same picture in another size) and lessons that say the same thing, grouped so you keep one.</p><button class="btn" onclick="findDupsLoad()" ${Find.dupBusy?'disabled':''}>${Find.dupBusy?'<span class="spin"></span> Comparing':'Look for them'}</button>`}</section>
   <section class="card"><div class="teach-section-head"><h3>Space</h3>${Find.space?`<span class="muted small">${mb(Find.space.bytes)} can be cleared</span>`:''}</div>
@@ -61,3 +63,12 @@ window.findClear=async()=>{const s=Find.space,kept=s.items.filter(i=>!Find.off.h
  if(!await ask(`Clear ${mb(kept.reduce((t,i)=>t+i.bytes,0))}?`,`${kept.length} item${kept.length>1?'s are':' is'} removed from your computer. This cannot be undone; the studio makes them again when it needs them.`,'Clear them',true))return;
  try{const r=await api('/api/tidy/clear',{method:'POST',body:JSON.stringify({token:s.token,only:Find.off.size?kept.map(i=>i.id):undefined})});toast(`Cleared ${mb(r.bytes)}`);await findSpaceLoad();}
  catch(e){toast(e.message,true);await findSpaceLoad();}};
+function findMore(m){const L=m.listen,money=n=>n<.01?'less than $0.01':'$'+n.toFixed(2);
+ return `<p style="margin-top:0"><b>${m.unseen} video${m.unseen===1?'':'s'}</b> ${m.unseen===1?'has':'have'} no words for what ${m.unseen===1?'it shows':'they show'}. ${m.unseen?'Say it on each video in the Gallery (What it shows), or ask your agent: “Describe my videos for search”. It looks at a sheet of frames from each.':''}</p>
+  <p><b>${L.videos} video${L.videos===1?'':'s'}</b> with sound ${L.videos===1?'has':'have'} no written words${L.videos?` (${L.minutes} min). ElevenLabs can write them for ${L.usd<.01?'':'about '}${money(L.usd)}.`:'.'}</p>
+  ${L.videos?`${!L.verdict.ok&&!L.verdict.ask?`<p class="err small">${esc(L.verdict.why)}</p>`:`<button class="btn" onclick="findListen(${L.verdict.ask?'true':'false'})" ${Find.moreBusy?'disabled':''}>${Find.moreBusy?'<span class="spin"></span> Writing the words':`Write their words (${money(L.usd)})`}</button>`}`:''}`;}
+window.findMoreLoad=async()=>{Find.moreBusy=true;App.show(false);try{const [u,l]=await Promise.all([api('/api/find/unseen-count'),api('/api/find/listen')]);Find.more={unseen:u.count,listen:l};}catch(e){toast(e.message,true);}Find.moreBusy=false;App.show(false);};
+window.findListen=async ask=>{const L=Find.more.listen;
+ if(!await ask_(ask))return;
+ Find.moreBusy=true;App.show(false);try{const r=await api('/api/find/listen',{method:'POST',body:JSON.stringify({approved:true})});toast(`Wrote the words of ${r.done} video${r.done===1?'':'s'}${r.failed?.length?`; ${r.failed.length} failed`:''}`);Find.asked=null;}catch(e){toast(e.message,true);}Find.moreBusy=false;await findMoreLoad();
+ function ask_(over){return window.ask(`Write the words of ${L.videos} video${L.videos===1?'':'s'}?`,`ElevenLabs writes what is said in ${L.minutes} minutes of video, for about $${L.usd.toFixed(2)}${over?' (more than the amount you are asked about first)':''}. It is recorded against your daily budget.`,'Write them');}};

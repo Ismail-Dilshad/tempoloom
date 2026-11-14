@@ -22,6 +22,18 @@ where it was found (in its title, in what it says, in how it looks, in its notes
 and Persian are matched however they were typed: Arabic and Persian digits, the forms of yeh, kaf
 and heh, and short vowel marks are evened out.
 
+**What a video shows** (people, places, objects, what happens) is searched once someone has said it:
+on the video's page in the Gallery (**What it shows**), or by the agent, which looks at a sheet of
+frames from each: `pnpm tempoloom find unseen` lists the videos nobody described, each with its
+sheet, and `find describe ID "TEXT" --agent` saves it. The studio does this when it finishes a video.
+The sheet stays on this computer unless an agent looks at it: then it goes to that agent's model, as
+any frame it checks does (Settings, What may leave this computer).
+
+**What a video says** comes from transcripts already made. `pnpm tempoloom find listen` says how
+many videos have sound but no words and what writing them would cost (ElevenLabs, $0.20 an hour of
+sound as of 2026-11-14); `find listen --go` writes them within your budgets (`--yes` when it is more
+than the amount you are asked about first). On the page: **Help search see and hear** on Find.
+
 How a video looks is worked out once per file from three small frames and remembered
 (`.tempoloom/find-looks.json`), so the first search after many new videos takes a moment.
 

@@ -103,7 +103,7 @@ export async function test(id:string,f:typeof fetch=fetch){
   return {ok:true,count:c.models.length,note:r.note??null};
  }catch(e){const prev=cachedModels(id);cache(id,{at:new Date().toISOString(),models:prev?.models??[],error:(e as Error).message});return {ok:false,error:(e as Error).message};}
 }
-const localKeyName=(id:string)=>id.toUpperCase().replace(/-/g,'_')+'_API_KEY';
+export const localKeyName=(id:string)=>id.toUpperCase().replace(/-/g,'_')+'_API_KEY';
 const summary=(ms:Model[])=>{const n=(k:keyof Can)=>ms.filter(m=>m.can[k]).length;return {total:ms.length,agents:n('agents'),vision:n('vision'),images:n('images'),video:n('video'),speech:n('speech')};};
 
 // ---------- the settings page ----------
@@ -136,7 +136,7 @@ export function update(patch:unknown){
   makers:z.object({images:z.string(),video:z.string(),music:z.string(),sfx:z.string(),voice:z.enum(['elevenlabs','off'])}).partial().optional(),
   budget:z.object({perJob:z.number().min(0).max(1000),perDay:z.number().min(0).max(5000),askAbove:z.number().min(0).max(1000)}).partial().optional(),share:settingsSchema.shape.share.optional(),platforms:z.array(z.enum(['tiktok','reels','shorts'])).min(1,'Choose at least one platform').optional()}).strict().parse(patch);
  const next:Settings={...cur};
- if(p.driver){if(p.driver!=='terminal')throw new Error('The browser studio cannot drive a job yet; your terminal agent does the work for now.');next.driver=p.driver;}
+ if(p.driver){if(p.driver!=='terminal'&&!(p.model??cur.model))throw new Error('Choose a main model first: the page\'s agents use it.');next.driver=p.driver;}
  if(p.model!==undefined){if(p.model)known(p.model);next.model=p.model;}
  if(p.roleModels){const roles=new Set(['director',...loadStudio().roles.map(r=>r.id)]);next.roleModels={...cur.roleModels};
   for(const [role,m] of Object.entries(p.roleModels)){if(!roles.has(role))throw new Error('Unknown role: '+role);if(m){known(m);next.roleModels[role]=m;}else delete next.roleModels[role];}}

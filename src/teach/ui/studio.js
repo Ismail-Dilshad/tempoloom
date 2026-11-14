@@ -121,13 +121,16 @@ async function sendBrief(){
  if(N.mode==='motion'&&!body.text&&!body.link)return toast('Write a script, a prompt or a topic, or give a link.',true);
  if(N.mode==='edit'&&!N.files.some(f=>f.kind==='footage'))return toast('Choose the footage to edit.',true);
  Studio.sending=true;
- try{const id=await ensureRequest();await api(`/api/studio/requests/${id}/submit`,{method:'POST',body:JSON.stringify(body)});Studio.N=blankBrief();Studio.save();Studio.sending=false;toast('Sent to the studio');App.go('studio/videos');}
+ try{const st=await api('/api/settings').catch(()=>null);
+  if(st&&st.settings&&st.settings.driver==='ask'&&st.settings.model)body.drive=await ask('Who works on this video?',`This page can do it now with ${st.settings.model.model} (within your budgets), or your terminal agent does it when you tell it to.`,'This page')?'page':'terminal';
+  const id=await ensureRequest(),r=await api(`/api/studio/requests/${id}/submit`,{method:'POST',body:JSON.stringify(body)});Studio.N=blankBrief();Studio.save();Studio.sending=false;
+  if(r.driving){toast('The studio is working on it');App.go('studio/videos',r.job);}else{toast('Sent to the studio');App.go('studio/videos');}}
  catch(e){Studio.sending=false;toast(e.message,true);App.show(false);}
 }
 
 // ---------- videos ----------
 const jobTitle=j=>{const m=/(?:to use as written|write one\)|What the user wants):\n([^\n]+)/.exec(j.request);return (m?m[1]:j.request.split('\n')[0]).slice(0,90);};
-const stateBadge=(j,working)=>working&&!j.finished?'<span class="badge wait"><span class="live-pulse"></span> being worked on</span>':j.finished?`<span class="badge good">finished</span>`:j.waitingFor==='you'?'<span class="badge bad">waiting for you</span>':'<span class="badge wait">waiting for the agent</span>';
+const stateBadge=(j,working)=>(working||j.waitingFor==='page')&&!j.finished?'<span class="badge wait"><span class="live-pulse"></span> being worked on</span>':j.finished?`<span class="badge good">finished</span>`:j.waitingFor==='you'?'<span class="badge bad">waiting for you</span>':'<span class="badge wait">waiting for the agent</span>';
 const mediaUrl=(j,t,slot,dl)=>withKey(`/studio-file/job/${j.job}/${t.index}/${slot}`)+(dl?'&dl=1':'');
 App.register('studio/videos',{
  head:a=>{const j=a&&Studio.S?.jobs.find(x=>x.job===a);return j?{title:jobTitle(j),text:'Look at each step, rate it, and approve to continue. A step you rate bad is redone on its own.'}:{title:'Videos in production',text:'Every video the studio is making or has made. Open one to follow its steps.'};},
@@ -188,13 +191,14 @@ function jobHtml(j,live){
    <div class="card"><div class="row">${stateBadge(j,working)}<span class="badge st">${j.mode==='edit'?'edit':'motion'}</span><span class="muted small" style="margin-left:auto">${j.done} of ${j.of} steps, started ${ago(j.created)}</span></div>
     <div class="prog"><i style="width:${Math.round(j.done/j.of*100)}%"></i></div>
     <details><summary>The request</summary><div class="out" dir="auto">${esc(j.request)}</div></details></div>
+   ${j.finished?'':driveHtml(j)}
    ${j.script?`<section class="card sd-card" id="script-check"><div class="teach-section-head"><h3>The script, line by line</h3><span class="muted small">${j.script.mine?'Your script':'Written by the studio'}${j.script.kept?`, ${j.script.kept} better line${j.script.kept>1?'s':''} kept`:''}</span></div>
     ${j.script.mine&&j.script.open&&j.script.canChange?'<p class="muted small" style="margin:0 0 8px">The studio suggests better versions of some lines. Keep the ones you like: the line changes in the script before the storyboard is made. Your other words stay exactly as you wrote them.</p>':''}${!j.script.canChange&&j.script.open?'<p class="muted small" style="margin:0 0 8px">The storyboard is being made from this script, so lines can no longer change here.</p>':''}${j.script.accepted?`<p class="muted small">Kept as it is because: ${esc(j.script.accepted)}</p>`:''}
     ${typeof scriptDoctorHtml==='function'?scriptDoctorHtml(j.script,{job:j.job,canChange:j.script.canChange}):''}</section>`:''}
    ${(j.textEdits||[]).length?`<section class="card"><div class="teach-section-head"><h3>Edit it by its words</h3></div><p class="muted small" style="margin-top:0">The cuts are planned from what is said. Strike a sentence or bring one back, choose the opening and the takes.</p>${j.textEdits.map(e=>`<a class="btn small" href="#/studio/text/${encodeURIComponent(e.id)}">${esc(e.title)}${e.made?`, ${e.made} made`:''}</a>`).join(' ')}</section>`:''}
    ${typeof liveHtml==='function'?liveHtml(live):''}
    ${live?.driver.state==='stopped'?`<div class="banner stopped"><b>It stopped in the middle of a step.</b> ${esc(live.driver.label)}, nothing heard since ${esc(ago(live.driver.since))}. Tell your agent “Resume the studio job ${esc(j.job)}”: it continues where it stopped, and a render from its last finished scene. <button class="iconbtn" style="vertical-align:middle" title="Copy the command" aria-label="Copy the command" onclick="copyText('pnpm tempoloom studio resume ${esc(j.job)}')">${I.copy}</button></div>`
-   :j.finished||working?'':j.waitingFor==='you'?`<div class="banner you"><b>Your turn.</b> Look at the steps below, rate them, then approve to continue.</div>`:`<div class="banner">${AGENT_LINE}${j.agentReady.length?`<div class="muted small" style="margin-top:4px">Ready for it: ${j.agentReady.map(esc).join(', ')}</div>`:''}</div>`}
+   :j.finished||working||j.drive?'':j.waitingFor==='you'?`<div class="banner you"><b>Your turn.</b> Look at the steps below, rate them, then approve to continue.</div>`:`<div class="banner">${AGENT_LINE}${j.agentReady.length?`<div class="muted small" style="margin-top:4px">Ready for it: ${j.agentReady.map(esc).join(', ')}</div>`:''}</div>`}
    ${(()=>{
     // Steps before the last approval are folded away, unless one of them is being redone.
     let cut=-1;j.tasks.forEach((t,i)=>{if(t.gate&&t.status==='approved')cut=i;});
@@ -380,3 +384,15 @@ App.register('studio/scores',{
    <div><h2 style="margin:8px 0 4px">Lessons that are failing</h2>${s.worst.length?s.worst.map(row).join(''):'<div class="muted">None. Good.</div>'}</div></div>
   ${s.rules.length?`<h2 style="margin:22px 0 6px">Rules from your ratings</h2>${s.rules.map(r=>`<div class="lesson" dir="auto">${esc(r)}</div>`).join('')}`:''}`;
  }});
+
+/** Who works on a job: the page's own agents (with the model, the step and what they spent), or the
+ *  terminal agent; the page's agents stop at every approval and ask before spending past your amount. */
+const DRIVE_STATE={running:'Working',asking:'Waiting for your OK to spend more',waiting:'Waiting for you',stopped:'Stopped',failed:'Stopped by a problem',finished:'Finished'};
+function driveHtml(j){const d=j.drive,money=n=>'$'+(n||0).toFixed(2);
+ if(!d)return `<section class="card drive"><div class="row"><div><b>Who works on it</b><p class="muted small" style="margin:2px 0 0">Your terminal agent, when you tell it to. Or this page, with the main model from Settings, within your budgets.</p></div><button class="btn" style="margin-left:auto" onclick="driveDo('${j.job}','start')">Run it here</button></div></section>`;
+ return `<section class="card drive ${d.state}" aria-live="polite"><div class="row"><div><b>${DRIVE_STATE[d.state]||d.state}${d.state==='running'&&d.task?`: ${esc(d.task)}`:''}</b>
+  <p class="muted small" style="margin:2px 0 0">This page, with ${esc(d.model||'the main model')}. ${money(d.spent)} spent on this video.${d.why?' '+esc(d.why):''}</p></div>
+  <span class="row" style="margin-left:auto">${d.state==='running'?`<span class="spin"></span><button class="btn" onclick="driveDo('${j.job}','stop')">Stop</button>`
+   :d.state==='asking'?`<button class="btn primary" onclick="driveDo('${j.job}','go-ahead')">Go ahead</button><button class="btn" onclick="driveDo('${j.job}','stop')">Stop</button>`
+   :d.state==='waiting'?'':`<button class="btn" onclick="driveDo('${j.job}','start')">Run it again</button>`}</span></div></section>`;}
+window.driveDo=(job,action)=>act(()=>api(`/api/studio/jobs/${job}/drive`,{method:'POST',body:JSON.stringify({action})}),action==='stop'?'Stopping':action==='go-ahead'?'Going ahead':'Working on it');

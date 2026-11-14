@@ -1,5 +1,22 @@
 # Changelog
 
+## 9.17.0: The page works on it, and the rest of the list
+
+- **The page drives a job** (Settings, Who works on new videos: your terminal agent, this page, or
+  ask each time; and **Run it here** on any job). Each step runs with your main or role model through
+  Tempoloom's own commands, the way a terminal agent runs it. It stops at every approval and
+  carries on when you approve; only you approve, choose, rate, delete or restore. Every model call
+  is checked against your budgets and recorded: a job asks before spending past the "ask me"
+  amount and stops at the per-video and per-day budgets. Works with Claude, OpenAI, Gemini,
+  OpenRouter, xAI, Mistral, DeepSeek, Groq and model servers on your computer.
+- **Search sees and hears more**: say what a video shows (Gallery, What it shows; or the agent from
+  a sheet of frames: `find unseen`, `find describe`), and write the words of videos that have none
+  (`find listen`, ElevenLabs, within your budgets).
+- **Speed in FCPXML**: speed changes go to Final Cut Pro and Resolve as a time map.
+- **CapCut kit**: the edit's parts as numbered clips cut on the exact frame, ready to add in order.
+- Fixes: a job driven by the page no longer says "tell your agent"; tiny costs read "less than
+  $0.01"; `find --help` shows help instead of searching for "help".
+
 ## 9.16.0: Find and tidy (group 8 of 8)
 
 - **Search by description**: one search box (at the top of every page, and `find`) over the videos

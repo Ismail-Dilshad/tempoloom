@@ -1340,6 +1340,33 @@
    "whenToUse": "Before starting a video or an edit: look for earlier work on the same subject; or when the user asks where something is."
   },
   {
+   "id": "find-describe",
+   "category": "library",
+   "description": "Say what a finished video shows (people, places, objects, what happens) so search finds it: find unseen lists the videos nobody described, each with a sheet of frames to look at.",
+   "command": "pnpm tempoloom find unseen | find describe ID \"WHAT IT SHOWS\" --agent",
+   "inputs": [
+    "unseen",
+    "describe",
+    "ID",
+    "TEXT",
+    "--agent"
+   ],
+   "status": "ready",
+   "whenToUse": "After a final video is made, or when the user asks to make search find videos by what is in them."
+  },
+  {
+   "id": "find-listen",
+   "category": "library",
+   "description": "Write the words of gallery videos that have sound but no transcript (ElevenLabs), within the budgets, so search hears them. Without --go it only says how many and what it would cost.",
+   "command": "pnpm tempoloom find listen [--go] [--yes]",
+   "inputs": [
+    "--go",
+    "--yes"
+   ],
+   "status": "ready",
+   "whenToUse": "Only when the user asks: it costs money. Tell them the cost first."
+  },
+  {
    "id": "tidy-duplicates",
    "category": "library",
    "description": "The same video exported more than once and lessons that say the same thing, grouped with the one to keep and why; tidy keep keeps one (videos deleted or hidden, lessons retired with Undo).",

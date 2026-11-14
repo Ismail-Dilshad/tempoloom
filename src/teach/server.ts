@@ -16,6 +16,7 @@ import * as T from '../engine/teach/teach.js';
 import {hasApiKey} from '../engine/transcribe.js';
 import * as R from '../engine/studio-requests.js';
 import {deleteJob,rate,pick,approve,archive,feedback as jobFeedback} from '../engine/studio.js';
+import {carryOn} from '../engine/driver.js';
 import {home} from '../engine/home.js';
 import * as Taste from '../engine/taste.js';
 import * as G from '../engine/gallery.js';
@@ -95,6 +96,11 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
    // ---------- find and tidy: one search over everything, the same thing kept once, space ----------
    if(m==='GET'&&p==='/api/find'){const F=await import('../engine/find.js'),ks=(url.searchParams.get('kinds')||'').split(',').filter((k):k is import('../engine/find.js').FindKind=>F.kinds.includes(k as never));
     return json(res,await F.find(url.searchParams.get('q')||'',{kinds:ks,limit:60}));}
+   if(m==='GET'&&p==='/api/find/unseen-count'){const G=await import('../engine/gallery.js');return json(res,{count:(await G.gallery()).items.filter(i=>!i.shows).length});}
+   if(m==='GET'&&p==='/api/find/listen')return json(res,await (await import('../engine/find.js')).listen({}));
+   if(m==='POST'&&p==='/api/find/listen'){const b=await body(req);try{return json(res,await (await import('../engine/find.js')).listen({go:true,approved:b.approved===true}));}catch(e){throw new HttpError(409,(e as Error).message);}}
+   const gs=/^\/api\/gallery\/([a-f0-9]{16})\/shows$/.exec(p);
+   if(m==='POST'&&gs){const b=await body(req);try{return json(res,await (await import('../engine/find.js')).describe(gs[1]!,String(b.text??''),'you'));}catch(e){throw new HttpError(400,(e as Error).message);}}
    if(m==='GET'&&p==='/api/tidy/duplicates')return json(res,await (await import('../engine/tidy.js')).duplicates());
    if(m==='GET'&&p==='/api/tidy/storage')return json(res,await (await import('../engine/tidy.js')).storagePlan());
    if(m==='POST'&&(p==='/api/tidy/keep'||p==='/api/tidy/clear')){const b=await body(req),T=await import('../engine/tidy.js');
@@ -216,7 +222,11 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
      catch(e){await fsp.rm(target,{force:true});throw e instanceof HttpError?e:new HttpError(400,(e as Error).message);}
     }
     if(m==='DELETE'&&action==='/files')return json(res,await R.removeFile(id!,url.searchParams.get('name')??''));
-    if(m==='POST'&&action==='/submit'){const input=R.requestInput.safeParse(await body(req));if(!input.success)throw new HttpError(400,input.error.issues[0]?.message??'Check the form');return json(res,R.submit(id!,input.data));}
+    if(m==='POST'&&action==='/submit'){const raw=await body(req),input=R.requestInput.safeParse(raw);if(!input.success)throw new HttpError(400,input.error.issues[0]?.message??'Check the form');
+     const r=R.submit(id!,input.data),{readSettings}=await import('../engine/models/settings.js'),st=readSettings();
+     // The page works on it at once when Settings say so (or the user chose it for this video).
+     if(st.model&&(st.driver==='browser'||(st.driver==='ask'&&raw.drive==='page'))){const t=R.take(id!);const D=await import('../engine/driver.js');await D.drive(t.job);return json(res,{...r,job:t.job,driving:true});}
+     return json(res,r);}
     if(m==='PATCH'&&!action)return json(res,R.editBrief(id!,(await body(req)).text));
     if(m==='DELETE'&&!action)return json(res,await R.discard(id!));
    }
@@ -353,14 +363,20 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
     const seconds=Number(b.seconds)||undefined,lang=String(b.language??'');return json(res,doctor(text,{...(seconds&&seconds>=5&&seconds<=600?{seconds}:{}),...(lang&&(LANGS as readonly string[]).includes(lang)?{language:lang as Language}:{})}));}
    const sc=/^\/api\/studio\/jobs\/([a-z0-9-]+)\/script\/(keep|decline)$/.exec(p);
    if(m==='POST'&&sc){const b=await body(req);return json(res,R.scriptChoice(sc[1]!,String(b.id??''),sc[2]==='keep'));}
+   // ---------- the page drives a job (Settings: who works on new videos) ----------
+   const dv=/^\/api\/studio\/jobs\/([a-z0-9-]+)\/drive$/.exec(p);
+   if(m==='POST'&&dv){const b=await body(req),job=dv[1]!,D=await import('../engine/driver.js'),pk=b.model&&typeof b.model==='object'?b.model as {provider:string;model:string}:undefined;
+    try{if(b.action==='stop')return json(res,D.stopDrive(job));
+     return json(res,await D.drive(job,{...(pk?{model:{provider:String(pk.provider),model:String(pk.model)}}:{}),approveSpend:b.action==='go-ahead'}));}
+    catch(e){throw new HttpError(409,(e as Error).message);}}
    const jb=/^\/api\/studio\/jobs\/([a-z0-9-]+)\/(rate|pick|approve|final|feedback|archive)(?:\/([a-z-]+))?$/.exec(p);
    if(m==='POST'&&jb){const [,job,action,task]=jb,b=await body(req);
     const input={rating:String(b.rating) as 'good',reasons:Array.isArray(b.reasons)?b.reasons.map(String):[],note:typeof b.note==='string'?b.note:'',
      parts:Array.isArray(b.parts)?(b.parts as Record<string,unknown>[]).map(x=>({part:String(x.part??''),rating:x.rating==='good'?'good' as const:'bad' as const,note:String(x.note??'')})):[]};
     if(action==='rate'&&task)return json(res,await rate(job!,task,input));
     if(action==='final')return json(res,await R.finalRating(job!,input));
-    if(action==='pick'&&task)return json(res,pick(job!,task,String(b.label??'')));
-    if(action==='approve'&&task)return json(res,approve(job!,task));
+    if(action==='pick'&&task){const r=pick(job!,task,String(b.label??''));void carryOn(job!).catch(()=>{});return json(res,r);}
+    if(action==='approve'&&task){const r=approve(job!,task);void carryOn(job!).catch(()=>{});return json(res,r);}
     if(action==='archive')return json(res,archive(job!,b.on!==false));
     if(action==='feedback'){const said=String(b.said??'').trim();if(said.length<4)throw new HttpError(400,'Say what should change');return json(res,await jobFeedback(job!,said,{verdict:b.praise===true?'approve':'revise'}));}
    }

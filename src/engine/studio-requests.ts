@@ -3,6 +3,7 @@
 // agent takes it in the terminal (`studio inbox`, `studio take`), and the page shows every step
 // for the user to rate. A request is a folder: request.json and the files that came with it.
 import fs from 'node:fs';
+import {isRunning} from './driver.js';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import {randomBytes} from 'node:crypto';
@@ -193,9 +194,14 @@ export function jobView(p:Plan){
    scope:t.scope?{scenes:t.scope.scenes.map(s=>({n:s.n,label:s.label,from:s.start,to:s.end}))}:null};});
  const finished=p.tasks.every(t=>t.status==='done');
  let briefInput:unknown=null;if(p.source){try{briefInput=request(p.source).input;}catch{/* the request folder is gone */}}
- return {job:p.job,kind:p.title,mode:p.type==='footage-edit'?'edit':'motion',request:p.request,created:p.created,updated:p.updated,verdict:p.verdict??null,finished,archived:!!p.archived,brief:briefInput,script:scriptView(p),
+ // Who works on it: the page's own agents (with their state and what they spent) or the terminal agent.
+ let drive:unknown=null;try{const st=JSON.parse(fs.readFileSync(path.join(jobDir(p.job),'driver.json'),'utf8')) as {state:string;why:string;spent:number;model:{model:string}|null;task:string|null;updated:string};
+  // Working, but not in this page's process: the page was closed while it worked.
+  const lost=st.state==='running'&&!isRunning(p.job);
+  drive={state:lost?'stopped':st.state,why:lost?'The page was closed while it worked. Run it again: it continues from the step it was on.':st.why,spent:st.spent,model:st.model?.model??null,task:st.task,updated:st.updated};}catch{/* never driven here */}
+ return {drive,job:p.job,kind:p.title,mode:p.type==='footage-edit'?'edit':'motion',request:p.request,created:p.created,updated:p.updated,verdict:p.verdict??null,finished,archived:!!p.archived,brief:briefInput,script:scriptView(p),
   ratings:(p.ratings??[]).map(r=>({task:r.task,rating:r.rating,round:r.round,at:r.at})),
-  done:n.done,of:n.of,waitingFor:finished?'nothing':n.ready.length?'agent':n.waitingForUser.length?'you':'agent',
+  done:n.done,of:n.of,waitingFor:finished?'nothing':(drive as {state:string}|null)?.state==='asking'?'you':(drive as {state:string}|null)?.state==='running'?'page':n.ready.length?'agent':n.waitingForUser.length?'you':'agent',
   agentReady:n.ready.map(x=>x.task),tasks,textEdits:p.type==='footage-edit'?textEdits().filter(d=>d.job===p.job).map(d=>({id:d.id,title:d.title,made:d.renders.length})):[],feedback:p.feedback.map(f=>({said:f.said,rule:f.rule,goesTo:f.roles.map(id=>roleOf(id).title)}))};
 }
 /** The script doctor's view of the job's script, and whether lines can still be changed (until the storyboard starts). */

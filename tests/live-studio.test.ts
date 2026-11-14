@@ -123,7 +123,9 @@ describe('Models and keys',()=>{
   expect(()=>S.update({makers:{images:'fal'}})).toThrow(/Connect fal first/);
   expect(()=>S.update({makers:{sfx:'pexels'}})).toThrow(/cannot make sound effects/);
   expect(()=>S.update({budget:{perJob:20,perDay:5}})).toThrow(/per job cannot be more/);
-  expect(()=>S.update({driver:'browser'})).toThrow(/cannot drive a job yet/);
+  // The page can drive a job once a main model is chosen (Phase 4).
+  {const m=S.readSettings().model;if(m){expect(S.update({driver:'browser'}).settings.driver).toBe('browser');S.update({driver:'terminal'});}
+   else expect(()=>S.update({driver:'browser'})).toThrow(/Choose a main model first/);}
   expect(()=>S.update({secret:1})).toThrow();
   expect(S.update({share:'local'}).warnings.some(w=>/local models/.test(w))).toBe(true);
   S.update({share:'frames'});

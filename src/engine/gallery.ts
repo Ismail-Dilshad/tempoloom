@@ -21,7 +21,9 @@ export type GalleryItem={id:string;file:string;name:string;title:string;kind:'fi
  job:string|null;step:string|null;rating:'good'|'ok'|'bad'|null;verdict:string|null;check:{passed:number;near:number;off:number}|null;starred:boolean;
  seconds:number|null;width:number|null;height:number|null;
  /** Filled in automatically: the kind of video, and tags from its shape and length. */
- category:VideoKind;tags:string[];brief:string;ratedHere:boolean;note:string|null;brainJob:string|null;canDelete:boolean};
+ category:VideoKind;tags:string[];brief:string;ratedHere:boolean;note:string|null;brainJob:string|null;canDelete:boolean;
+ /** What the video shows, as written by the user or the agent (for search). */
+ shows:string|null};
 const idOf=(file:string)=>createHash('sha1').update(path.resolve(file)).digest('hex').slice(0,16);
 const rel=(f:string)=>path.relative(ROOT,f).split(path.sep).join('/');
 export const outputRoot=()=>path.resolve(ROOT,process.env.VIDEO_OUTPUT||'mp2');
@@ -45,6 +47,7 @@ const media=new Map<string,{seconds:number;width:number;height:number}|null>();
 /** Every video the agent made, newest first. Lengths and sizes are read once per file and remembered. */
 export async function gallery(o:{hidden?:boolean}={}){
  const state=readState(),starred=new Set(state.starred),hidden=new Set(state.hidden),by=new Map<string,GalleryItem>();
+ let pics:Record<string,{text:string}>={};try{pics=JSON.parse(fs.readFileSync(path.join(path.dirname(dbPath()),'find-pictures.json'),'utf8'));}catch{/* none yet */}
  const add=(file:string,x:Partial<GalleryItem>&{title:string;kind:GalleryItem['kind']})=>{
   const abs=path.resolve(file);if(!VIDEO.test(abs))return;let st:fs.Stats;try{st=fs.statSync(abs);}catch{return;}if(!st.isFile()||st.size<1024)return;
   const id=idOf(abs),cur=by.get(id);
@@ -52,7 +55,7 @@ export async function gallery(o:{hidden?:boolean}={}){
   const rank={final:3,preview:2,export:1} as const;
   if(cur&&rank[cur.kind]>=rank[x.kind])return;
   by.set(id,{id,file:rel(abs),name:path.basename(abs),mode:'unknown',made:st.mtime.toISOString(),bytes:st.size,job:null,step:null,rating:null,verdict:null,check:null,starred:starred.has(id),seconds:null,width:null,height:null,
-   category:'other',tags:[],brief:'',ratedHere:false,note:null,brainJob:null,canDelete:deletable(abs),...cur,...x});
+   category:'other',tags:[],brief:'',ratedHere:false,note:null,brainJob:null,canDelete:deletable(abs),shows:pics[id]?.text??null,...cur,...x});
  };
  for(const p of plans())for(const t of p.tasks)for(const f of t.show??[]){
   const r=(p.ratings??[]).filter(x=>x.task===t.id).at(-1);
