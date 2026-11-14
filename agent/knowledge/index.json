@@ -244,6 +244,21 @@
       "reviewed": true
     },
     {
+      "id": "find-and-tidy",
+      "title": "Find and tidy: one search over everything, the same thing kept once, space",
+      "path": "docs/guides/find-and-tidy.md",
+      "kind": "guide",
+      "topics": [
+        "search",
+        "storage",
+        "lessons",
+        "gallery"
+      ],
+      "source": "project",
+      "license": "project",
+      "reviewed": true
+    },
+    {
       "id": "scene-pieces",
       "title": "Scene visuals designed from zero: layers, compositions, solid 3D, sound",
       "path": "docs/guides/scene-pieces.md",

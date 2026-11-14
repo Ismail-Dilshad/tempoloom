@@ -1327,6 +1327,47 @@
    "whenToUse": "Only when the user wants to keep working in their own editor."
   },
   {
+   "id": "find",
+   "category": "library",
+   "description": "One search over the videos made (title, what they say, how they look), scenes of motion videos, lessons, taught videos and the user's clips, each result with where it was found.",
+   "command": "pnpm tempoloom find WORDS [--kind video,scene,lesson,taught,clip] [--limit 20]",
+   "inputs": [
+    "WORDS",
+    "--kind",
+    "--limit"
+   ],
+   "status": "ready",
+   "whenToUse": "Before starting a video or an edit: look for earlier work on the same subject; or when the user asks where something is."
+  },
+  {
+   "id": "tidy-duplicates",
+   "category": "library",
+   "description": "The same video exported more than once and lessons that say the same thing, grouped with the one to keep and why; tidy keep keeps one (videos deleted or hidden, lessons retired with Undo).",
+   "command": "pnpm tempoloom tidy duplicates | tidy keep videos|lessons KEEP-ID OTHER-ID...",
+   "inputs": [
+    "duplicates",
+    "keep",
+    "KEEP-ID",
+    "OTHER-ID"
+   ],
+   "status": "ready",
+   "whenToUse": "When the user asks to tidy up. Show the groups and keep only what they choose."
+  },
+  {
+   "id": "tidy-storage",
+   "category": "library",
+   "description": "Old previews, earlier renders, stale caches and work files with their sizes and why, cleared in one confirmed step (a token from the list). Never finals, starred or good videos, transcripts, voice-overs or clips.",
+   "command": "pnpm tempoloom tidy storage | tidy clear --token TOKEN [--only ID,ID]",
+   "inputs": [
+    "storage",
+    "clear",
+    "--token",
+    "--only"
+   ],
+   "status": "ready",
+   "whenToUse": "When space runs low or the user asks. Show the list and its total, and clear only after the user says yes: it cannot be undone."
+  },
+  {
    "id": "edit-overlays",
    "category": "editing",
    "description": "Place an image or video over footage (logos, lower thirds, Lottie clips, stickers) with position, width, timing, opacity and looping. Transparent .mov, .webm and .png keep their transparency.",

@@ -66,6 +66,9 @@ over footage). It plans the eight stages as tasks, each owned by the role that i
   when the user will post, `publish package VIDEO --for tiktok,reels,shorts` with the title, caption
   and hashtags you wrote, and fix what its checks mark. Nothing is posted for them. A timeline for
   Premiere, Resolve or Final Cut only when they ask: `edit export EDIT.json --to premiere`.
+- Find and tidy (docs/guides/find-and-tidy.md): before a new video or edit, look for earlier work
+  with `pnpm tempoloom find WORDS`. When the user asks to tidy, show `tidy duplicates` and
+  `tidy storage` and act only on what they choose; clearing space cannot be undone, so ask first.
 - A job that stopped mid-step (a new session, a failure): `studio resume JOB`, then start the step
   again; a render continues from its last finished scene, an edit from its last finished step.
   Every version of a step is kept (`studio versions JOB TASK`), and the user can undo any change to

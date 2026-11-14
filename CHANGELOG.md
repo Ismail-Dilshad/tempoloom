@@ -1,5 +1,20 @@
 # Changelog
 
+## 9.16.0: Find and tidy (group 8 of 8)
+
+- **Search by description**: one search box (at the top of every page, and `find`) over the videos
+  the studio made (by title, by what is said in them and by how they look: colours, brightness,
+  shape, length), the scenes of motion videos, lessons, taught videos and your clips. Each result
+  says where it was found. Kurdish, Arabic and Persian match however they were typed.
+- **Duplicate finder**: the same video exported again (the same file, or the same picture in another
+  size) and lessons that say the same thing are grouped with the one to keep and why; keeping one
+  deletes or hides the other videos and retires the other lessons (with Undo). A lesson and its
+  opposite are never grouped.
+- **Storage keeper**: old previews, earlier renders, stale caches and work files, listed with their
+  size and why, cleared in one confirmed step. Finals, starred and good videos, transcripts,
+  voice-overs and your clips are never listed.
+- The studio's first steps look for earlier work on the same subject.
+
 ## 9.15.0: Publish kit (group 7 of 8)
 
 - **Thumbnail and title set**: `publish covers` draws the best different frames with each of your

@@ -35,7 +35,7 @@ const LANGS=languageSchema.options;
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const MAX_MB=Number(process.env.TEACH_MAX_MB||'2048');
-const UI=new Set(['app.css','core.js','home.js','taste.js','teach.js','learned.js','studio.js','gallery.js','live.js','settings.js','backup.js','script.js','ideas.js','history.js','text.js']);
+const UI=new Set(['app.css','core.js','home.js','taste.js','teach.js','learned.js','studio.js','gallery.js','live.js','settings.js','backup.js','script.js','ideas.js','history.js','text.js','find.js']);
 const TYPES:Record<string,string>={'.js':'text/javascript; charset=utf-8','.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.mp4':'video/mp4','.jpg':'image/jpeg','.svg':'image/svg+xml','.ttf':'font/ttf','.json':'application/json; charset=utf-8',
  '.png':'image/png','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.webm':'video/webm','.mov':'video/quicktime','.m4v':'video/mp4','.mp3':'audio/mpeg','.wav':'audio/wav','.m4a':'audio/mp4'};
 class HttpError extends Error{constructor(public status:number,message:string){super(message);}}
@@ -92,6 +92,16 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
 
    if(m==='GET'&&p==='/'){res.setHeader('content-security-policy',"default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' blob: https:; frame-src https://www.youtube-nocookie.com https://www.instagram.com https://www.tiktok.com https://player.vimeo.com; frame-ancestors 'none'");return await file(req,res,path.join(here,'ui','index.html'));}
    if(m==='GET'&&p==='/api/home')return json(res,home());
+   // ---------- find and tidy: one search over everything, the same thing kept once, space ----------
+   if(m==='GET'&&p==='/api/find'){const F=await import('../engine/find.js'),ks=(url.searchParams.get('kinds')||'').split(',').filter((k):k is import('../engine/find.js').FindKind=>F.kinds.includes(k as never));
+    return json(res,await F.find(url.searchParams.get('q')||'',{kinds:ks,limit:60}));}
+   if(m==='GET'&&p==='/api/tidy/duplicates')return json(res,await (await import('../engine/tidy.js')).duplicates());
+   if(m==='GET'&&p==='/api/tidy/storage')return json(res,await (await import('../engine/tidy.js')).storagePlan());
+   if(m==='POST'&&(p==='/api/tidy/keep'||p==='/api/tidy/clear')){const b=await body(req),T=await import('../engine/tidy.js');
+    try{if(p==='/api/tidy/keep'){const g=String(b.group);if(g!=='videos'&&g!=='lessons')throw new Error('Say videos or lessons');
+      return json(res,await T.keepOne(g,String(b.keep??''),Array.isArray(b.others)?b.others.map(String):[]));}
+     return json(res,await T.clearStorage(String(b.token??''),{only:Array.isArray(b.only)?b.only.map(String):undefined}));}
+    catch(e){throw new HttpError(/changed since|No such|No lesson|Name the|Say videos|starred|rated good/.test((e as Error).message)?409:400,(e as Error).message);}}
    // ---------- the gallery: every video the agent made ----------
    if(m==='GET'&&p==='/api/gallery')return json(res,await G.gallery({hidden:url.searchParams.get('hidden')==='1'}));
    const gf=/^\/gallery\/(file|thumb)\/([a-f0-9]{16})$/.exec(p);

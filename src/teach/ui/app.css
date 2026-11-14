@@ -848,3 +848,18 @@ body .number-control input[type=number]{margin:0!important}
 .pub-checks{list-style:none;padding:0;margin:12px 0 0;display:grid;gap:6px}
 .pub-checks li{padding:8px 10px;border-radius:8px;border:1px solid var(--line);font-size:13px}
 .pub-checks li.ok{border-color:var(--good,#2f9e66)}.pub-checks li.warn{border-color:var(--warn,#c98a12)}.pub-checks li.bad{border-color:var(--bad,#d04a3a)}
+/* Find and tidy */
+.topfind{margin-left:auto}.topfind input[type=search]{width:220px;background:var(--bg);border:1px solid var(--line);border-radius:11px;padding:7px 12px;color:var(--cream)}
+.top h1+.topfind{margin-left:0}
+@media(max-width:700px){.topfind{display:none}}
+.find-box{display:flex;align-items:center;gap:10px}.find-box svg{flex:none;width:20px;height:20px;color:var(--dim)}
+.find-box input[type=search]{flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:11px;padding:10px 14px;font-size:1rem;color:var(--cream)}
+.chip.on{border-color:var(--coral);color:var(--cream)}button.chip{cursor:pointer}
+.find-hits{list-style:none;padding:0;margin:14px 0 0;display:grid;gap:4px}
+.find-hits li{display:grid;grid-template-columns:7.5rem 1fr;gap:12px;padding:10px 0;border-top:1px solid var(--line);align-items:start}
+.find-hits li .badge{justify-self:start}.find-hits a{font-weight:600;color:var(--cream)}.find-hits p{margin:4px 0 0}
+@media(max-width:600px){.find-hits li{grid-template-columns:1fr;gap:6px}}
+.dup{border-top:1px solid var(--line);padding:12px 0}.dup>p{margin:0 0 8px}
+.dup-row{display:flex;gap:10px;align-items:flex-start;padding:6px 0;cursor:pointer}.dup-row input{margin-top:3px;flex:none}
+.find-body{display:block;color:var(--dim);margin-top:2px}
+.space-kind{border-top:1px solid var(--line);padding:10px 0}.space-kind summary{cursor:pointer}

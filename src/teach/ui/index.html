@@ -12,7 +12,7 @@
  <aside class="side" id="side" aria-label="Sections"></aside>
  <div class="scrim" id="scrim"></div>
  <div class="main">
-  <div class="top"><button class="iconbtn menu" id="menu" aria-label="Open the menu"></button><h1 id="title"></h1><div class="row" id="actions"></div></div>
+  <div class="top"><button class="iconbtn menu" id="menu" aria-label="Open the menu"></button><h1 id="title"></h1><form class="topfind" id="topfind" role="search" onsubmit="event.preventDefault();findGo(this.q.value)"><input type="search" name="q" id="topq" placeholder="Search everything" aria-label="Search your videos, scenes, lessons and clips" autocomplete="off" maxlength="200"></form><div class="row" id="actions"></div></div>
   <main class="view" id="view" tabindex="-1"></main>
  </div>
 </div>
@@ -32,6 +32,7 @@
 <script src="/ideas.js"></script>
 <script src="/history.js"></script>
 <script src="/text.js"></script>
+<script src="/find.js"></script>
 <script>App.start();</script>
 </body>
 </html>
