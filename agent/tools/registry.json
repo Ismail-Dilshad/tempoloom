@@ -1951,6 +1951,39 @@
    ],
    "status": "ready",
    "whenToUse": "The user wants a video between two styles they taught."
+  },
+  {
+   "id": "library",
+   "category": "assets",
+   "description": "Your library: the user's logos, music, sounds, pictures and clips, described by what they show or sound like (kind, size, colours, tempo and energy measured), searchable from any job and remembered with the jobs that used them.",
+   "command": "pnpm tempoloom library add|find|describe|use|list|remove ...",
+   "inputs": [
+    "FILES",
+    "WORDS",
+    "ID",
+    "--kind",
+    "--about",
+    "--tags",
+    "--job"
+   ],
+   "status": "ready",
+   "whenToUse": "Before using stock material: the user's own first. New files the user will reuse go in."
+  },
+  {
+   "id": "look-channel",
+   "category": "reference",
+   "description": "Learn from a channel: a creator's latest videos (a link or a folder) measured and combined into one style, with what stays the same in every video and what changes; downloads are study-only and deleted.",
+   "command": "pnpm tempoloom look channel URL|FOLDER --name NAME [--count 20] [--confirm]",
+   "inputs": [
+    "URL",
+    "FOLDER",
+    "--name",
+    "--count",
+    "--seconds",
+    "--confirm"
+   ],
+   "status": "ready",
+   "whenToUse": "The user names a creator or channel whose style they want."
   }
  ]
 }

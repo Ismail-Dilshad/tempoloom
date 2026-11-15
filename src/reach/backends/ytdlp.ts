@@ -95,6 +95,14 @@ export function selectVideo(items:VideoMetadata[],target:string,item?:number,exp
  if(expectedId&&selected.id!==expectedId)throw new ReachError('UPSTREAM_BROKEN','The video changed since its preview. Open the link again to confirm it.');
  return selected;
 }
+/** The latest videos of a channel or profile (YouTube /videos or /shorts, a TikTok or Instagram
+ *  profile), newest first, without downloading: id, title, link, length. */
+export async function channelVideos({target,limit=20,timeout,domains=[]}:{target:string;limit?:number;timeout:number;domains?:string[]}){
+ const raw=JSON.parse(await ytdlp(['--flat-playlist','--dump-single-json','--playlist-end',String(Math.max(1,Math.min(60,limit))),target],{timeout,domains})) as {title?:string;channel?:string;uploader?:string;entries?:{id?:string;title?:string;url?:string;webpage_url?:string;duration?:number}[]};
+ const items=(raw.entries??[]).filter(e=>e.url||e.webpage_url||e.id).slice(0,limit).map(e=>({id:String(e.id??''),title:e.title??'Video',url:e.webpage_url??(e.url&&/^https?:/.test(e.url)?e.url:`https://www.youtube.com/watch?v=${e.id}`),duration:e.duration??null}));
+ if(!items.length)throw new ReachError('NOT_FOUND','No videos found on that channel or profile');
+ return {channel:raw.channel??raw.uploader??raw.title??null,items};
+}
 export async function videoInfo({target,timeout,domains=[]}:{target:string;timeout:number;domains?:string[]}){
  return (await referenceVideos({target,timeout,domains})).map(i=>makeItem({title:i.title??null,url:i.webpage_url??null,author:i.channel??i.uploader??null,published_at:isoDate(i.upload_date??undefined),text:i.description??null,
   raw:{id:i.id,site:i.extractor_key,duration:i.duration,views:i.view_count,likes:i.like_count,tags:i.tags?.slice(0,15),item:i.item,width:i.width,height:i.height,thumbnail:i.thumbnail,approxMB:i.filesize_approx?Math.round(i.filesize_approx/1048576):null,license:i.license??null}}));

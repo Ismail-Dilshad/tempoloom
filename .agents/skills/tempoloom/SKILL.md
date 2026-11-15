@@ -71,6 +71,11 @@ over footage). It plans the eight stages as tasks, each owned by the role that i
   `tidy storage` and act only on what they choose; clearing space cannot be undone, so ask first.
   When you finish a video, say what it shows for search: `find unseen`, look at the sheet, then
   `find describe ID "what it shows" --agent`.
+- Your library and channels (docs/guides/library-and-channels.md): the user's own logos, music,
+  pictures and clips first (`library find WORDS`, then `library use ID --job JOB`); files they will
+  reuse go in with `library add FILE --about "..."` (describe what you see with `--agent`). A
+  creator's channel they name is learned as one style: `look channel URL --name NAME` (lists first;
+  `--confirm` studies), then `make --like channel-NAME`.
 - Control (docs/guides/control.md): scenes the user locked (`studio start` lists them) stay exactly
   as they are; give their scene visuals `"keep": true`. Fix every readability problem the preview
   reports (too small on a phone, gone before it can be read). Captions that react to the voice:

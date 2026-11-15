@@ -8,6 +8,11 @@ const usage=`Usage: tempoloom look <command>
                  are kept: brightness, colour temperature, cut rhythm, motion energy and easing.
   list           Your looks
   show NAME      What a look measured and how it steers a video
+  channel URL|FOLDER --name NAME [--count 20] [--seconds 45] [--confirm]
+                 Learn from a channel: its latest videos (a channel or profile link, or a folder of them)
+                 studied as one style - what stays the same in every video and what changes - saved as
+                 a look. A link lists the videos first; --confirm downloads the first seconds of each
+                 for study only, measures them and deletes them
   mix A B [--weight 0.7] [--name NAME]
                  Style mixer: blends two styles you taught (looks, or taught videos by id), 70% of A and
                  30% of B by default; saved as a look to use with --like
@@ -26,6 +31,9 @@ async function main(){
    return out({learned:r.look.name,file:r.file,looksLike:r.look.summary,musicMood:r.look.music.mood,use:`pnpm tempoloom make script.txt --like ${r.look.name}`});}
   case 'list':return out((await listLooks()).map(l=>({name:l.name,from:l.source.title??l.source.url??l.source.file,looksLike:l.summary,musicMood:l.music.mood})));
   case 'show':{if(!a[0])throw new Error('show NAME');const l=await readLook(a[0]);return out({...l,folder:looksDir()});}
+  case 'channel':{const input=a[0],name=flag(a,'--name');if(!input||input.startsWith('--')||!name)throw new Error('channel URL|FOLDER --name NAME [--count 20] [--confirm]');
+   const {learnChannel}=await import('../engine/channel-style.js');const count=flag(a,'--count'),seconds=flag(a,'--seconds');
+   return out(await learnChannel(input,{name,confirm:a.includes('--confirm'),...(count?{count:Number(count)}:{}),...(seconds?{seconds:Number(seconds)}:{}),onStep:s=>console.error(s)}));}
   case 'mix':{if(!a[0]||!a[1]||a[0].startsWith('--')||a[1].startsWith('--'))throw new Error('mix A B [--weight 0.7] [--name NAME]');
    const w=flag(a,'--weight')??'0.7',weight=Number(w.endsWith('%')?Number(w.slice(0,-1))/100:w);if(!Number.isFinite(weight)||weight<0||weight>1)throw new Error('--weight is from 0 to 1 (or 0% to 100%): the share of the first style');
    const r=await saveMix(a[0],a[1],weight,flag(a,'--name'));

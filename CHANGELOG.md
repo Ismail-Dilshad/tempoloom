@@ -1,5 +1,20 @@
 # Changelog
 
+## 9.23.0: Library and learning (group 12 of 12)
+
+- **Your library** (`library add | find | describe | use | list | remove`): logos, music, sounds,
+  pictures and clips in one place. It measures each by itself (a see-through picture is a logo; a
+  track's tempo and energy; a picture's size, shape and colours; a clip's shots) and keeps what it
+  shows in your words or the agent's. Found by what it shows from any job and from the page's
+  search box; each entry remembers the jobs that used it. Pictures and sounds are copied in; clips
+  join the b-roll library; your own files are never changed or deleted.
+- **Learn from a channel** (`look channel URL|FOLDER --name NAME`): a creator's latest videos (20 by
+  default) studied as one style, what stays the same in every video and what changes, saved as a
+  look for `--like`, with a sheet of one frame per video. A link lists the videos first; with
+  `--confirm` the first 45 seconds of each are downloaded for study only, measured and deleted.
+- The studio looks in your library first (the brief, the music, the scenes), and the researcher
+  learns a channel the user names.
+
 ## 9.22.0: Control over the look (group 11 of 12)
 
 - **Lock what you like** (Studio page, under a step's video; or `studio lock JOB 2,5`): locked

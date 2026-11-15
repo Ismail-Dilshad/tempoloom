@@ -1,14 +1,14 @@
 // Find and tidy: one search over everything the studio keeps; the same video or lesson kept once;
 // space the studio can make again, cleared in one confirmed step.
 const Find={more:null,moreBusy:false,q:'',kind:'all',got:null,asked:null,busy:false,dups:null,dupBusy:false,space:null,spaceBusy:false,off:new Set()};
-const FIND_KIND={video:'Video',scene:'Scene',lesson:'Lesson',taught:'Taught video',clip:'Your clip'};
+const FIND_KIND={video:'Video',scene:'Scene',lesson:'Lesson',taught:'Taught video',clip:'Your clip',asset:'Your library'};
 App.nav.splice(App.nav.findIndex(n=>n[0]==='studio/gallery')+1,0,['find','Find and tidy','search','Studio']);
 window.findGo=q=>{q=String(q||'').trim();Find.q=q;App.go('find',q||undefined);};
 async function findRun(){const q=Find.q;if(!q){Find.got=null;Find.asked='';return;}if(Find.asked===q||Find.busy)return;
  Find.busy=true;Find.asked=q;try{Find.got=await api('/api/find?q='+encodeURIComponent(q));}catch(e){toast(e.message,true);Find.got=null;}Find.busy=false;if(App.route==='find')App.show(false);}
 App.register('find',{
  title:()=>'Find and tidy',sub:()=>'',
- head:()=>({title:'Find anything, keep one of each',text:'Search your videos, scenes, lessons, taught videos and clips by what they say or how they look. Then keep one of anything you have twice, and clear space the studio can make again.'}),
+ head:()=>({title:'Find anything, keep one of each',text:'Search your videos, scenes, lessons, taught videos, clips and library (logos, music, pictures) by what they say or how they look. Then keep one of anything you have twice, and clear space the studio can make again.'}),
  hold:()=>Find.busy||Find.dupBusy||Find.spaceBusy,
  render(el,arg){
   if(arg!==undefined&&arg!==Find.q){Find.q=arg;}

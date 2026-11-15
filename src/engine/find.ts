@@ -10,9 +10,9 @@ import {ROOT} from './config.js';
 import {dbPath} from './brain/db.js';
 import {ffmpeg} from '../renderer/ffmpeg-encoder.js';
 
-export const kinds=['video','scene','lesson','taught','clip'] as const;
+export const kinds=['video','scene','lesson','taught','clip','asset'] as const;
 export type FindKind=typeof kinds[number];
-export const KIND_LABEL:Record<FindKind,string>={video:'Video',scene:'Scene',lesson:'Lesson',taught:'Taught video',clip:'Your clip'};
+export const KIND_LABEL:Record<FindKind,string>={video:'Video',scene:'Scene',lesson:'Lesson',taught:'Taught video',clip:'Your clip',asset:'Your library'};
 type Field={text:string;weight:number;as:'title'|'says'|'looks'|'notes'|'shows'};
 export type Entry={kind:FindKind;id:string;title:string;open:string;file?:string;at?:number;fields:Field[];when:string};
 export type Hit={kind:FindKind;id:string;title:string;open:string;file?:string;at?:number;score:number;why:string[];snippet:string;when:string};
@@ -108,6 +108,10 @@ export async function entries(o:{looks?:boolean}={}):Promise<Entry[]>{
  try{const {library}=await import('../editor/broll.js');
   for(const c of library())for(const s of c.shots)out.push({kind:'clip',id:`${c.id}#${s.n}`,title:`${c.name}, shot ${s.n}`,open:'#/studio/text',file:c.file,at:s.start,when:c.added,
    fields:[{text:s.description,weight:2,as:'looks'},{text:c.name,weight:1,as:'title'}]});}catch{/* none */}
+ // Your library: logos, pictures, music and sounds (its clips are found shot by shot above).
+ try{const L=await import('./my-library.js');
+  for(const e of L.libraryEntries().filter(x=>x.kind!=='clip'))out.push({kind:'asset',id:e.id,title:`${e.name} (${e.kind})`,open:'#/find',file:e.file,when:e.added,
+   fields:[{text:e.description+' '+e.tags.join(' '),weight:2,as:e.kind==='music'||e.kind==='sound'?'notes':'shows'},{text:e.name,weight:1,as:'title'},{text:[...L.entryWords(e),...(e.colours??[]).map(h=>colourName(parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)))].join(' '),weight:1,as:'looks'}]});}catch{/* none */}
  return out;
 }
 
