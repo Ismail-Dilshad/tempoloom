@@ -51,6 +51,7 @@ pnpm tempoloom edit --edl edit.json --validate # check only
 | `blur` | `regions: [{kind, start, end, keys: [{t, x, y, w, h}]}]` (`face`, `plate`, `phone`, `you`), `strength` (0.8) | Blur areas that follow what they cover, only while it is there (from `media private --edl-out`, or drawn by you) |
 | `cursor` | `path: [{t, x, y}]`, `clicks: [t...]`, `size` (0.045), `color` (`#FFD400`), `opacity` (0.38) | A highlight that follows the cursor of a screen recording, and a ring at each click |
 | `zooms` | `items: [{start, end, x, y, scale}]`, `ramp` (0.4 s) | Eased zooms in and out at points of the screen (from `media screen --plan`) |
+| `grade` | `brightness` (0, -0.3 to 0.3), `contrast` (1), `saturation` (1), `warmth` (0, -0.3 to 0.3: blue to orange) | A colour grade; `recreate edit` sets it to take your footage's colour toward a reference's |
 | `zoom` | `scale` (1.15), `start` (0), `end`, `ramp` (0 s), `focusX` (0.5), `focusY` (0.4) | Punch-in over a time range, with optional eased ramps |
 | `speed` | `factor` (0.25 to 4) | Speed up or slow down; audio pitch preserved |
 | `fade` | `in`, `out` (seconds) | Fade picture and sound |

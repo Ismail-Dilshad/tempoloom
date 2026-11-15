@@ -148,6 +148,9 @@ async function applyOperation(op:Operation,input:string,info:MediaInfo,out:strin
     await ff(['-i',cur,'-filter_complex',g.slice(0,-1),'-map',`[${lastL}]`,...(a?['-map','0:a']:[]),...intermediate(a,info.fps),dst]);cur=dst;}
    const kinds=['face','plate','phone','you'].map(k=>[k,all.filter(r=>r.kind===k).length] as const).filter(([,c])=>c).map(([k,c])=>`${c} ${k==='you'?'area':k}${c>1?'s':''}`);
    return {info,note:`blurred: ${kinds.join(', ')}`};}
+  case 'grade':{
+   const w=op.warmth,f=`eq=brightness=${n(op.brightness)}:contrast=${n(op.contrast)}:saturation=${n(op.saturation)}${w?`,colorbalance=rs=${n(w)}:bs=${n(-w)}:rm=${n(w)}:bm=${n(-w)}:rh=${n(w/2)}:bh=${n(-w/2)}`:''}`;
+   await vf(f);return {info,note:`graded: brightness ${op.brightness>=0?'+':''}${op.brightness}, contrast x${op.contrast}, saturation x${op.saturation}, warmth ${w>=0?'+':''}${w}`};}
   case 'steady':{
    const before=await measureShake(input),filter=await steadyFilter(input,work,op.smoothing);await vf(filter);const after=await measureShake(out);
    return {info,note:`steadied: shake ${before.shake} → ${after.shake}${before.verdict==='too-shaky'?` (${before.why})`:''}`};}

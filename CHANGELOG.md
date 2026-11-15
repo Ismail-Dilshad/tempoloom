@@ -1,5 +1,20 @@
 # Changelog
 
+## 9.18.0: Same design, your content
+
+- **A motion video in the same design**: give a video you like (New video, Reference, Same design,
+  my content; or `recreate study`). It is read scene by scene into a blueprint (timing, how each
+  scene comes in, where content and text sit and how big, colour roles, motion), your script,
+  logo and colours are put into the same scenes (`recreate plan`), and the made video is checked
+  against it scene by scene (`recreate check`; a studio preview cannot finish until it passes).
+- **Your footage edited the same way** as an edited video (Reference, Edit my footage the same way;
+  or `recreate edit`): its cut pace, punch-ins (as often, as big, as long), captions (place, size,
+  colours, one word or a phrase), colour grade and music, measured and applied by the automatic
+  edit, with how close it came.
+- Only the design or the editing style is taken, never the reference's artwork, logo, footage or
+  words. New `grade` edit operation. The automatic edit can now take another edit's punch-ins,
+  caption look and grade.
+
 ## 9.17.0: The page works on it, and the rest of the list
 
 - **The page drives a job** (Settings, Who works on new videos: your terminal agent, this page, or

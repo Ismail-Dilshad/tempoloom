@@ -37,6 +37,9 @@ export const operationSchema=z.discriminatedUnion('op',[
   keys:z.array(z.object({t:time,x:frac,y:frac,w:z.number().min(.005).max(1),h:z.number().min(.005).max(1)}).strict()).min(1).max(5000)}).strict().refine(r=>r.end>r.start,'Blur end must be after start')).min(1).max(120),
   strength:z.number().min(.2).max(1).default(.8)}).strict(),
  // A steady picture from handheld footage (FFmpeg's vid.stab): the camera path smoothed over `smoothing` seconds.
+ // A colour grade: brightness added (-0.3 to 0.3), contrast and saturation multiplied, warmth toward
+ // orange (above 0) or blue (below 0). From edit like, to match another edit's colour.
+ z.object({op:z.literal('grade'),brightness:z.number().min(-.3).max(.3).default(0),contrast:z.number().min(.5).max(1.6).default(1),saturation:z.number().min(0).max(2).default(1),warmth:z.number().min(-.3).max(.3).default(0)}).strict(),
  z.object({op:z.literal('steady'),smoothing:z.number().min(.2).max(4).default(1)}).strict(),
  // Parts of the clip, in any order (a part may come twice: an opening hook played first, then the talk).
  z.object({op:z.literal('arrange'),segments:z.array(range).min(1).max(2000)}).strict(),

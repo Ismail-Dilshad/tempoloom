@@ -1327,6 +1327,64 @@
    "whenToUse": "Only when the user wants to keep working in their own editor."
   },
   {
+   "id": "recreate-study",
+   "category": "reference",
+   "description": "A reference motion video read scene by scene into a blueprint: each scene's timing, transition in, layout, text positions and sizes, colour roles and motion, with a sheet of frames. Only measurements are kept.",
+   "command": "pnpm tempoloom recreate study REFERENCE.mp4 [--scenes 2.5,5.1]",
+   "inputs": [
+    "REFERENCE",
+    "--scenes",
+    "--out"
+   ],
+   "status": "ready",
+   "whenToUse": "The user wants the same design as a video, with their own content."
+  },
+  {
+   "id": "recreate-plan",
+   "category": "reference",
+   "description": "The user's script, logo and colours put into a blueprint's scenes: the same timing, transitions, layout, type sizes and motion; each reference colour role in one of the user's colours.",
+   "command": "pnpm tempoloom recreate plan BLUEPRINT --script SCRIPT.txt",
+   "inputs": [
+    "BLUEPRINT",
+    "--script",
+    "--text",
+    "--primary",
+    "--accent",
+    "--background",
+    "--text-color"
+   ],
+   "status": "ready",
+   "whenToUse": "After recreate study, before the storyboard of a same-design job."
+  },
+  {
+   "id": "recreate-check",
+   "category": "reference",
+   "description": "How closely a made video follows a blueprint, scene by scene, with each difference to fix; it also catches the reference's own colours kept by mistake.",
+   "command": "pnpm tempoloom recreate check BLUEPRINT VIDEO.mp4 [--job JOB]",
+   "inputs": [
+    "BLUEPRINT",
+    "VIDEO",
+    "--job"
+   ],
+   "status": "ready",
+   "whenToUse": "Before finishing the preview of a same-design job (required there)."
+  },
+  {
+   "id": "recreate-edit",
+   "category": "editing",
+   "description": "Edit the user's footage the same way as an edited reference: its cut pace, punch-ins, captions, colour grade and music, measured (recreate style) and applied by the automatic edit, with how close it came.",
+   "command": "pnpm tempoloom recreate style REFERENCE.mp4 | recreate edit REFERENCE.mp4 FOOTAGE [--transcript WORDS.json] [--plan]",
+   "inputs": [
+    "REFERENCE",
+    "FOOTAGE",
+    "--transcript",
+    "--plan",
+    "--out"
+   ],
+   "status": "ready",
+   "whenToUse": "The user gives an edited video and asks to edit their footage the same way."
+  },
+  {
    "id": "find",
    "category": "library",
    "description": "One search over the videos made (title, what they say, how they look), scenes of motion videos, lessons, taught videos and the user's clips, each result with where it was found.",

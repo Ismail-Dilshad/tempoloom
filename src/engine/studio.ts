@@ -122,7 +122,7 @@ const blockers=(p:Plan,t:Task)=>t.needs.filter(n=>taskOf(p,n).status!=='done');
 export function plan(request:string,o:{type:string;job?:string;options?:string[];source?:string;profile?:string;secondProfile?:string}):Plan{
  const s=loadStudio(),tpl=s.plans[o.type];if(!tpl)throw new Error(`Unknown kind of request "${o.type}". Kinds: ${Object.keys(s.plans).join(', ')}`);
  if(!request.trim())throw new Error('Give the request in the user\'s words');
- const options=[...new Set(o.options??[])];for(const x of options)if(!['write','voice','visuals','pick','second'].includes(x))throw new Error('Options are: write, voice, visuals, pick, second');
+ const options=[...new Set(o.options??[])];for(const x of options)if(!['write','voice','visuals','pick','second','same'].includes(x))throw new Error('Options are: write, voice, visuals, pick, second, same');
  let job=o.job??(slug(request)||'job');if(!o.job){const base=job;for(let i=2;fs.existsSync(path.join(studioRoot(),job));i++)job=`${base.slice(0,36)}-${i}`;}
  else if(fs.existsSync(path.join(jobDir(job),'plan.json')))throw new Error(`Studio job "${job}" already exists: pnpm tempoloom studio status ${job}`);
  const kept=tpl.tasks.filter(t=>!t.when||options.includes(t.when)),ids=new Set(kept.map(t=>t.id));
@@ -187,6 +187,20 @@ export function start(job:string,taskId:string){
   ...(p.type==='footage-edit'&&t.id==='cut-plan'?{editByText:`Plan the cuts from the words: pnpm tempoloom edit text FOOTAGE --job ${job} (the footage files are in the request). It finds fillers, long pauses and lines said more than once (the strongest take kept, with why), ranks the ten best openings and suggests b-roll from the user's clips. Read it with edit text DOC; decide with --hook RANK, --take GROUP N, --cut N, --shape 9:16 (it follows the speaker), --broll N on. The user sees it on the Edit by text page and can strike or bring back any sentence; make the edit with edit text DOC --render and show it with --show.`}:{}),
   ...(p.type==='footage-edit'&&t.id==='analysis'?{brollClips:'If the user added clips of their own (pnpm tempoloom edit broll list), look at each shot\'s sheet and describe what it shows in a few plain words: edit broll describe CLIP SHOT "WHAT IT SHOWS" --agent. The edit suggests a shot where what is said matches its description.'}:{}),
   ...(p.type==='footage-edit'&&t.id==='analysis'?{cleanUp:'Check how much each clip shakes: pnpm tempoloom media shake FILE... (steady, fix, or too shaky to save: tell the user which clips are too shaky and suggest another take). A screen recording: pnpm tempoloom media screen FILE --plan (the cursor, the clicks to zoom on, the waiting to trim).'}:{}),
+  // Same design, your content: the reference's design is kept scene by scene; only the content is the user's.
+  ...(p.options.includes('same')&&p.type==='reference-match'?{sameDesign:({
+   reference:`Study the reference into a blueprint: pnpm tempoloom recreate study REFERENCE.mp4 (the reference is in the request). Look at its sheet.jpg and add to reference.md what each scene's design is (a big number, a title card, an icon grid...). If it found too few or too many scenes, run it again with --scenes TIMES.`,
+   style:`The look is the reference's design with the user's colours, logo and fonts: pnpm tempoloom recreate plan BLUEPRINT --script SCRIPT gives each scene the user's colour for each of the reference's colour roles. Do not invent a new look.`,
+   storyboard:`One scene for each scene of the blueprint, in order, as recreate plan gives them: the same timing, transition, layout, type size and motion, with the user's words. Never the reference's artwork, logo or words.`,
+   design:`The production design follows recreate plan scene by scene; say where it cannot and why.`,
+   build:`Build the scenes as the plan says. Before you finish: pnpm tempoloom recreate check BLUEPRINT PREVIEW.mp4 --job ${job}; fix every scene it lists, render again, check again until it passes.`,
+   review:`Compare the preview with the reference's design (recreate check, and the two sheets side by side): the same design with the user's own content? Anything taken from the reference (its words, logo, pictures) is a failure.`,
+   final:`Run recreate check on the final too.`} as Record<string,string>)[t.id]??'Same design, your content: the reference\'s design scene by scene, with the user\'s own content.'}:{}),
+  ...(p.options.includes('same')&&p.type==='footage-edit'?{editTheSameWay:({
+   analysis:`Study how the reference is edited: pnpm tempoloom recreate style REFERENCE.mp4 (its cut pace, punch-ins, captions, grade, music). Put what it found in analysis.md.`,
+   'cut-plan':`Plan the edit in the reference's style: pnpm tempoloom recreate edit REFERENCE.mp4 FOOTAGE --plan writes the edit list with its pace, punch-ins, captions and grade. Change it only where the user asked.`,
+   build:`Make the edit: pnpm tempoloom recreate edit REFERENCE.mp4 FOOTAGE (or the edit list it planned). It reports how close it came; say so in your note.`,
+   review:`Compare the edit with the reference's style (recreate style on both): the same pace, punch-ins, captions and colour?`} as Record<string,string>)[t.id]??'Edit it the same way: the reference\'s editing style on the user\'s footage.'}:{}),
   ...(t.id==='brief'||t.id==='analysis'?{findEarlier:'Look for earlier work on the same subject before starting: pnpm tempoloom find WORDS (videos by what they say or how they look, scenes, lessons, taught videos, the user\'s clips). Reuse what fits and say what you found.'}:{}),
   ...(t.id==='final'?{describeForSearch:'When the final is made, say what it shows so search finds it: pnpm tempoloom find unseen (each video with a sheet of frames), look at its sheet, then find describe ID "people, places, objects, what happens" --agent.'}:{}),
   ...(t.id==='final'?{publishKit:'Covers: write two to four titles (under 60 characters; pnpm tempoloom publish titles suggests some from the words) and run publish covers FILE --titles "One|Two"; show the user the covers sheet to choose. When they will post it: publish package FILE --for tiktok,reels,shorts (or youtube) with the title, caption and hashtags you wrote; fix what its checks mark. Nothing is posted for them. A timeline for Premiere, Resolve or Final Cut only when they ask: pnpm tempoloom edit export EDIT.json --to premiere.'}:{}),
@@ -235,6 +249,10 @@ export function done(job:string,taskId:string,o:{output?:string;applied?:string[
  // Learning every time: a role that was given rules says which it used (or "none"), and the job's
  // last task needs the user's verdict.
  if(o.applied===undefined&&!t.applied.length&&lessonsFor(r.id,p.request).some(l=>l.always))throw new Error(`Say which lessons this task used: --applied ID,ID (the ids from studio start), or --applied none`);
+ if(p.options.includes('same')&&p.type==='reference-match'&&t.id==='build'&&!o.anyway){
+  let c:{pass?:boolean;score?:number;issues?:{what:string}[]}|null=null;try{c=JSON.parse(fs.readFileSync(path.join(jobDir(job),'recreate-check.json'),'utf8'));}catch{/* not checked */}
+  if(!c)throw new Error(`Check the preview against the reference's design first: pnpm tempoloom recreate check BLUEPRINT PREVIEW.mp4 --job ${job}`);
+  if(!c.pass)throw new Error(`The preview does not follow the design yet (${c.score}%): ${(c.issues??[]).slice(0,3).map(i=>i.what).join(' ')} Fix it and check again, or finish with --anyway and say why in --note.`);}
  if(CHECKED.has(t.id)&&hasTargets(p)){
   const c=t.selfcheck;
   if(!c)throw new Error(`Watch your own video before the user does: pnpm tempoloom studio check ${job} ${taskId} VIDEO.mp4`);

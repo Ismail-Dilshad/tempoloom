@@ -74,6 +74,8 @@ App.register('studio/new',{
     <label class="check" style="margin-top:12px"><input type="checkbox" id="useColors" ${N.useColors?'checked':''}> Use these colours for this video</label>
     <div class="colors" style="margin-top:8px"${N.useColors?'':' hidden'}>${[['primary','Main'],['accent','Accent'],['background','Background']].map(([k,l])=>`<label><input type="color" id="c-${k}" value="${esc(N[k])}"> ${l}</label>`).join('')}</div>
     ${fileRow('reference','Reference','(a video or image to study, never copied)','video/*,image/*',true)}
+    ${N.files.some(f=>f.kind==='reference')?`<label class="check" style="margin-top:8px"><input type="checkbox" id="same" ${N.same?'checked':''}> ${m?'Same design, my content: recreate its design scene by scene with my script, logo and colours':'Edit my footage the same way as this reference: its pace, zooms, captions and colour'}</label>
+     ${N.same?`<p class="muted small" style="margin:4px 0 0">Only the ${m?'design':'editing style'} is taken, never its ${m?'artwork, logo or words':'footage or words'}.${m?' The two looks to pick from are skipped: the look is the reference\'s.':''}</p>`:''}`:''}
     ${m&&S.taught.length?`<label class="f" for="like">In the spirit of a video you taught</label>${sel('like',[['','None'],...S.taught.map(v=>[v.id,esc(v.title.slice(0,60))])],N.like)}`:''}
     ${fileRow('asset','Other files','(photos, screenshots, music, a PDF)','image/*,video/*,audio/*,.pdf,.txt,.md',true)}
     <div class="row" style="margin-top:18px"><button class="btn primary" id="send" ${Studio.sending||Studio.busy?'disabled':''}>Send to the studio</button><span class="muted small">Saved as you type</span></div>
@@ -88,6 +90,7 @@ App.register('studio/new',{
   for(const id of ['seconds','shape','language','like','profile','secondProfile'])if($('#'+id))$('#'+id).onchange=e=>{N[id]=e.target.value;Studio.save();if(typeof sdLive==='function')sdLive();};
   if(typeof SD!=='undefined')SD.last='';
   for(const id of ['script','voice','pick','captions','visuals'])if($('#'+id))$('#'+id).onchange=e=>{N[id]=e.target.checked;Studio.save();count();};
+  if($('#same'))$('#same').onchange=e=>{N.same=e.target.checked;Studio.save();App.show(false);};
   if($('#second'))$('#second').onchange=e=>{N.second=e.target.checked;Studio.save();App.show(false);};
   $('#useColors').onchange=e=>{N.useColors=e.target.checked;Studio.save();App.show(false);};
   for(const k of ['primary','accent','background'])$('#c-'+k).oninput=e=>{N[k]=e.target.value;Studio.save();};
@@ -115,7 +118,7 @@ async function briefUpload(kind,files){
 }
 async function sendBrief(){
  const N=Studio.N;if(Studio.sending)return;
- const body={mode:N.mode,text:N.text.trim(),script:N.mode==='motion'&&N.script,link:N.mode==='motion'?N.link.trim():'',voice:N.mode==='motion'&&N.voice,captions:N.captions,visuals:N.visuals,pick:N.mode==='motion'&&N.pick,
+ const body={mode:N.mode,text:N.text.trim(),script:N.mode==='motion'&&N.script,link:N.mode==='motion'?N.link.trim():'',voice:N.mode==='motion'&&N.voice,captions:N.captions,visuals:N.visuals,pick:N.mode==='motion'&&N.pick,same:!!N.same&&N.files.some(f=>f.kind==='reference'),
   colors:N.useColors?{primary:N.primary,accent:N.accent,background:N.background}:{},notes:N.notes.trim(),
   ...(N.seconds?{seconds:Number(N.seconds)}:{}),...(N.shape?{shape:N.shape}:{}),...(N.language?{language:N.language}:{}),...(N.mode==='motion'&&N.like?{like:N.like}:{}),...(N.profile?{profile:N.profile}:{}),second:N.second!==false,...(N.second!==false&&N.secondProfile?{secondProfile:N.secondProfile}:{})};
  if(N.mode==='motion'&&!body.text&&!body.link)return toast('Write a script, a prompt or a topic, or give a link.',true);

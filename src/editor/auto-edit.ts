@@ -17,7 +17,9 @@ import type {Operation} from './edl.js';
 import {detectLanguage,isRtl,type Language} from '../engine/languages.js';
 
 export type AutoEditOptions={transcript?:string;language?:Language;visuals?:boolean;zooms?:boolean;captions?:boolean;music?:'auto'|'off';brand?:boolean;
- like?:string;maxPause?:number;plan?:boolean;sounds?:boolean;captionStyle?:string;out?:string;onStep?:(s:string)=>void};
+ like?:string;maxPause?:number;plan?:boolean;sounds?:boolean;captionStyle?:string;out?:string;onStep?:(s:string)=>void;
+ /** Another edit's style (edit like): its punch-ins, caption look and colour grade. */
+ match?:{punch:{scale:number;perMinute:number;hold?:number}|null;captions:Record<string,unknown>|null;grade:{brightness:number;contrast:number;saturation:number;warmth:number}|null}};
 type Sentence={text:string;start:number;end:number;words:{text:string;start:number;end:number}[]};
 
 const exists=(f:string)=>fs.access(f).then(()=>true,()=>false);
@@ -73,7 +75,7 @@ export async function autoEdit(file:string,o:AutoEditOptions={}){
  const base=tightenEdl(input,tight.cuts,caps);
  const ops:Operation[]=base.operations.filter(x=>x.op==='cut');
  // Captions sit low and compact (two short lines), leaving the band above them for the visuals.
- const found=base.operations.find(x=>x.op==='captions');const captionOp=found&&found.op==='captions'?{...found,size:.036,margin:.07,maxWidth:.9}:undefined;
+ const found=base.operations.find(x=>x.op==='captions');const captionOp=found&&found.op==='captions'?(o.match?.captions?{...found,maxWidth:.9,...o.match.captions} as typeof found:{...found,size:.036,margin:.07,maxWidth:.9}):undefined;
  const vertical=info.height>=info.width,plan:string[]=[];
  // 3. Visuals for the moments worth showing, designed from zero in a new style for this video.
  const picked=o.visuals===false?[]:await moments(list,total);
@@ -106,9 +108,16 @@ export async function autoEdit(file:string,o:AutoEditOptions={}){
  }
  // 4. Punch-ins: alternate framings on sentences without a visual (hide the jump cuts).
  if(o.zooms!==false&&list.length>1){
-  const scales=[1.12,1,1.2,1];const ranges=list.map((s,i)=>({s,i})).filter(({s})=>!picked.some(p=>p.s===s)).map(({s,i})=>({start:Number(s.start.toFixed(3)),end:Number((list[i+1]?.start??total).toFixed(3)),scale:scales[i%scales.length]!})).filter(r=>r.scale>1&&r.end>r.start);
+  const scales=[1.12,1,1.2,1];let ranges=list.map((s,i)=>({s,i})).filter(({s})=>!picked.some(p=>p.s===s)).map(({s,i})=>({start:Number(s.start.toFixed(3)),end:Number((list[i+1]?.start??total).toFixed(3)),scale:scales[i%scales.length]!})).filter(r=>r.scale>1&&r.end>r.start);
+  // As often, as long and as big as the matched edit's punch-ins: placed by time, each cut on the
+  // start of a word (never in the middle of one).
+  if(o.match?.punch){const P=o.match.punch,every=60/Math.max(.5,P.perMinute),hold=Math.max(.6,Math.min(every*.8,P.hold??every/2)),starts=list.flatMap(s=>s.words.map(w=>w.start)).sort((a,b)=>a-b);
+   const snap=(t:number)=>starts.reduce((a,b)=>Math.abs(b-t)<Math.abs(a-t)?b:a,starts[0]??t);ranges=[];
+   for(let t=every/2;t<total-.6;t+=every){const a=snap(t),b=Math.min(total,snap(a+hold)>a+.4?snap(a+hold):a+hold);if(b-a>=.4&&(!ranges.length||a>=ranges.at(-1)!.end+.2)&&!picked.some(p=>a<p.s.end&&b>p.s.start))ranges.push({start:+a.toFixed(3),end:+b.toFixed(3),scale:P.scale});}}
   if(ranges.length){ops.splice(1,0,{op:'punch',ranges,focusX:.5,focusY:.38});plan.unshift(`Punch-ins: ${ranges.length} (alternating framing on sentences without a visual).`);}
  }
+ // The matched edit's colour grade, on the picture before anything is laid on it.
+ if(o.match?.grade){ops.splice(ops.findIndex(x=>x.op!=='cut')<0?ops.length:ops.findIndex(x=>x.op!=='cut'),0,{op:'grade',...o.match.grade});plan.unshift(`Grade: brightness ${o.match.grade.brightness>=0?'+':''}${o.match.grade.brightness}, contrast x${o.match.grade.contrast}, saturation x${o.match.grade.saturation}, warmth ${o.match.grade.warmth>=0?'+':''}${o.match.grade.warmth}.`);}
  if(captionOp)ops.push(captionOp);
  // 5. Music under the voice: a library track of the talk's mood, else an original score; ducked while speaking.
  if(o.music!=='off'){

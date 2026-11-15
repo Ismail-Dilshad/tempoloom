@@ -259,6 +259,21 @@
       "reviewed": true
     },
     {
+      "id": "same-design",
+      "title": "Same design, your content: recreate a reference's design, or edit footage the same way",
+      "path": "docs/guides/same-design.md",
+      "kind": "guide",
+      "topics": [
+        "reference",
+        "motion",
+        "editing",
+        "style"
+      ],
+      "source": "project",
+      "license": "project",
+      "reviewed": true
+    },
+    {
       "id": "scene-pieces",
       "title": "Scene visuals designed from zero: layers, compositions, solid 3D, sound",
       "path": "docs/guides/scene-pieces.md",

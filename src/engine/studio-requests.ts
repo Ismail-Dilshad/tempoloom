@@ -34,6 +34,9 @@ export const requestInput=z.object({
  /** The user picks between two looks. */
  pick:z.boolean().default(true),
  colors:z.object({primary:hex.optional(),accent:hex.optional(),background:hex.optional()}).strict().default({}),
+ /** Same design, your content: the reference is recreated scene by scene (motion), or its editing
+  *  style is applied to the user's footage (an edit), with the user's own content. */
+ same:z.boolean().default(false),
  /** A video the user taught, to make this one in its spirit. */
  like:z.string().regex(/^[a-z0-9][a-z0-9-]{0,70}$/).optional(),
  /** The taste profile to follow (the main one when not given). */
@@ -113,7 +116,9 @@ export function brief(r:StudioRequest){
  if(i.link)lines.push(`Link: ${i.link}`);
  if(of('logo').length)lines.push(`Logo: ${of('logo')[0]}`);
  const c=Object.entries(i.colors).filter(([,v])=>v).map(([k,v])=>`${k} ${v}`);if(c.length)lines.push(`Brand colours for this video: ${c.join(', ')}`);
- if(of('reference').length)lines.push(`Reference to study (never to copy): ${of('reference').join(', ')}`);
+ if(of('reference').length)lines.push(i.same?(i.mode==='motion'?`Same design, your content: recreate the design of ${of('reference').join(', ')} scene by scene (its timing, transitions, layout, type sizes, colour roles and motion) with the user's own script, logo and colours. Never its artwork, logo, footage or words.`
+  :`Edit it the same way: give the user's footage the editing style of ${of('reference').join(', ')} (its cut pace, punch-ins, captions, colour grade and music). Only the style: the footage and words are the user's.`)
+  :`Reference to study (never to copy): ${of('reference').join(', ')}`);
  if(i.like)lines.push(`In the spirit of the video the user taught: ${i.like} (pnpm tempoloom teach show ${i.like})`);
  if(i.profile&&i.profile!=='main')lines.push(`Taste profile: ${i.profile} (pnpm tempoloom taste show ${i.profile})`);
  if(i.second)lines.push(`A second opinion: ${i.secondProfile?`a reviewer with the "${i.secondProfile}" taste profile`:'a reviewer who watches as a general viewer'}, after the first review.`);
@@ -126,9 +131,11 @@ export function take(id:string,o:{job?:string}={}){
  const r=request(id);if(r.status==='taken')throw new Error(`Already taken: job "${r.job}" (pnpm tempoloom studio next ${r.job})`);
  if(r.status!=='waiting'||!r.input)throw new Error('This request was not sent yet');
  const i=r.input,text=brief(r);
- const options=[...(i.mode==='motion'?[...(i.script?[]:['write']),...(i.voice?['voice']:[]),...(i.pick?['pick']:[])]:[...(i.visuals?['visuals']:[])]),...(i.second?['second']:[])];
+ const same=!!i.same&&r.files.some(f=>f.kind==='reference');
+ // Same design: the two looks to pick from make no sense (the design is the reference's).
+ const options=[...(i.mode==='motion'?[...(i.script?[]:['write']),...(i.voice?['voice']:[]),...(i.pick&&!same?['pick']:[])]:[...(i.visuals&&!same?['visuals']:[])]),...(i.second?['second']:[]),...(same?['same']:[])];
  const name=o.job??((i.text||i.link||'video').toLowerCase().normalize('NFKD').replace(/^https?:\/\/(www\.)?/,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,32).replace(/-+$/,'')||'video')+'-'+id.slice(2,6);
- const p=plan(text,{type:i.mode==='motion'?'script-to-motion':'footage-edit',options,job:name,source:id,...(i.profile?{profile:i.profile}:{}),...(i.second&&i.secondProfile?{secondProfile:i.secondProfile}:{})});
+ const p=plan(text,{type:i.mode==='motion'?(same?'reference-match':'script-to-motion'):'footage-edit',options,job:name,source:id,...(i.profile?{profile:i.profile}:{}),...(i.second&&i.secondProfile?{secondProfile:i.secondProfile}:{})});
  fs.writeFileSync(path.join(jobDir(p.job),'request.md'),`# The request\n\n${text}\n`);
  // The user's own script becomes the job's script file: the script doctor's suggestions the user
  // keeps change it there, and every step reads it from there.
