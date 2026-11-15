@@ -70,6 +70,9 @@ are stored.
 | fflate | MIT | Unzips the OpenCLI browser extension |
 | world-atlas | ISC (map data: Natural Earth, public domain) | Coastlines and borders for map animations (`media map`) |
 | topojson-client | ISC | Reads the map data |
+| p5.brush | MIT | Natural media for `paint` (pencils, charcoal, pens, markers, hatching, watercolour fills); only its standalone WebGL2 build is loaded. pnpm also installs its optional peer p5.js (LGPL-2.1), which Tempoloom never loads |
+| spectral.js | MIT | Pigment (Kubelka-Munk) colour mixing for `paint` |
+| perfect-freehand | MIT | Ink lines with pressure for `paint` |
 | esbuild | MIT | |
 | typescript, tsx, vitest, @types/node | Apache-2.0 / MIT | Development only. |
 

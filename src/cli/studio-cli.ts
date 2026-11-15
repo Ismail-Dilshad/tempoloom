@@ -16,10 +16,11 @@ const usage=`Usage: tempoloom studio <command>
   inbox                            What to do now: new requests from the page, jobs with tasks ready, what waits for the user
   take REQUEST [--job NAME]        Plan a request from the page into a job
   org                              The organisation: director, departments, roles and what each learns from
-  plan "REQUEST" --type KIND [--write] [--voice] [--visuals] [--second [--second-profile ID]] [--job NAME]
-                                   Plan a request (script-to-motion, reference-match, footage-edit) into tasks
+  plan "REQUEST" --type KIND [--write] [--voice] [--visuals] [--reference] [--second [--second-profile ID]] [--job NAME]
+                                   Plan a request (script-to-motion, reference-match, footage-edit, painting) into tasks
                                    with owners, inputs, outputs and the user's approvals. --write: no script yet;
-                                   --voice: a voice-over was asked for; --visuals: designed visuals over footage
+                                   --voice: a voice-over was asked for; --visuals: designed visuals over footage;
+                                   --reference: the user gave pictures for a painting
                                    --second: a second reviewer with a different taste (--second-profile ID,
                                    else a general viewer) watches the preview after the first
   next JOB                         What can be done now, and which approval is waiting for the user
@@ -58,7 +59,7 @@ const usage=`Usage: tempoloom studio <command>
 
 async function main(){
  const [cmd,...rest]=process.argv.slice(2);const out=(x:unknown)=>console.log(JSON.stringify(x,null,2));
- const {values:v,positionals:a}=parseArgs({args:rest,allowPositionals:true,options:{second:{type:'boolean'},'second-profile':{type:'string'},type:{type:'string'},job:{type:'string'},write:{type:'boolean'},voice:{type:'boolean'},visuals:{type:'boolean'},
+ const {values:v,positionals:a}=parseArgs({args:rest,allowPositionals:true,options:{second:{type:'boolean'},'second-profile':{type:'string'},type:{type:'string'},job:{type:'string'},write:{type:'boolean'},voice:{type:'boolean'},visuals:{type:'boolean'},reference:{type:'boolean'},
   output:{type:'string'},face:{type:'string'},applied:{type:'string'},show:{type:'string',multiple:true},choice:{type:'string',multiple:true},reason:{type:'string'},accept:{type:'string'},anyway:{type:'boolean'},part:{type:'string',multiple:true},port:{type:'string'},'no-browser':{type:'boolean'},learned:{type:'string',multiple:true},note:{type:'string'},link:{type:'string'},video:{type:'string'},rule:{type:'string'},verdict:{type:'string'}}});
  const need=(n:number,what:string)=>{if(a.length<n)throw new Error('studio '+cmd+' '+what);};
  switch(cmd){
@@ -72,7 +73,7 @@ async function main(){
   case 'pick':need(3,'JOB TASK "LABEL"');return out(pick(a[0]!,a[1]!,a.slice(2).join(' ')));
   case 'org':return out(org());
   case 'plan':{need(1,'"REQUEST" --type KIND');if(!v.type)throw new Error('--type is needed: '+Object.keys(loadStudio().plans).join(', '));
-   const p=plan(a.join(' '),{type:v.type,...(v.job?{job:v.job}:{}),options:[...(v.write?['write']:[]),...(v.voice?['voice']:[]),...(v.visuals?['visuals']:[]),...(v.second?['second']:[])],...(v['second-profile']?{secondProfile:v['second-profile']}:{})});
+   const p=plan(a.join(' '),{type:v.type,...(v.job?{job:v.job}:{}),options:[...(v.write?['write']:[]),...(v.voice?['voice']:[]),...(v.visuals?['visuals']:[]),...(v.reference?['reference']:[]),...(v.second?['second']:[])],...(v['second-profile']?{secondProfile:v['second-profile']}:{})});
    return out({job:p.job,kind:p.title,tasks:p.tasks.length,plan:status(p.job).plan,next:next(p.job)});}
   case 'next':need(1,'JOB');return out(next(a[0]!));
   case 'start':need(2,'JOB TASK');return out(start(a[0]!,a[1]!));

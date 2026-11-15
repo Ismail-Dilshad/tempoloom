@@ -102,14 +102,14 @@ describe('studio',()=>{
    for(const g of r.guides)await fs.access(path.join(ROOT,g));
    for(const c of r.commands){const m=c.match(/^pnpm tempoloom (\S+)/);expect(m,r.id+': '+c).not.toBeNull();expect(bin,r.id+': '+c).toContain(' '+m![1]+': {');}
   }
-  // Both departments have a lead with its team; every plan ends by learning and has the user's approvals.
-  expect(org().departments.filter(d=>d.lead).map(d=>d.department)).toEqual(['Motion graphics','Video editing']);
-  for(const [name,p] of Object.entries(s.plans)){expect(p.tasks.at(-1)!.id,name).toBe('learn');expect(p.tasks.filter(t=>t.gate).map(t=>t.id),name).toEqual(expect.arrayContaining(['design-ok','preview-ok']));
+  // Every department has a lead with its team; every plan ends by learning and has the user's approvals.
+  expect(org().departments.filter(d=>d.lead).map(d=>d.department)).toEqual(['Motion graphics','Video editing','Painting and drawing']);
+  for(const [name,p] of Object.entries(s.plans)){expect(p.tasks.at(-1)!.id,name).toBe('learn');expect(p.tasks.filter(t=>t.gate).map(t=>t.id),name).toEqual(expect.arrayContaining(name==='painting'?['concept-pick','painting-ok']:['design-ok','preview-ok']));
    expect(p.tasks.some(t=>t.role==='reviewer'),name).toBe(true);}
   // @ts-expect-error a plain script without types
   const {render}=await import('../scripts/sync-agents.mjs');const files=render() as Record<string,string>;
-  // The same four sub-agents for every host: Claude Code, Gemini CLI (Markdown) and Codex (TOML).
-  const names=['tempoloom-editing-lead','tempoloom-motion-lead','tempoloom-reviewer','tempoloom-specialist'];
+  // The same five sub-agents for every host: Claude Code, Gemini CLI (Markdown) and Codex (TOML).
+  const names=['tempoloom-artist','tempoloom-editing-lead','tempoloom-motion-lead','tempoloom-reviewer','tempoloom-specialist'];
   expect(Object.keys(files).sort()).toEqual([...names.map(n=>`.claude/agents/${n}.md`),...names.map(n=>`.codex/agents/${n}.toml`),...names.map(n=>`.gemini/agents/${n}.md`)].sort());
   for(const [file,want] of Object.entries(files)){expect((await read(file)).replace(/\r\n/g,'\n'),file+' (run pnpm agents:sync)').toBe(want);
    const name=path.basename(file).replace(/\.(md|toml)$/,'');

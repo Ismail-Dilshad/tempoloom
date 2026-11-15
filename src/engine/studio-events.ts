@@ -13,7 +13,7 @@ export type StudioEvent={seq:number;at:string;type:EventType;task?:string;role?:
 
 /** The face each role shows while it works on a step, until it says otherwise. */
 export const WORKING_FACE:Record<string,Face>={director:'planning',researcher:'listening',scriptwriter:'planning',style:'creating',scenes:'planning',sound:'creating',voice:'creating',
- 'motion-lead':'planning','editing-lead':'planning',producer:'rendering',analyst:'listening',cutter:'rendering',finisher:'rendering',reviewer:'thinking'};
+ 'motion-lead':'planning','editing-lead':'planning',producer:'rendering',analyst:'listening',cutter:'rendering',finisher:'rendering',reviewer:'thinking',concept:'planning',artist:'creating'};
 
 const root=()=>path.resolve(ROOT,process.env.VIDEO_WORKSPACE||'workspace','studio');
 const file=(job:string)=>{if(!/^[a-z0-9][a-z0-9-]{0,60}$/.test(job))throw new Error('Not a studio job name: '+job);return path.join(root(),job,'events.jsonl');};

@@ -34,16 +34,21 @@ App.register('studio/new',{
   const S=this.data,N=Studio.N;
   // A saved brief whose uploads are gone starts without them.
   if(N.id&&!S.requests.some(r=>r.id===N.id&&r.status==='draft')){N.id=null;N.files=[];Studio.save();}
-  const m=N.mode==='motion',sel=(id,opts,val)=>`<select id="${id}">${opts.map(([v,l])=>`<option value="${v}"${String(val)===String(v)?' selected':''}>${l}</option>`).join('')}</select>`;
+  const m=N.mode==='motion',art=N.mode==='art',sel=(id,opts,val)=>`<select id="${id}">${opts.map(([v,l])=>`<option value="${v}"${String(val)===String(v)?' selected':''}>${l}</option>`).join('')}</select>`;
   const past=S.jobs.filter(j=>j.brief).slice(0,6);
-  el.innerHTML=`<div class="teach-modes" style="grid-template-columns:1fr 1fr;margin:0 0 20px">
+  el.innerHTML=`<div class="teach-modes" style="grid-template-columns:1fr 1fr 1fr;margin:0 0 20px">
    <button class="teach-mode" aria-pressed="${m}" data-mode="motion"><span class="teach-mode-icon">${I.pattern}</span><span><b>Motion graphics video</b><small>From a script, a prompt, a topic, or only a link. Everything is designed and animated for you.</small></span></button>
-   <button class="teach-mode" aria-pressed="${!m}" data-mode="edit"><span class="teach-mode-icon">${I.film}</span><span><b>Edit my footage</b><small>Your talking-head or any video. Say what you want, or say nothing and the studio decides.</small></span></button></div>
+   <button class="teach-mode" aria-pressed="${N.mode==='edit'}" data-mode="edit"><span class="teach-mode-icon">${I.film}</span><span><b>Edit my footage</b><small>Your talking-head or any video. Say what you want, or say nothing and the studio decides.</small></span></button>
+   <button class="teach-mode" aria-pressed="${art}" data-mode="art"><span class="teach-mode-icon">${I.pattern}</span><span><b>A painting or drawing</b><small>Pencil, ink, watercolour or oil, painted in passes like an artist, with a timelapse. From words or your photo.</small></span></button></div>
   <div class="presets"><span class="muted small" style="align-self:center">Start from</span>${PRESETS.filter(p=>p.mode===N.mode).map(p=>`<button class="btn small" data-preset="${PRESETS.indexOf(p)}">${esc(p.name)}</button>`).join('')}
    ${past.length?`<select id="reuse" aria-label="Reuse an earlier brief" style="max-width:240px"><option value="">Reuse an earlier brief</option>${past.map(j=>`<option value="${esc(j.job)}">${esc(jobTitle(j).slice(0,48))}</option>`).join('')}</select>`:''}</div>
   <div class="form">
    <div class="card">
-    ${m?`<h2>What is the video about?</h2>
+    ${art?`<h2>What should it show?</h2>
+     <label class="f" for="text">The subject, the mood, the light <span class="muted">(or leave empty and add a photo to paint from)</span></label>
+     <textarea class="big" id="text" dir="auto" maxlength="12000" placeholder="For example: a quiet harbour at dawn, fishing boats, warm light on the water, loose and atmospheric.">${esc(N.text)}</textarea>
+     <label class="f" for="medium">Medium</label>${sel('medium',[['','Studio chooses'],['watercolor','Watercolour'],['oil','Oil'],['acrylic','Acrylic'],['gouache','Gouache'],['pencil','Pencil'],['charcoal','Charcoal'],['ink','Ink'],['pastel','Pastel'],['mixed','Mixed media']],N.medium||'')}`
+    :m?`<h2>What is the video about?</h2>
      <label class="f" for="text">A script, a prompt or just a topic <span class="muted">(or leave empty and give only a link)</span></label>
      <textarea class="big" id="text" dir="auto" maxlength="12000" placeholder="For example: a 30 second ad for my coffee shop's new cold brew, playful, ends with our address.&#10;&#10;Or paste your finished script, one sentence a line.">${esc(N.text)}</textarea>
      <div class="row" style="margin-top:6px"><span class="muted small" id="count"></span></div>
@@ -60,40 +65,40 @@ App.register('studio/new',{
    </div>
    <div class="card">
     <h2>Details</h2>
-    <div class="two"><div><label class="f" for="seconds">Length</label>${sel('seconds',[['','Studio decides'],['15','15 seconds'],['30','30 seconds'],['45','45 seconds'],['60','1 minute'],['90','1.5 minutes'],['120','2 minutes']],N.seconds)}</div>
+    ${art?`<label class="f" for="shape">Shape</label>${sel('shape',[['','Studio decides'],['vertical','Portrait'],['horizontal','Landscape'],['square','Square']],N.shape)}`:`<div class="two"><div><label class="f" for="seconds">Length</label>${sel('seconds',[['','Studio decides'],['15','15 seconds'],['30','30 seconds'],['45','45 seconds'],['60','1 minute'],['90','1.5 minutes'],['120','2 minutes']],N.seconds)}</div>
      <div><label class="f" for="shape">Shape</label>${sel('shape',[['','Studio decides'],['vertical','Vertical 9:16'],['horizontal','Horizontal 16:9'],['square','Square 1:1']],N.shape)}</div></div>
-    <label class="f" for="language">Language</label>${sel('language',LANGS,N.language)}
+    <label class="f" for="language">Language</label>${sel('language',LANGS,N.language)}`}
     ${(S.profiles||[]).length>1?`<label class="f" for="profile">Taste profile</label>${sel('profile',S.profiles.map(p=>[p.id==='main'?'':p.id,esc(p.name)]),N.profile)}`:''}
-    ${m?`<label class="check" style="margin-top:12px"><input type="checkbox" id="voice" ${N.voice?'checked':''}> Add a voice-over (uses your ElevenLabs account)</label>
+    ${art?'':m?`<label class="check" style="margin-top:12px"><input type="checkbox" id="voice" ${N.voice?'checked':''}> Add a voice-over (uses your ElevenLabs account)</label>
      <label class="check" style="margin-top:6px"><input type="checkbox" id="pick" ${N.pick?'checked':''}> Show me two looks and let me pick</label>`
     :`<label class="check" style="margin-top:12px"><input type="checkbox" id="captions" ${N.captions?'checked':''}> Captions</label>
      <label class="check" style="margin-top:6px"><input type="checkbox" id="visuals" ${N.visuals?'checked':''}> Designed visuals over the footage, where they help</label>`}
     <label class="check" style="margin-top:6px"><input type="checkbox" id="second" ${N.second!==false?'checked':''}> A second opinion: another reviewer with a different taste</label>
     ${N.second!==false?`<label class="f" for="secondProfile">Their taste</label>${sel('secondProfile',[['','A general viewer (none of your own lines)'],...(S.profiles||[]).filter(p=>p.id!==(N.profile||'main')).map(p=>[p.id,esc(p.name)])],N.secondProfile||'')}`:''}
-    ${fileRow('logo','Logo','(optional)','image/*,.svg',false)}
+    ${art?'':`${fileRow('logo','Logo','(optional)','image/*,.svg',false)}
     <label class="check" style="margin-top:12px"><input type="checkbox" id="useColors" ${N.useColors?'checked':''}> Use these colours for this video</label>
-    <div class="colors" style="margin-top:8px"${N.useColors?'':' hidden'}>${[['primary','Main'],['accent','Accent'],['background','Background']].map(([k,l])=>`<label><input type="color" id="c-${k}" value="${esc(N[k])}"> ${l}</label>`).join('')}</div>
-    ${fileRow('reference','Reference','(a video or image to study, never copied)','video/*,image/*',true)}
-    ${N.files.some(f=>f.kind==='reference')?`<label class="check" style="margin-top:8px"><input type="checkbox" id="same" ${N.same?'checked':''}> ${m?'Same design, my content: recreate its design scene by scene with my script, logo and colours':'Edit my footage the same way as this reference: its pace, zooms, captions and colour'}</label>
+    <div class="colors" style="margin-top:8px"${N.useColors?'':' hidden'}>${[['primary','Main'],['accent','Accent'],['background','Background']].map(([k,l])=>`<label><input type="color" id="c-${k}" value="${esc(N[k])}"> ${l}</label>`).join('')}</div>`}
+    ${art?fileRow('reference','Your photos','(to paint from or study: your own photos, never another artist\'s work)','image/*',true):fileRow('reference','Reference','(a video or image to study, never copied)','video/*,image/*',true)}
+    ${!art&&N.files.some(f=>f.kind==='reference')?`<label class="check" style="margin-top:8px"><input type="checkbox" id="same" ${N.same?'checked':''}> ${m?'Same design, my content: recreate its design scene by scene with my script, logo and colours':'Edit my footage the same way as this reference: its pace, zooms, captions and colour'}</label>
      ${N.same?`<p class="muted small" style="margin:4px 0 0">Only the ${m?'design':'editing style'} is taken, never its ${m?'artwork, logo or words':'footage or words'}.${m?' The two looks to pick from are skipped: the look is the reference\'s.':''}</p>`:''}`:''}
     ${m&&S.taught.length?`<label class="f" for="like">In the spirit of a video you taught</label>${sel('like',[['','None'],...S.taught.map(v=>[v.id,esc(v.title.slice(0,60))])],N.like)}`:''}
-    ${fileRow('asset','Other files','(photos, screenshots, music, a PDF)','image/*,video/*,audio/*,.pdf,.txt,.md',true)}
+    ${art?'':fileRow('asset','Other files','(photos, screenshots, music, a PDF)','image/*,video/*,audio/*,.pdf,.txt,.md',true)}
     <div class="row" style="margin-top:18px"><button class="btn primary" id="send" ${Studio.sending||Studio.busy?'disabled':''}>Send to the studio</button><span class="muted small">Saved as you type</span></div>
    </div></div>`;
   const count=()=>{if(typeof sdLive==='function')sdLive();const c=$('#count');if(!c)return;const w=N.text.trim()?N.text.trim().split(/\s+/).length:0,secs=N.script&&w?Math.round(w/2.5):0;c.textContent=w?`${w} words${secs?`, about ${secs} seconds when read aloud`:''}`:'';};count();
   document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{N.mode=b.dataset.mode;Studio.save();App.show(false);});
   document.querySelectorAll('[data-preset]').forEach(b=>b.onclick=()=>{const {name,...p}=PRESETS[b.dataset.preset];Object.assign(N,p);Studio.save();App.show(false);});
   if($('#reuse'))$('#reuse').onchange=e=>{const j=S.jobs.find(x=>x.job===e.target.value);if(!j)return;const b=j.brief;
-   Object.assign(N,{mode:b.mode,text:b.text||'',script:!!b.script,link:b.link||'',seconds:b.seconds?String(b.seconds):'',shape:b.shape||'',language:b.language||'',voice:!!b.voice,captions:b.captions!==false,visuals:b.visuals!==false,pick:b.pick!==false,notes:b.notes||'',like:b.like||'',
+   Object.assign(N,{mode:b.mode,medium:b.medium||'',text:b.text||'',script:!!b.script,link:b.link||'',seconds:b.seconds?String(b.seconds):'',shape:b.shape||'',language:b.language||'',voice:!!b.voice,captions:b.captions!==false,visuals:b.visuals!==false,pick:b.pick!==false,notes:b.notes||'',like:b.like||'',
     useColors:!!(b.colors&&Object.keys(b.colors).length),...(b.colors||{})});Studio.save();App.show(false);toast('Brief copied. Files are not copied: add them again.');};
   for(const id of ['text','link','notes'])if($('#'+id))$('#'+id).oninput=e=>{N[id]=e.target.value;Studio.save();count();};
-  for(const id of ['seconds','shape','language','like','profile','secondProfile'])if($('#'+id))$('#'+id).onchange=e=>{N[id]=e.target.value;Studio.save();if(typeof sdLive==='function')sdLive();};
+  for(const id of ['seconds','shape','language','like','profile','secondProfile','medium'])if($('#'+id))$('#'+id).onchange=e=>{N[id]=e.target.value;Studio.save();if(typeof sdLive==='function')sdLive();};
   if(typeof SD!=='undefined')SD.last='';
   for(const id of ['script','voice','pick','captions','visuals'])if($('#'+id))$('#'+id).onchange=e=>{N[id]=e.target.checked;Studio.save();count();};
   if($('#same'))$('#same').onchange=e=>{N.same=e.target.checked;Studio.save();App.show(false);};
   if($('#second'))$('#second').onchange=e=>{N.second=e.target.checked;Studio.save();App.show(false);};
-  $('#useColors').onchange=e=>{N.useColors=e.target.checked;Studio.save();App.show(false);};
-  for(const k of ['primary','accent','background'])$('#c-'+k).oninput=e=>{N[k]=e.target.value;Studio.save();};
+  if($('#useColors'))$('#useColors').onchange=e=>{N.useColors=e.target.checked;Studio.save();App.show(false);};
+  for(const k of ['primary','accent','background'])if($('#c-'+k))$('#c-'+k).oninput=e=>{N[k]=e.target.value;Studio.save();};
   document.querySelectorAll('[data-pick]').forEach(b=>b.onclick=()=>$(`[data-file="${b.dataset.pick}"]`).click());
   document.querySelectorAll('[data-file]').forEach(i=>i.onchange=()=>briefUpload(i.dataset.file,[...i.files]));
   document.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>act(async()=>{const r=await api(`/api/studio/requests/${N.id}/files?name=${encodeURIComponent(b.dataset.rm)}`,{method:'DELETE'});N.files=r.files;Studio.save();}));
@@ -120,9 +125,10 @@ async function sendBrief(){
  const N=Studio.N;if(Studio.sending)return;
  const body={mode:N.mode,text:N.text.trim(),script:N.mode==='motion'&&N.script,link:N.mode==='motion'?N.link.trim():'',voice:N.mode==='motion'&&N.voice,captions:N.captions,visuals:N.visuals,pick:N.mode==='motion'&&N.pick,same:!!N.same&&N.files.some(f=>f.kind==='reference'),
   colors:N.useColors?{primary:N.primary,accent:N.accent,background:N.background}:{},notes:N.notes.trim(),
-  ...(N.seconds?{seconds:Number(N.seconds)}:{}),...(N.shape?{shape:N.shape}:{}),...(N.language?{language:N.language}:{}),...(N.mode==='motion'&&N.like?{like:N.like}:{}),...(N.profile?{profile:N.profile}:{}),second:N.second!==false,...(N.second!==false&&N.secondProfile?{secondProfile:N.secondProfile}:{})};
+  ...(N.mode==='art'&&N.medium?{medium:N.medium}:{}),...(N.seconds&&N.mode!=='art'?{seconds:Number(N.seconds)}:{}),...(N.shape?{shape:N.shape}:{}),...(N.language?{language:N.language}:{}),...(N.mode==='motion'&&N.like?{like:N.like}:{}),...(N.profile?{profile:N.profile}:{}),second:N.second!==false,...(N.second!==false&&N.secondProfile?{secondProfile:N.secondProfile}:{})};
  if(N.mode==='motion'&&!body.text&&!body.link)return toast('Write a script, a prompt or a topic, or give a link.',true);
  if(N.mode==='edit'&&!N.files.some(f=>f.kind==='footage'))return toast('Choose the footage to edit.',true);
+ if(N.mode==='art'&&!body.text&&!N.files.some(f=>f.kind==='reference'))return toast('Say what to paint, or add a photo to paint from.',true);
  Studio.sending=true;
  try{const st=await api('/api/settings').catch(()=>null);
   if(st&&st.settings&&st.settings.driver==='ask'&&st.settings.model)body.drive=await ask('Who works on this video?',`This page can do it now with ${st.settings.model.model} (within your budgets), or your terminal agent does it when you tell it to.`,'This page')?'page':'terminal';
@@ -149,10 +155,10 @@ App.register('studio/videos',{
   const waiting=S.requests.filter(r=>r.status==='waiting'),archived=S.jobs.filter(j=>j.archived),jobs=S.jobs.filter(j=>Studio.showArchived||!j.archived);
   if(!waiting.length&&!S.jobs.length){el.innerHTML=`<div class="empty"><h2>No videos yet</h2><p>Create a video from an idea or your own footage. Follow its progress and review each step here.</p><a class="btn primary" href="#/studio/new">New video</a></div>`;return;}
   el.innerHTML=`${waiting.length?`<div class="banner">${AGENT_LINE}</div>`:''}<div class="grid">
-  ${waiting.map(r=>`<div class="card"><div class="row"><h3>${r.input.mode==='edit'?'Edit':'Motion video'}</h3><span class="badge wait">sent, not started</span><span class="muted small">${ago(r.created)}</span><button class="btn small ghost" style="margin-left:auto" onclick="editQueued('${r.id}')">Edit brief</button><button class="btn small danger-text" onclick="deleteQueued('${r.id}')">Delete</button></div>
+  ${waiting.map(r=>`<div class="card"><div class="row"><h3>${r.input.mode==='edit'?'Edit':r.input.mode==='art'?'Painting':'Motion video'}</h3><span class="badge wait">sent, not started</span><span class="muted small">${ago(r.created)}</span><button class="btn small ghost" style="margin-left:auto" onclick="editQueued('${r.id}')">Edit brief</button><button class="btn small danger-text" onclick="deleteQueued('${r.id}')">Delete</button></div>
     <div class="muted small" dir="auto" style="margin-top:6px">${esc(r.summary)}</div>${r.input.text?`<div dir="auto" style="margin-top:6px">${esc(r.input.text.slice(0,220))}${r.input.text.length>220?'…':''}</div>`:''}</div>`).join('')}
   ${jobs.map(j=>{const good=j.ratings.filter(r=>r.rating==='good').length,bad=j.ratings.filter(r=>r.rating==='bad').length,now=(S.liveList||[]).find(x=>x.job===j.job&&x.active);return `<div class="card job"><a class="job-link" href="#/studio/videos/${encodeURIComponent(j.job)}">
-    <div class="row">${now?`<img class="job-face" src="/mascot/${esc(now.face||'thinking')}.svg" alt="${esc(FACE_LABEL[now.face]||'Working')}" width="34" height="26">`:''}<h3 dir="auto">${esc(jobTitle(j))}</h3><span class="badge st">${j.mode==='edit'?'edit':'motion'}</span>${stateBadge(j,!!now)}${j.archived?'<span class="chip">archived</span>':''}
+    <div class="row">${now?`<img class="job-face" src="/mascot/${esc(now.face||'thinking')}.svg" alt="${esc(FACE_LABEL[now.face]||'Working')}" width="34" height="26">`:''}<h3 dir="auto">${esc(jobTitle(j))}</h3><span class="badge st">${j.mode==='edit'?'edit':j.mode==='art'?'painting':'motion'}</span>${stateBadge(j,!!now)}${j.archived?'<span class="chip">archived</span>':''}
      <span class="muted small" style="margin-left:auto">${good||bad?`${good} good, ${bad} bad, `:''}${j.done} of ${j.of} steps, ${ago(j.created)}</span></div>
     <div class="prog"><i style="width:${Math.round(j.done/j.of*100)}%"></i></div>${now&&now.said?`<div class="muted small job-said" dir="auto">${esc(now.said)}</div>`:''}</a><button class="btn small danger-text job-delete" aria-label="Delete ${esc(jobTitle(j))}" onclick="deleteStudioJob('${esc(j.job)}')">Delete</button></div>`;}).join('')}</div>
   ${archived.length?`<button class="btn small ghost" style="margin-top:14px" onclick="Studio.showArchived=!Studio.showArchived;App.show(false)">${Studio.showArchived?'Hide':'Show'} ${archived.length} archived</button>`:''}`;
@@ -191,7 +197,7 @@ function jobHtml(j,live){
  return `<div class="jobgrid">
   <nav class="stepnav" aria-label="Steps">${j.tasks.filter(t=>!t.gate).map(t=>t.status==='todo'?`<a style="opacity:.5"><span class="dot"></span>${esc(shortStep(t))}</a>`:`<a href="#step-${t.id}" onclick="event.preventDefault();jumpStep('${t.id}')" ${t.status==='doing'?'class="doing"':''}><span class="dot ${t.status==='doing'?'live-pulse':dot(t)}"></span>${esc(shortStep(t))}</a>`).join('')}</nav>
   <div>
-   <div class="card"><div class="row">${stateBadge(j,working)}<span class="badge st">${j.mode==='edit'?'edit':'motion'}</span><span class="muted small" style="margin-left:auto">${j.done} of ${j.of} steps, started ${ago(j.created)}</span></div>
+   <div class="card"><div class="row">${stateBadge(j,working)}<span class="badge st">${j.mode==='edit'?'edit':j.mode==='art'?'painting':'motion'}</span><span class="muted small" style="margin-left:auto">${j.done} of ${j.of} steps, started ${ago(j.created)}</span></div>
     <div class="prog"><i style="width:${Math.round(j.done/j.of*100)}%"></i></div>
     <details><summary>The request</summary><div class="out" dir="auto">${esc(j.request)}</div></details></div>
    ${j.finished?'':driveHtml(j)}

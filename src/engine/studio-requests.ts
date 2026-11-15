@@ -21,7 +21,9 @@ import {docs as textEdits} from '../editor/text-edit.js';
 
 const hex=z.string().regex(/^#[0-9a-fA-F]{6}$/,'Colours are written like #FF6B4A');
 export const requestInput=z.object({
- mode:z.enum(['motion','edit']),
+ mode:z.enum(['motion','edit','art']),
+ /** For a painting or drawing: the medium; empty means the studio chooses. */
+ medium:z.enum(['pencil','charcoal','ink','watercolor','gouache','oil','acrylic','pastel','mixed']).optional(),
  /** The script, a prompt, a topic, or (for an edit) what to do; empty means the studio decides. */
  text:z.string().trim().max(12000).default(''),
  /** Whether the text is a finished script to use as written. */
@@ -92,6 +94,7 @@ function saveBrief(r:StudioRequest,input:RequestInput){
  if(i.mode==='motion'&&!i.text&&!i.link)throw new Error('Give a script, a prompt, a topic or a link');
  if(i.mode==='motion'&&i.script&&i.text.length<20)throw new Error('The script is too short; untick "this is my finished script" to have one written');
  if(i.mode==='edit'&&!r.files.some(f=>f.kind==='footage'))throw new Error('Add the footage to edit');
+ if(i.mode==='art'&&!i.text&&!r.files.some(f=>f.kind==='reference'))throw new Error('Say what to paint, or add a picture to paint from');
  r.input=i;r.status='waiting';return save(r);
 }
 /** Removes a request that no job was planned from, with the copies of its files. */
@@ -108,6 +111,9 @@ export function brief(r:StudioRequest){
   lines.push(`A motion graphics video${i.seconds?`, about ${i.seconds} seconds`:''}${i.shape?`, ${SHAPE[i.shape]}`:''}${i.language?`, language: ${i.language}`:''}, ${i.voice?'with a voice-over':'without a voice-over'}.`);
   if(i.text)lines.push(i.script?`The user's finished script, to use as written:\n${i.text}`:`What the user wants (no script yet: research and write one):\n${i.text}`);
   else lines.push('No script and no prompt: build the video from the link (read it for the product, the facts and the brand).');
+ }else if(i.mode==='art'){
+  lines.push(`${i.medium?{watercolor:'A watercolour',oil:'An oil painting',acrylic:'An acrylic painting',gouache:'A gouache painting',pencil:'A pencil drawing',charcoal:'A charcoal drawing',ink:'An ink drawing',pastel:'A pastel',mixed:'A mixed-media picture'}[i.medium]:'A painting or drawing (the studio chooses the medium)'}${i.shape?`, ${SHAPE[i.shape]}`:''}, painted in passes like an artist, with a timelapse of it being painted.`);
+  lines.push(i.text?`What the user wants:\n${i.text}`:'No words: paint from the picture the user gave.');
  }else{
   lines.push(`An edit of the user's footage${i.seconds?`, to about ${i.seconds} seconds`:''}${i.shape?`, ${SHAPE[i.shape]}`:''}${i.language?`, language: ${i.language}`:''}; captions: ${i.captions?'yes':'no'}; designed visuals over the footage: ${i.visuals?'yes, where they help':'no'}.`);
   lines.push(i.text?`What the user wants:\n${i.text}`:'The user gave no instructions: decide everything (what to keep, the cuts, captions, music, visuals) from the footage itself.');
@@ -116,7 +122,8 @@ export function brief(r:StudioRequest){
  if(i.link)lines.push(`Link: ${i.link}`);
  if(of('logo').length)lines.push(`Logo: ${of('logo')[0]}`);
  const c=Object.entries(i.colors).filter(([,v])=>v).map(([k,v])=>`${k} ${v}`);if(c.length)lines.push(`Brand colours for this video: ${c.join(', ')}`);
- if(of('reference').length)lines.push(i.same?(i.mode==='motion'?`Same design, your content: recreate the design of ${of('reference').join(', ')} scene by scene (its timing, transitions, layout, type sizes, colour roles and motion) with the user's own script, logo and colours. Never its artwork, logo, footage or words.`
+ if(of('reference').length&&i.mode==='art')lines.push(`The user's pictures (to paint from or study; never another artist's work copied): ${of('reference').join(', ')}`);
+ else if(of('reference').length)lines.push(i.same?(i.mode==='motion'?`Same design, your content: recreate the design of ${of('reference').join(', ')} scene by scene (its timing, transitions, layout, type sizes, colour roles and motion) with the user's own script, logo and colours. Never its artwork, logo, footage or words.`
   :`Edit it the same way: give the user's footage the editing style of ${of('reference').join(', ')} (its cut pace, punch-ins, captions, colour grade and music). Only the style: the footage and words are the user's.`)
   :`Reference to study (never to copy): ${of('reference').join(', ')}`);
  if(i.like)lines.push(`In the spirit of the video the user taught: ${i.like} (pnpm tempoloom teach show ${i.like})`);
@@ -133,9 +140,10 @@ export function take(id:string,o:{job?:string}={}){
  const i=r.input,text=brief(r);
  const same=!!i.same&&r.files.some(f=>f.kind==='reference');
  // Same design: the two looks to pick from make no sense (the design is the reference's).
- const options=[...(i.mode==='motion'?[...(i.script?[]:['write']),...(i.voice?['voice']:[]),...(i.pick&&!same?['pick']:[])]:[...(i.visuals&&!same?['visuals']:[])]),...(i.second?['second']:[]),...(same?['same']:[])];
+ const options=i.mode==='art'?[...(r.files.some(f=>f.kind==='reference')?['reference']:[]),...(i.second?['second']:[])]
+  :[...(i.mode==='motion'?[...(i.script?[]:['write']),...(i.voice?['voice']:[]),...(i.pick&&!same?['pick']:[])]:[...(i.visuals&&!same?['visuals']:[])]),...(i.second?['second']:[]),...(same?['same']:[])];
  const name=o.job??((i.text||i.link||'video').toLowerCase().normalize('NFKD').replace(/^https?:\/\/(www\.)?/,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,32).replace(/-+$/,'')||'video')+'-'+id.slice(2,6);
- const p=plan(text,{type:i.mode==='motion'?(same?'reference-match':'script-to-motion'):'footage-edit',options,job:name,source:id,...(i.profile?{profile:i.profile}:{}),...(i.second&&i.secondProfile?{secondProfile:i.secondProfile}:{})});
+ const p=plan(text,{type:i.mode==='art'?'painting':i.mode==='motion'?(same?'reference-match':'script-to-motion'):'footage-edit',options,job:name,source:id,...(i.profile?{profile:i.profile}:{}),...(i.second&&i.secondProfile?{secondProfile:i.secondProfile}:{})});
  fs.writeFileSync(path.join(jobDir(p.job),'request.md'),`# The request\n\n${text}\n`);
  // The user's own script becomes the job's script file: the script doctor's suggestions the user
  // keeps change it there, and every step reads it from there.
@@ -206,7 +214,7 @@ export function jobView(p:Plan){
   // Working, but not in this page's process: the page was closed while it worked.
   const lost=st.state==='running'&&!isRunning(p.job);
   drive={state:lost?'stopped':st.state,why:lost?'The page was closed while it worked. Run it again: it continues from the step it was on.':st.why,spent:st.spent,model:st.model?.model??null,task:st.task,updated:st.updated};}catch{/* never driven here */}
- return {drive,job:p.job,kind:p.title,mode:p.type==='footage-edit'?'edit':'motion',request:p.request,created:p.created,updated:p.updated,verdict:p.verdict??null,finished,archived:!!p.archived,brief:briefInput,script:scriptView(p),
+ return {drive,job:p.job,kind:p.title,mode:p.type==='footage-edit'?'edit':p.type==='painting'?'art':'motion',request:p.request,created:p.created,updated:p.updated,verdict:p.verdict??null,finished,archived:!!p.archived,brief:briefInput,script:scriptView(p),
   ratings:(p.ratings??[]).map(r=>({task:r.task,rating:r.rating,round:r.round,at:r.at})),
   done:n.done,of:n.of,waitingFor:finished?'nothing':(drive as {state:string}|null)?.state==='asking'?'you':(drive as {state:string}|null)?.state==='running'?'page':n.ready.length?'agent':n.waitingForUser.length?'you':'agent',
   agentReady:n.ready.map(x=>x.task),tasks,textEdits:p.type==='footage-edit'?textEdits().filter(d=>d.job===p.job).map(d=>({id:d.id,title:d.title,made:d.renders.length})):[],feedback:p.feedback.map(f=>({said:f.said,rule:f.rule,goesTo:f.roles.map(id=>roleOf(id).title)}))};

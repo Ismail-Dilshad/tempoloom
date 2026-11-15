@@ -1763,6 +1763,82 @@
    ],
    "status": "ready",
    "whenToUse": "When the user shows an app or a website and wants it on a device in the video."
+  },
+  {
+   "id": "paint-media",
+   "category": "art",
+   "description": "The painting and drawing media (pencil, charcoal, ink, watercolour, gouache, oil, acrylic, pastel): the order an artist builds a picture in each, its marks and its rules.",
+   "command": "pnpm tempoloom paint media [MEDIUM]",
+   "inputs": [
+    "MEDIUM"
+   ],
+   "status": "ready",
+   "whenToUse": "Before planning a painting or drawing."
+  },
+  {
+   "id": "paint-new",
+   "category": "art",
+   "description": "A painting plan to fill: the canvas, the paper and an empty pass for each stage of the medium.",
+   "command": "pnpm tempoloom paint new \"TITLE\" --medium MEDIUM [--size WxH] [--picture PHOTO]",
+   "inputs": [
+    "TITLE",
+    "--medium",
+    "--size",
+    "--paper",
+    "--ground",
+    "--picture",
+    "--out"
+   ],
+   "status": "ready",
+   "whenToUse": "Starting a painting, a drawing or a concept study."
+  },
+  {
+   "id": "paint-render",
+   "category": "art",
+   "description": "Paints a plan pass by pass with natural media and a bristle-brush engine: the painting, a picture after every pass, a value study (--study) or a timelapse (--timelapse).",
+   "command": "pnpm tempoloom paint render PLAN.json [--upto N] [--study] [--timelapse --seconds 20 --shape 9:16]",
+   "inputs": [
+    "PLAN",
+    "--upto",
+    "--study",
+    "--timelapse",
+    "--seconds",
+    "--shape",
+    "--out"
+   ],
+   "status": "ready",
+   "whenToUse": "Painting one pass at a time and looking at each before the next; value studies for a concept; the final timelapse."
+  },
+  {
+   "id": "paint-from",
+   "category": "art",
+   "description": "Paints or draws a photo, big brushes to small (Hertzmann's layered strokes): oil, impressionist, expressionist, gouache, pointillist, watercolour, pencil, charcoal or ink.",
+   "command": "pnpm tempoloom paint from PHOTO --style STYLE [--timelapse]",
+   "inputs": [
+    "PHOTO",
+    "--style",
+    "--size",
+    "--detail",
+    "--timelapse",
+    "--out"
+   ],
+   "status": "ready",
+   "whenToUse": "The user wants their own photo as a painting or a drawing."
+  },
+  {
+   "id": "paint-check",
+   "category": "art",
+   "description": "The critique of a painting: value range and grouping, mud and hues, paper kept or covered, centre of interest, edges, likeness to the reference; each problem with what to do in the next pass.",
+   "command": "pnpm tempoloom paint check FOLDER [--reference PHOTO] [--job JOB]",
+   "inputs": [
+    "FOLDER",
+    "--medium",
+    "--reference",
+    "--intent",
+    "--job"
+   ],
+   "status": "ready",
+   "whenToUse": "After each pass of a painting, and before a painting job's paint step is finished."
   }
  ]
 }

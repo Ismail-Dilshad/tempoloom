@@ -65,7 +65,7 @@ You are given a studio job name (JOB). Work through your department's tasks:
 
 ${protocol}
 
-## Your own task (the design)
+## Your own task${lead.id.endsWith('-lead') ? ' (the design)' : ''}
 
 ${list(lead.steps)}
 

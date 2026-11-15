@@ -1,6 +1,6 @@
 ---
 name: tempoloom
-description: Create motion graphics from a script, recreate a reference style with the user's brand, or edit the user's footage. English by default, multilingual and right-to-left aware. Use for any video, motion graphics, kinetic typography, explainer, short, reel or footage-editing request in this project.
+description: Create motion graphics from a script, recreate a reference style with the user's brand, edit the user's footage, or paint and draw like an artist (pencil, ink, watercolour, oil). English by default, multilingual and right-to-left aware. Use for any video, motion graphics, kinetic typography, explainer, short, reel or footage-editing, painting or drawing request in this project.
 ---
 
 <!-- Generated from skills/tempoloom/SKILL.md by `pnpm skills:sync`. Edit the source, not this copy. -->
@@ -76,6 +76,13 @@ over footage). It plans the eight stages as tasks, each owned by the role that i
   `recreate plan BLUEPRINT --script FILE`, build each scene as planned, and `recreate check` until
   it passes. For an edited video and their own footage: `recreate edit REF FOOTAGE`. Take only the
   design or the editing style: never the reference's artwork, logo, footage or words.
+- Paintings and drawings (docs/guides/artist.md): for a painting, drawing, sketch or illustration,
+  plan a `painting` job (`studio plan "REQUEST" --type painting`, `--reference` when the user gave
+  photos) and give its art stage to the `tempoloom-artist` sub-agent. The artist works the way
+  painters do: value studies to choose from (`paint render PLAN --study`), then pass by pass (`paint
+  render PLAN --upto N`), looking at each pass before the next, until `paint check` passes; a
+  timelapse with `--timelapse`. A user's photo is painted with `paint from PHOTO --style oil`.
+  Never copy another artist's work.
 - The Studio page can also work on a job itself with the user's model (Settings, Who works on new
   videos). A job its page drives shows "Run it here" / "Stop"; do not work on it at the same time.
 - A job that stopped mid-step (a new session, a failure): `studio resume JOB`, then start the step

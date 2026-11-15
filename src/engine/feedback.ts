@@ -36,6 +36,7 @@ const TOPICS:[string,RegExp][]=[
  ['format',/\b(9:16|16:9|1:1|vertical|horizontal|square|reel|short|tiktok|youtube)\b/i],
  ['script',/\b(script|wording|words|copy|sentence\w*|grammar|spelling)\b/i],
  ['editing',/\b(edit\w*|trim|jump cut|filler|pause\w*|crop|reframe)\b/i],
+ ['art',/\b(paint\w*|drawing|draw|sketch\w*|brush\w*|strokes?|watercolou?r|oil|gouache|acrylic|pencil|charcoal|ink|hatch\w*|canvas|impasto|wash|glaze)\b/i],
 ];
 export function topicsOf(...texts:string[]){const t=texts.join(' ');return TOPICS.filter(([,re])=>re.test(t)).map(([n])=>n);}
 

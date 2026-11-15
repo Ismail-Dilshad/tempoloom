@@ -37,9 +37,13 @@ departments:
     title: Video editing
     lead: editing-lead
     mission: The user's own footage - analysed, cut, finished, with designed visuals laid over it.
+  - id: art
+    title: Painting and drawing
+    lead: artist
+    mission: Pictures made the way an artist makes them - composition and values first, then the medium, pass by pass, big to small, looking and correcting after every pass.
 
 # Feedback topics (engine/feedback.ts): motion pacing design typography color captions
-# transitions audio voice brand cta assets kurdish length format script editing
+# transitions audio voice brand cta assets kurdish length format script editing art
 roles:
   - id: motion-lead
     department: motion
@@ -245,6 +249,45 @@ roles:
       - "`media pacing` passes; loudness is inside the target."
       - Skin tones stay natural after grading.
 
+  - id: concept
+    department: art
+    title: Concept artist
+    mission: Finds the picture before it is painted - the subject, the composition, the big value shapes and the palette - as small studies the user can choose from.
+    topics: [art, design, color]
+    domain: both
+    guides: [docs/guides/artist.md, docs/guides/brain.md]
+    commands: ['pnpm tempoloom paint media MEDIUM', 'pnpm tempoloom paint new "TITLE" --medium MEDIUM --size WxH', 'pnpm tempoloom paint render PLAN.json --study', 'pnpm tempoloom paint lint PLAN.json', 'pnpm tempoloom brain study "TOPIC"']
+    steps:
+      - "Read the brief: the subject, the medium, the size, the mood, the user's pictures. A reference is studied for its design, never copied."
+      - "Decide the centre of interest and where it sits (a third, not the middle), the eye's path to it, and which value family leads (light, middle or dark)."
+      - Make three different compositions as small plans (paint new, then a drawing pass and big value shapes only) and render each as a value study (paint render PLAN --study). Look at each study.
+      - Choose a palette of four to six colours for the mood (one main hue family, an accent), and the paper or ground.
+      - "Write concept.md: for each study, its picture, the composition in one line and why it works; recommend one. Show the studies with --choice so the user picks."
+    checks:
+      - Each study reads in values alone, at thumbnail size, with one clear centre of interest.
+      - The three studies are really different compositions, not three crops of one.
+
+  - id: artist
+    department: art
+    title: Artist
+    agent: tempoloom-artist
+    mission: Paints the chosen composition in its medium like a working artist - in passes from big to small, looking at the painting after every pass and correcting it - and records the timelapse.
+    topics: [art, color, design]
+    domain: both
+    guides: [docs/guides/artist.md, agent/policies.md]
+    commands: ['pnpm tempoloom studio next JOB', 'pnpm tempoloom paint media MEDIUM', 'pnpm tempoloom paint lint PLAN.json', 'pnpm tempoloom paint render PLAN.json --upto N', 'pnpm tempoloom paint from PICTURE --style STYLE', 'pnpm tempoloom paint check FOLDER --job JOB', 'pnpm tempoloom paint render PLAN.json --timelapse --shape 9:16']
+    steps:
+      - Start from the picked study's plan. Follow the medium's order (paint media) - drawing, block-in with big brushes, colour and form, details with small brushes, finish.
+      - "Paint one pass at a time: paint render PLAN --upto N, then look at the pass's picture. Ask what a painter asks: are the big shapes and values right? Does the eye go to the centre of interest? What is the one thing to fix next? Fix the plan before the next pass."
+      - "Use the medium honestly: watercolour light to dark and the white paper kept; oil dark to light and thin to thick (fat over lean), thick paint and the knife last; pencil light pressure first, darks last."
+      - Vary the edges (soft and lost in shadow, hard at the focus), keep the palette, and leave visible brushwork. Use brushwork for foliage, grass, water and sky, and from-picture when painting from the user's photo.
+      - Run paint check FOLDER --job JOB until it passes; fix each problem it names in the plan, not by hand.
+      - "When approved: the final painting, its timelapse (paint render PLAN --timelapse, in the shapes asked for), and delivery.md listing the files."
+    checks:
+      - "`paint lint` finds no problem and `paint check` passes."
+      - Every pass was looked at before the next; the painting has a clear centre of interest, a full value range and varied edges.
+      - Nothing is copied from another artist's work; a reference is used only for what it shows (the subject, the light).
+
   - id: reviewer
     department: shared
     title: Reviewer
@@ -348,4 +391,19 @@ plans:
       - {id: second, stage: 7, role: critic, title: "A second opinion, with a different taste", needs: [review], produces: second-opinion.md, when: second}
       - {id: preview-ok, stage: 7, gate: true, title: "The user approves the edit", needs: [review, second]}
       - {id: final, stage: 8, role: finisher, title: "Final export, other shapes and cover", needs: [preview-ok], produces: delivery.md}
+      - {id: learn, stage: 8, role: director, title: "Verdict and what the studio learned", needs: [final], produces: retro.md}
+
+  painting:
+    title: A painting or drawing
+    tasks:
+      - {id: intake, stage: 1, role: director, title: "Read the request and load what the studio knows", produces: intake.md}
+      - {id: brief, stage: 2, role: director, title: "Ask only what is missing (subject, medium, size, mood); state every choice", needs: [intake], produces: brief.md}
+      - {id: reference, stage: 3, role: researcher, title: "Study the user's pictures and the subject - what to take, never copied", needs: [brief], produces: reference.md, when: reference}
+      - {id: concept, stage: 4, role: concept, title: "Three value studies of different compositions, and a palette", needs: [brief, reference], produces: concept.md}
+      - {id: concept-pick, stage: 4, gate: true, title: "The user picks a composition", needs: [concept]}
+      - {id: paint, stage: 6, role: artist, title: "Paint it pass by pass, looking and correcting after each", needs: [concept-pick], produces: painting.md}
+      - {id: review, stage: 7, role: reviewer, title: "Independent critique of the painting", needs: [paint], produces: review.md}
+      - {id: second, stage: 7, role: critic, title: "A second opinion, with a different taste", needs: [review], produces: second-opinion.md, when: second}
+      - {id: painting-ok, stage: 7, gate: true, title: "The user approves the painting", needs: [review, second]}
+      - {id: final, stage: 8, role: artist, title: "Final painting, timelapse and sizes", needs: [painting-ok], produces: delivery.md}
       - {id: learn, stage: 8, role: director, title: "Verdict and what the studio learned", needs: [final], produces: retro.md}

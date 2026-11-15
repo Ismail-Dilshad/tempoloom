@@ -16,7 +16,7 @@ export function roleColors():Record<string,number>{
 /** The jobs to watch, the most recently active first. */
 export function liveJobs(){
  return plans().filter(p=>!p.archived).map(p=>{const evs=events(p.job,0,1),last=evs.at(-1),n=next(p.job),finished=p.tasks.every(t=>t.status==='done');
-  return {job:p.job,title:firstLine(p.request),mode:p.type==='footage-edit'?'edit':'motion',done:n.done,of:n.of,finished,
+  return {job:p.job,title:firstLine(p.request),mode:p.type==='footage-edit'?'edit':p.type==='painting'?'art':'motion',done:n.done,of:n.of,finished,
    active:!!last&&Date.now()-Date.parse(last.at)<RECENT,face:last&&Date.now()-Date.parse(last.at)<RECENT?last.face??null:null,said:last&&Date.now()-Date.parse(last.at)<RECENT?last.text??null:null,last:last?.at??p.updated,waitingForYou:!finished&&!n.ready.length&&n.waitingForUser.length>0};})
   .sort((a,b)=>b.last.localeCompare(a.last));
 }

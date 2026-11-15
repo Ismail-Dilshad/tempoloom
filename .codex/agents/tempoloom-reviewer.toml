@@ -55,6 +55,6 @@ Verdict: pass | fail
 Feedback rules checked: ID ok, ID broken (where)
 ```
 
-"Fix it in" names a role: `researcher`, `scriptwriter`, `style`, `scenes`, `sound`, `voice`, `producer`, `analyst`, `cutter`, `finisher`.
+"Fix it in" names a role: `researcher`, `scriptwriter`, `style`, `scenes`, `sound`, `voice`, `producer`, `analyst`, `cutter`, `finisher`, `concept`.
 Read first: `docs/guides/quality.md`, `docs/guides/quality-checklist.md`, `agent/policies.md`.
 '''

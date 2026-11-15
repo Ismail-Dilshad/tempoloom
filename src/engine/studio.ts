@@ -18,11 +18,11 @@ import {doctorScript} from './script-doctor.js';
 import {change,touch,adapter,merge3,revertSet} from './history.js';
 import {keepVersion,outsideScope,type Comment,type Scene} from './studio-versions.js';
 
-const TOPICS=['motion','pacing','design','typography','color','captions','transitions','audio','voice','brand','cta','assets','kurdish','length','format','script','editing'] as const;
+const TOPICS=['motion','pacing','design','typography','color','captions','transitions','audio','voice','brand','cta','assets','kurdish','length','format','script','editing','art'] as const;
 const roleSchema=z.object({id:z.string().regex(/^[a-z][a-z-]{1,30}$/),department:z.string(),title:z.string(),agent:z.string().optional(),independent:z.boolean().optional(),mission:z.string(),
  topics:z.array(z.enum(TOPICS)).min(1),domain:z.enum(['motion','editing','both']),guides:z.array(z.string()).min(1),commands:z.array(z.string()).min(1),steps:z.array(z.string()).min(2),checks:z.array(z.string()).min(1)}).strict();
 const taskSchema=z.object({id:z.string().regex(/^[a-z][a-z-]{1,30}$/),stage:z.number().int().min(1).max(8),role:z.string().optional(),gate:z.boolean().optional(),title:z.string(),
- needs:z.array(z.string()).default([]),produces:z.string().optional(),when:z.enum(['write','voice','visuals','pick','second']).optional()}).strict();
+ needs:z.array(z.string()).default([]),produces:z.string().optional(),when:z.enum(['write','voice','visuals','pick','second','reference']).optional()}).strict();
 const studioSchema=z.object({version:z.literal(1),
  director:z.object({id:z.literal('director'),title:z.string(),mission:z.string(),rules:z.array(z.string()).min(3)}).strict(),
  departments:z.array(z.object({id:z.string(),title:z.string(),lead:z.string().optional(),mission:z.string()}).strict()).min(2),
@@ -122,7 +122,7 @@ const blockers=(p:Plan,t:Task)=>t.needs.filter(n=>taskOf(p,n).status!=='done');
 export function plan(request:string,o:{type:string;job?:string;options?:string[];source?:string;profile?:string;secondProfile?:string}):Plan{
  const s=loadStudio(),tpl=s.plans[o.type];if(!tpl)throw new Error(`Unknown kind of request "${o.type}". Kinds: ${Object.keys(s.plans).join(', ')}`);
  if(!request.trim())throw new Error('Give the request in the user\'s words');
- const options=[...new Set(o.options??[])];for(const x of options)if(!['write','voice','visuals','pick','second','same'].includes(x))throw new Error('Options are: write, voice, visuals, pick, second, same');
+ const options=[...new Set(o.options??[])];for(const x of options)if(!['write','voice','visuals','pick','second','same','reference'].includes(x))throw new Error('Options are: write, voice, visuals, pick, second, same, reference');
  let job=o.job??(slug(request)||'job');if(!o.job){const base=job;for(let i=2;fs.existsSync(path.join(studioRoot(),job));i++)job=`${base.slice(0,36)}-${i}`;}
  else if(fs.existsSync(path.join(jobDir(job),'plan.json')))throw new Error(`Studio job "${job}" already exists: pnpm tempoloom studio status ${job}`);
  const kept=tpl.tasks.filter(t=>!t.when||options.includes(t.when)),ids=new Set(kept.map(t=>t.id));
@@ -201,9 +201,17 @@ export function start(job:string,taskId:string){
    'cut-plan':`Plan the edit in the reference's style: pnpm tempoloom recreate edit REFERENCE.mp4 FOOTAGE --plan writes the edit list with its pace, punch-ins, captions and grade. Change it only where the user asked.`,
    build:`Make the edit: pnpm tempoloom recreate edit REFERENCE.mp4 FOOTAGE (or the edit list it planned). It reports how close it came; say so in your note.`,
    review:`Compare the edit with the reference's style (recreate style on both): the same pace, punch-ins, captions and colour?`} as Record<string,string>)[t.id]??'Edit it the same way: the reference\'s editing style on the user\'s footage.'}:{}),
+  // A painting: an artist's way of working, with the paint tools; the work folder is the job's art/ folder.
+  ...(p.type==='painting'?{painting:({
+   brief:`Settle the subject, the medium (pnpm tempoloom paint media), the size and shape, the mood and what the user's pictures are for. Never copy another artist's work; a picture of the user's is painted from (paint from), a famous painting only inspires the mood.`,
+   reference:`Look at each picture the user gave. Say what to take (the subject, the light, the colours) and what not; a picture to paint from is used with from-picture marks.`,
+   concept:`Make three small plans in ${path.join(jobDir(job),'art')}: pnpm tempoloom paint new "TITLE" --medium M --size WxH --out ${path.join(jobDir(job),'art','study-a')} (b, c), give each a drawing pass and big value shapes, and render each with paint render PLAN --study. Look at every study. Finish with --choice "A: NAME|STUDY.png|none" for each, so the user picks.`,
+   paint:`Copy the picked study's plan to ${path.join(jobDir(job),'art','painting')} and paint it at full size, one pass at a time (paint render PLAN --upto N); look at each pass's picture and fix the plan before the next. Then pnpm tempoloom paint check ${path.join(jobDir(job),'art','painting')} --job ${job} until it passes. Show each pass's picture with --show.`,
+   review:`Judge it as a painting: the composition and the centre of interest, the values (squint), the colour, the edges, the brushwork, how well the medium is used, and the brief. paint check gives the measurements; your eye gives the rest.`,
+   final:`The final painting.png, its timelapse (paint render PLAN --timelapse --seconds 20, and --shape 9:16 for a short), and delivery.md listing each file.`} as Record<string,string>)[t.id]??'A painting: plan it like an artist, paint it in passes, look after each.'}:{}),
   ...(t.id==='brief'||t.id==='analysis'?{findEarlier:'Look for earlier work on the same subject before starting: pnpm tempoloom find WORDS (videos by what they say or how they look, scenes, lessons, taught videos, the user\'s clips). Reuse what fits and say what you found.'}:{}),
-  ...(t.id==='final'?{describeForSearch:'When the final is made, say what it shows so search finds it: pnpm tempoloom find unseen (each video with a sheet of frames), look at its sheet, then find describe ID "people, places, objects, what happens" --agent.'}:{}),
-  ...(t.id==='final'?{publishKit:'Covers: write two to four titles (under 60 characters; pnpm tempoloom publish titles suggests some from the words) and run publish covers FILE --titles "One|Two"; show the user the covers sheet to choose. When they will post it: publish package FILE --for tiktok,reels,shorts (or youtube) with the title, caption and hashtags you wrote; fix what its checks mark. Nothing is posted for them. A timeline for Premiere, Resolve or Final Cut only when they ask: pnpm tempoloom edit export EDIT.json --to premiere.'}:{}),
+  ...(t.id==='final'&&p.type!=='painting'?{describeForSearch:'When the final is made, say what it shows so search finds it: pnpm tempoloom find unseen (each video with a sheet of frames), look at its sheet, then find describe ID "people, places, objects, what happens" --agent.'}:{}),
+  ...(t.id==='final'&&p.type!=='painting'?{publishKit:'Covers: write two to four titles (under 60 characters; pnpm tempoloom publish titles suggests some from the words) and run publish covers FILE --titles "One|Two"; show the user the covers sheet to choose. When they will post it: publish package FILE --for tiktok,reels,shorts (or youtube) with the title, caption and hashtags you wrote; fix what its checks mark. Nothing is posted for them. A timeline for Premiere, Resolve or Final Cut only when they ask: pnpm tempoloom edit export EDIT.json --to premiere.'}:{}),
   ...(p.type==='footage-edit'&&t.id==='finish'?{cleanUp:'Steady shaky clips with the steady operation (or media stabilize FILE). Blur faces of other people, number plates or phone numbers only when the user asked: media blur FILE (or the blur operation from media private --edl-out); the speaker is never blurred unless they ask.'}:{}),
   ...(t.id==='script'?{scriptDoctor:`When it is written: pnpm tempoloom write --doctor ${scriptOf(job)}. Rewrite every weak line and give every figure, price, date and claim a source (write --source ... --url) or take it out, until it reports nothing. Only if the brief asks for a line as it is: write --accept ${scriptOf(job)} --why "WHY".`}:{}),
   ...(t.id==='brief'&&!p.options.includes('write')&&fs.existsSync(scriptOf(job))?{scriptDoctor:`The user wrote the script (${scriptOf(job)}). Never change it yourself. Run pnpm tempoloom write --doctor ${scriptOf(job)}; for each weak line add one better version with write --suggest ${scriptOf(job)} --line N --text "..." --why "...", and give each figure you can source a link with write --source. The user keeps or declines each suggestion on the Studio page before the storyboard starts.`}:{}),
@@ -253,6 +261,10 @@ export function done(job:string,taskId:string,o:{output?:string;applied?:string[
   let c:{pass?:boolean;score?:number;issues?:{what:string}[]}|null=null;try{c=JSON.parse(fs.readFileSync(path.join(jobDir(job),'recreate-check.json'),'utf8'));}catch{/* not checked */}
   if(!c)throw new Error(`Check the preview against the reference's design first: pnpm tempoloom recreate check BLUEPRINT PREVIEW.mp4 --job ${job}`);
   if(!c.pass)throw new Error(`The preview does not follow the design yet (${c.score}%): ${(c.issues??[]).slice(0,3).map(i=>i.what).join(' ')} Fix it and check again, or finish with --anyway and say why in --note.`);}
+ if(p.type==='painting'&&t.id==='paint'&&!o.anyway){
+  let c:{pass?:boolean;score?:number;issues?:{what:string}[]}|null=null;try{c=JSON.parse(fs.readFileSync(path.join(jobDir(job),'art-check.json'),'utf8'));}catch{/* not checked */}
+  if(!c)throw new Error(`Critique the painting first: pnpm tempoloom paint check FOLDER --job ${job}`);
+  if(!c.pass)throw new Error(`The painting does not pass its critique yet (${c.score}): ${(c.issues??[]).slice(0,3).map(i=>i.what).join(' ')} Fix it in the plan, paint again and check again, or finish with --anyway and say why in --note.`);}
  if(CHECKED.has(t.id)&&hasTargets(p)){
   const c=t.selfcheck;
   if(!c)throw new Error(`Watch your own video before the user does: pnpm tempoloom studio check ${job} ${taskId} VIDEO.mp4`);

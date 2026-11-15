@@ -1,5 +1,30 @@
 # Changelog
 
+## 9.19.0: Artist
+
+- **Paintings and drawings made like an artist makes them** (New video, A painting or drawing; or
+  `pnpm tempoloom paint`): pencil, charcoal, ink, watercolour, gouache, oil, acrylic and pastel,
+  from words or from your photo. Real marks, not a generated image: pencils, pens and watercolour
+  fills that bleed and dry with dark edges (p5.brush), and Tempoloom's own bristle brushes that run
+  out of paint, skip over the paper's tooth, mix what they pick up like pigment (blue and yellow
+  make green) and build up thick paint lit from one side; a palette knife, a blender, dry brush,
+  watercolour strokes and glazes; brushwork that fills an area with many strokes (foliage, grass,
+  water, sky).
+- **Pass by pass**: drawing, block-in, colour and form, details, finish, in the medium's order
+  (watercolour light to dark with the paper kept, oil dark to light and thin to thick). A picture
+  after every pass to look at before the next (`paint render --upto N`), quick value studies
+  (`--study`), and a **timelapse** of it being painted (`--timelapse`, in 9:16 for a short).
+- **Your photo as a painting** (`paint from PHOTO --style oil|impressionist|expressionist|gouache|
+  pointillist|watercolor|pencil|charcoal|ink`): big brushes first, smaller ones only where it still
+  differs, strokes curving along the photo's edges.
+- **A critique** (`paint check`): value range and grouping, mud, hues, paper kept or covered, the
+  centre of interest, edges, likeness to the photo; each problem with what to do next. `paint lint`
+  checks a plan against the medium's rules before anything is painted.
+- **The art department and the `tempoloom-artist` agent**: a painting job has a concept artist
+  (three value studies to pick from), the artist (paints pass by pass, looks after each, and cannot
+  finish until the critique passes), the independent reviewer, and your approvals. Feedback about
+  paint, brushes or drawing reaches the art roles and becomes their lessons.
+
 ## 9.18.0: Same design, your content
 
 - **A motion video in the same design**: give a video you like (New video, Reference, Same design,

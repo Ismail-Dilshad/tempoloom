@@ -17,7 +17,7 @@ import {change,touch,adapter} from './history.js';
 import {ffmpeg,run} from '../renderer/ffmpeg-encoder.js';
 
 const VIDEO=/\.(mp4|mov|webm|m4v|mkv)$/i;
-export type GalleryItem={id:string;file:string;name:string;title:string;kind:'final'|'preview'|'export';mode:'motion'|'edit'|'unknown';made:string;bytes:number;
+export type GalleryItem={id:string;file:string;name:string;title:string;kind:'final'|'preview'|'export';mode:'motion'|'edit'|'art'|'unknown';made:string;bytes:number;
  job:string|null;step:string|null;rating:'good'|'ok'|'bad'|null;verdict:string|null;check:{passed:number;near:number;off:number}|null;starred:boolean;
  seconds:number|null;width:number|null;height:number|null;
  /** Filled in automatically: the kind of video, and tags from its shape and length. */
@@ -59,7 +59,7 @@ export async function gallery(o:{hidden?:boolean}={}){
  };
  for(const p of plans())for(const t of p.tasks)for(const f of t.show??[]){
   const r=(p.ratings??[]).filter(x=>x.task===t.id).at(-1);
-  add(f,{brief:p.request,title:jobTitle(p),kind:t.id==='final'?'final':'preview',mode:p.type==='footage-edit'?'edit':'motion',job:p.job,step:t.id,rating:r?.rating??null,verdict:p.verdict??null,
+  add(f,{brief:p.request,title:jobTitle(p),kind:t.id==='final'?'final':'preview',mode:p.type==='footage-edit'?'edit':p.type==='painting'?'art':'motion',job:p.job,step:t.id,rating:r?.rating??null,verdict:p.verdict??null,
    check:t.selfcheck?{passed:t.selfcheck.passed,near:t.selfcheck.near,off:t.selfcheck.off}:null});}
  for(const j of allJobs())if(j.output){const cur=by.get(idOf(path.resolve(ROOT,j.output)));if(cur)cur.brainJob=j.id;add(path.resolve(ROOT,j.output),{brainJob:j.id,brief:j.brief,title:j.title||j.brief.slice(0,90)||path.basename(j.output),kind:'export',mode:j.kind==='edit'?'edit':'motion',verdict:j.verdict});}
  // Edits made by text (Studio, Edit by text) live with their text edit.
