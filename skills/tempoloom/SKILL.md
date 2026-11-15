@@ -69,6 +69,11 @@ over footage). It plans the eight stages as tasks, each owned by the role that i
   `tidy storage` and act only on what they choose; clearing space cannot be undone, so ask first.
   When you finish a video, say what it shows for search: `find unseen`, look at the sheet, then
   `find describe ID "what it shows" --agent`.
+- New kinds of video (docs/guides/new-kinds.md): numbers the user gives become a chart on their
+  sentence (`make SCRIPT --chart DATA.txt`, or a chart video alone with `--title`); a numbered
+  script ("top 5", "3 reasons") is made as a list video by itself (one rhythm, the number and
+  progress on screen); a folder of photos becomes `media story FOLDER [--music FILE] [--title T]`
+  (order by date, look, or what they show: look at them and write `--about ABOUT.json`).
 - Voice, colour and speakers (docs/guides/voice-colour-speakers.md): for the user's recordings,
   `media voice FILE --plan` (noise, hum, room echo, uneven loudness) then `media voice FILE`;
   several clips: `media match CLIP... [--to MAIN]` before they are joined; an interview:

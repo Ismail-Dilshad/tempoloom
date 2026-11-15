@@ -1890,6 +1890,41 @@
    ],
    "status": "ready",
    "whenToUse": "An interview, podcast or panel with more than one person speaking."
+  },
+  {
+   "id": "make-chart",
+   "category": "design",
+   "description": "Charts from data: pasted numbers (Label: value lines, CSV/TSV, JSON) become an animated chart scene in the video's style - growing bars with counting values, a self-drawing line, big counting numbers or a before/after comparison - on the sentence that mentions them.",
+   "command": "pnpm tempoloom make SCRIPT.txt --chart DATA.txt [--chart-for WORDS] [--chart-kind bar|line|count|compare]",
+   "inputs": [
+    "SCRIPT",
+    "--chart",
+    "--chart-for",
+    "--chart-kind",
+    "--chart-title",
+    "--highlight"
+   ],
+   "status": "ready",
+   "whenToUse": "The user gives numbers, a table or data to show."
+  },
+  {
+   "id": "media-story",
+   "category": "editing",
+   "description": "Photo story: a folder of photos ordered by date taken, look or what they show, each with a gentle move towards its point of interest, dissolving into the next, paced evenly or on the music's beats, with an optional title.",
+   "command": "pnpm tempoloom media story FOLDER [--order date|look|about|name] [--music FILE] [--title TEXT]",
+   "inputs": [
+    "FOLDER",
+    "--order",
+    "--about",
+    "--shape",
+    "--seconds",
+    "--length",
+    "--music",
+    "--title",
+    "--out"
+   ],
+   "status": "ready",
+   "whenToUse": "The user gives photos to turn into a video."
   }
  ]
 }

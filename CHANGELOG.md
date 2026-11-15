@@ -1,5 +1,24 @@
 # Changelog
 
+## 9.21.0: New kinds of video (group 10 of 12)
+
+- **Charts from data** (`make SCRIPT --chart DATA`, or a chart video on its own with `--title`):
+  pasted numbers (Label: value lines, a CSV or TSV table, JSON; %, currencies, K/M/B and
+  Arabic-Indic digits understood) become an animated chart in the video's style: bars that grow
+  while their values count, a line that draws itself, a big counting number, or two values with the
+  change between them. It goes on the sentence that mentions the data; the art director never
+  redesigns it.
+- **List and countdown videos**: a numbered script ("top 5", "3 reasons") gets one scene per item
+  with its big number, where it is in the list and a progress bar, the same layout and the same
+  length for every item; numbers counting down make a countdown. Each item is spoken without its
+  number.
+- **Photo story** (`media story FOLDER`): photos ordered by when they were taken (the camera's date,
+  a date in the name, or the file's), by look, or by what they show; each moves gently towards
+  where the eye goes, portraits on a blurred copy of themselves, turned upright, dissolving into
+  the next, paced evenly or on the music's beats, with a title.
+- Scene lengths can be set per scene in a request (`sceneLengths`), and a scene visual can be kept
+  from redesign (`keep`).
+
 ## 9.20.0: Your voice and footage (group 9 of 12)
 
 - **Audio clean-up** (`media voice FILE`, the `voice` edit operation): background noise, mains

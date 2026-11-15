@@ -56,6 +56,9 @@ const productionRequest=z.object({
  styleDNA:styleDNASchema.optional(),assetNeeds:z.array(assetNeedSchema).default([]),
  // Animated scene pieces by planned scene index (UI mockups, dashboards, tasks, charts...), and their colours.
  sceneVisuals:z.array(sceneVisualSchema).default([]),pieceTheme:pieceThemeSchema.partial().optional(),
+ /** Seconds of each scene by its index (null keeps the planned length), for a steady rhythm such as a
+  *  list's items; without a voice-over only (with one, the speech sets the timing). */
+ sceneLengths:z.array(z.number().min(.5).max(30).nullable()).max(400).optional(),
  // Finishing after the final render: extra shapes of the same video, and a cover image.
  formats:z.array(z.enum(['9:16','1:1','16:9','4:5'])).default([]),thumbnail:z.union([z.boolean(),z.object({title:z.string().min(1).max(80).optional(),at:z.number().nonnegative().optional()}).strict()]).default(false),wordAlignment:voiceAlignmentSchema.optional(),scenes:z.array(sceneSchema).optional(),
  referenceQuery:z.string().default(''),sfx:z.enum(['off','auto']).default('off'),
@@ -181,6 +184,7 @@ export async function produce(options:{manifest?:string;resume?:string;approve?:
    for(let i=p.media.length;i<inputs.length;i++){const m=inputs[i];await importMedia(p,m.file,m.kind,m.at);await log('import',{kind:m.kind});}
    p.scenes=p.referenceWorkflow?planReference(p.script,job.request.preset.slice('reference-'.length) as 'style-1',job.request.styleCard).request.scenes:planProject(p);
    applyPreset(p,job.request.preset);if(job.request.scenes)p.scenes=job.request.scenes;
+   if(job.request.sceneLengths&&!job.request.voiceover&&!job.request.scenes){let at=0;for(const [i,sc] of p.scenes.entries()){const want=job.request.sceneLengths[i];if(want)sc.duration=Math.round(want*p.config.fps)/p.config.fps;sc.start=at;at+=sc.duration;}}
    if(p.referenceWorkflow){
     await save(p);const blockers=referenceAssetBlockers(p,job.realisticObjects);
     if(blockers.length){

@@ -91,6 +91,9 @@ const usage=`Usage: tempoloom media <command> [options]
   speakers FILE [--count N] [--names "Sara,Ali"] [--roles "Host,Guest"] [--transcript WORDS.json] [--bars] [--out FILE]
                                 Speaker labels: who speaks when, a name for each voice (given, or from "I'm Sara"),
                                 captions with the names, and with --bars a name bar when each speaker first appears
+  story FOLDER|PHOTO... [--order date|look|about|name] [--about ABOUT.json] [--shape 9:16|16:9|1:1|4:5] [--seconds 3.5 | --length N] [--music FILE] [--title "TEXT"] [--out FILE]
+                                Photo story: the photos in order (when taken, by look, or by what they show), each with
+                                a gentle move towards where the eye goes, dissolving into the next, paced evenly or on the music
   tighten FILE [--max-pause 0.6] [--no-fillers] [--captions] [--script SCRIPT.txt] [--brand] [--edl-out EDIT.json]
                                 Edit list that removes pauses, filler words and dead air (review, then edit)
 
@@ -182,6 +185,17 @@ export async function runMedia(argv:string[]):Promise<unknown>{
    const r=await nameSpeakers(rest[0],{...(number('--count')?{count:number('--count')!}:{}),...(list('--names')?{names:list('--names')!}:{}),...(list('--roles')?{roles:list('--roles')!}:{}),...(words?{words}:{}),bars:rest.includes('--bars'),...(flag('--out')?{out:flag('--out')!}:{}),onStep:s=>console.error(s)});
    return {speakers:r.speakers.map(s=>({speaker:s.id,name:s.name,named:s.named,seconds:s.seconds,turns:s.turns,...(s.pitchHz?{pitchHz:s.pitchHz}:{})})),turns:r.turns.length,separation:r.separation,notes:r.notes,
     saved:r.json,...(r.srt?{captions:r.srt}:{}),nameBars:r.nameBars,...(r.video?{video:r.video}:{next:'Names on screen: add --bars (and --names "Sara,Ali" --roles "Host,Guest")'})};}
+  case 'story':{
+   const VAL=['--order','--about','--shape','--seconds','--length','--music','--title','--out','--fade'],ins=rest.filter((x,i)=>!x.startsWith('--')&&!VAL.includes(rest[i-1]??''));
+   if(!ins.length)throw new Error('Usage: tempoloom media story FOLDER|PHOTO... [--order date|look|about|name] [--music FILE] [--title "TEXT"]');
+   const order=flag('--order');if(order&&!['date','look','about','name'].includes(order))throw new Error('--order takes date, look, about or name');
+   const shape=flag('--shape');if(shape&&!['9:16','16:9','1:1','4:5'].includes(shape))throw new Error('--shape takes 9:16, 16:9, 1:1 or 4:5');
+   const about=flag('--about')?JSON.parse(await fs.readFile(path.resolve(flag('--about')!),'utf8')) as Record<string,string>:undefined;
+   const {photoStory}=await import('../editor/photo-story.js');
+   const r=await photoStory(ins,{...(order?{order:order as 'date'}:{}),...(about?{about}:{}),...(shape?{shape}:{}),...(number('--seconds')?{seconds:number('--seconds')!}:{}),...(number('--length')?{length:number('--length')!}:{}),
+    ...(number('--fade')!==undefined?{fade:number('--fade')!}:{}),...(flag('--music')?{music:flag('--music')!}:{}),...(flag('--title')?{title:flag('--title')!}:{}),...(flag('--out')?{out:flag('--out')!}:{}),onStep:s=>console.error(s)});
+   const guessed=r.photos.filter(p=>p.dateFrom==='file').length;
+   return {...r,...(guessed&&r.order==='date'?{note:`${guessed} photo${guessed>1?'s have':' has'} no date from the camera or in the name: the file's date was used.`}:{})};}
   case 'shake':{
    const files=rest.filter(x=>!x.startsWith('--'));if(!files.length)throw new Error('Usage: tempoloom media shake FILE [FILE...]');
    const {measureShake}=await import('../editor/steady.js'),clips=[];

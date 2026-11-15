@@ -57,7 +57,9 @@ export type Layer=z.infer<typeof layerSchema>;
 const compose=z.object({kind:z.literal('compose'),name:z.string().max(40).optional(),
  layers:z.array(layerSchema).min(1).max(28),length:z.number().min(.5).max(10).optional(),
  /** How the designer made it (piece-designer.ts): the brain scores each composition by verdicts. */
- designed:z.object({archetype:z.string().regex(/^[a-z][a-z-]{1,30}$/),description:z.string().max(400)}).strict().optional()}).strict();
+ designed:z.object({archetype:z.string().regex(/^[a-z][a-z-]{1,30}$/),description:z.string().max(400)}).strict().optional(),
+ /** Kept as it is: the art director never redesigns it (a chart of the user's data, a list's item, a scene the user locked). */
+ keep:z.boolean().optional()}).strict();
 export type ComposeContent=z.infer<typeof compose>;
 
 export const transitions=['none','fade','wipe','push','zoom-through','mask-reveal','circle-reveal'] as const;

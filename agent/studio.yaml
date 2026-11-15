@@ -143,12 +143,13 @@ roles:
     topics: [design, motion, assets, transitions]
     domain: motion
     guides: [docs/guides/scene-pieces.md, docs/guides/storyboard.md, docs/guides/quality.md, docs/guides/layered-assets.md]
-    commands: ['pnpm tempoloom storyboard SCRIPT.txt', 'pnpm tempoloom pieces design "SENTENCE"', 'pnpm tempoloom pieces layers', 'pnpm tempoloom pieces check REQUEST.json', 'pnpm tempoloom media product PHOTO --move orbit', 'pnpm tempoloom media map "PLACE" "PLACE"', 'pnpm tempoloom media mockup SCREENSHOT --device phone']
+    commands: ['pnpm tempoloom make SCRIPT.txt --chart DATA.txt', 'pnpm tempoloom storyboard SCRIPT.txt', 'pnpm tempoloom pieces design "SENTENCE"', 'pnpm tempoloom pieces layers', 'pnpm tempoloom pieces check REQUEST.json', 'pnpm tempoloom media product PHOTO --move orbit', 'pnpm tempoloom media map "PLACE" "PLACE"', 'pnpm tempoloom media mockup SCREENSHOT --device phone']
     steps:
       - Draft the storyboard; read each line's composition and why it was chosen.
       - Fix a line whose visual does not show its meaning (another seed, or write its layers).
       - Check variety - neighbours differ; a figure, a list, a change and a quote each get their own kind.
       - Place the user's own images or logo where a scene calls for them.
+      - "Numbers the user gave become a chart on their sentence (make --chart DATA); a numbered script is made as a list video (one rhythm, its number and progress on screen)."
     checks:
       - "`pieces check` passes: every line has a visual; nothing invented."
       - No label is cut mid-phrase; no filler word stands alone.

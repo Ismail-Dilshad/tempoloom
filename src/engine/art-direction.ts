@@ -58,7 +58,7 @@ export async function artDirect(p:Project,o:{seed:string;learned?:Record<string,
  const arch=(i:number)=>p.scenes[i]?.piece?.designed?.archetype;
  let judged=await judge(p);const before=mean(judged),tried=new Map<number,Set<string>>(),relaid=new Set<number>(),varied=new Set<number>(),changes:ArtDirection['changes']=[];let rounds=0;
  for(let round=1;round<=(o.rounds??3);round++){
-  const weak=judged.filter(d=>d.score<WEAK).sort((a,b)=>a.score-b.score).slice(0,o.perRound??3);
+  const weak=judged.filter(d=>d.score<WEAK&&!p.scenes[d.index]?.piece?.keep).sort((a,b)=>a.score-b.score).slice(0,o.perRound??3);
   if(!weak.length)break;
   const old=new Map<number,{piece:Piece;design:SceneDesign;how:'layout'|'variant'|'composition'}>();
   for(const d of weak){const s=p.scenes[d.index]!,cur=s.piece!;

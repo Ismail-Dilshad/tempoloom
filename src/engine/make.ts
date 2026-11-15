@@ -30,6 +30,12 @@ export type MakeOptions={
  like?:string;
  /** Copy parts of the look as they are, only when asked: colors uses the reference's own colours. */
  copy?:('colors')[];
+ /** A numbered list ("5 reasons", "top 10"): one scene per item with its number and the list's
+  *  progress, every item the same length. auto (default) when the script is a numbered list. */
+ list?:boolean|'auto';
+ /** Charts from data: each file (a table, CSV or "Label: value" lines) becomes an animated chart on
+  *  the sentence that mentions it (or `for`: words of that sentence). */
+ charts?:{file:string;for?:string;kind?:'bar'|'line'|'count'|'compare';title?:string;highlight?:string}[];
  /** Tests: a stand-in for the ElevenLabs call. */
  fetcher?:typeof fetch;
  onStep?:(step:string)=>void;
@@ -52,6 +58,11 @@ function previewOf(r:Result){
 /** Script in; a video waiting for preview approval (or, with yes and a clean preview, finished) out. */
 export async function make(o:MakeOptions):Promise<MakeRecord>{
  const step=o.onStep??(()=>{});
+ // A numbered list is spoken without its numbers: each item's number is on screen instead.
+ const {readList,spokenScript,itemPiece,itemSeconds}=await import('./listicle.js');
+ const list=o.list===false?null:readList(o.script);
+ if(o.list===true&&!list)throw new Error('This script is not a numbered list: number each item on its own line (1. ..., 2. ...), at least three');
+ if(list)o={...o,script:spokenScript(list)};
  const sentences=splitSentences(o.script);if(!sentences.length)throw new Error('The script is empty');
  // Check the voice first, so nothing is made before a missing key or voice is reported.
  const voiceId=o.voice===undefined||o.voice===false?undefined:typeof o.voice==='string'?o.voice:process.env.ELEVENLABS_VOICE_ID?.trim();
@@ -65,11 +76,34 @@ export async function make(o:MakeOptions):Promise<MakeRecord>{
  const copied=look&&o.copy?.includes('colors')?(await import('./looks.js')).copiedTheme(look):undefined;
  const style=designStyle({seed,brief:o.script,direction:o.look,used:await usedGenomes(),knowledge:await styleKnowledge(o.script),learned,...(copied?{brand:copied}:{}),...(look?{like:{name:look.name,steer:look.steer,summary:look.summary}}:{})});
  const sb=storyboard(o.script,{genome:style.genome,styleWhy:style.why,learned,seed,...(look?.layout?{layout:look.layout}:{})});
- const title=(o.title?.trim()||sb.request.title).slice(0,80);
+ // The list's items and the charts take their sentences' visuals; the rest stay as designed.
+ const norm=(t:string)=>t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim();
+ const put=(i:number,piece:import('./scene-pieces-schema.js').Piece,why:string)=>{const v=(sb.request.sceneVisuals as {match:string;piece:unknown}[])[i];if(v)v.piece=piece;const pl=sb.plans[i];if(pl){pl.piece=piece;pl.why=why;pl.check=[];}};
+ const lines=o.script.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+ let sceneLengths:(number|null)[]|undefined;
+ if(list){
+  const secs=itemSeconds(list);sceneLengths=lines.map(()=>null);
+  list.items.forEach((it,k)=>{
+   const i=sb.plans.findIndex(pl=>norm(pl.sentence)&&norm(it.text).startsWith(norm(pl.sentence).slice(0,40)));
+   if(i>=0)put(i,itemPiece(it,k,list.items.length,{countdown:list.countdown}),`Item ${it.n} of the ${list.countdown?'countdown':'list'}: its number and the list's progress, the same layout for every item`);
+   const li=lines.findIndex(l=>norm(l)===norm(it.text));if(li>=0)sceneLengths![li]=secs;});
+ }
+ const charted:{file:string;kind:string;sentence:string}[]=[];
+ if(o.charts?.length){
+  const {chartFromFile,sentenceFor}=await import('./charts.js');
+  for(const c of o.charts){
+   const ch=chartFromFile(c.file,{...(c.kind?{kind:c.kind}:{}),...(c.title?{title:c.title}:{}),...(c.highlight?{highlight:c.highlight}:{})});
+   const all=sb.plans.map(pl=>pl.sentence),i=c.for?all.findIndex(t=>norm(t).includes(norm(c.for!))):sentenceFor(all,ch.data);
+   if(i<0)throw new Error(`No sentence contains "${c.for}" for the chart ${c.file}`);
+   put(i,ch.piece,`A ${ch.kind} chart of ${path.basename(c.file)}: ${ch.why}`);charted.push({file:path.resolve(c.file),kind:ch.kind,sentence:all[i]!});
+  }
+ }
+ const title=(o.title?.trim()||(list?.title?.replace(/[.!?:]+$/,''))||sb.request.title).slice(0,80);
  const dir=await free(path.resolve(o.out??path.join(makesRoot(),slug(title))));await fs.mkdir(dir,{recursive:true});
  await fs.writeFile(path.join(dir,'storyboard.md'),storyboardMarkdown(sb));
 
  const request:Record<string,unknown>={...sb.request,title,purpose:'production',aspectRatio:o.aspectRatio??'9:16',renderPreset:o.draft?'draft':'final',artDirector:'auto',
+  ...(sceneLengths&&!voiceId?{sceneLengths}:{}),
   formats:(o.formats??['1:1','16:9']).filter(f=>f!==(o.aspectRatio??'9:16')),thumbnail:o.thumbnail===false?false:{title},captions:o.captions??'auto',music:o.music??'auto',...(look?{like:look.name,...(o.copy?.length?{likeCopy:o.copy}:{})}:{}),...(o.mood?{musicMood:o.mood}:{})};
  let voiceover:string|undefined;
  if(voiceId){
