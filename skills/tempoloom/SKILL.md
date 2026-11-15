@@ -69,6 +69,11 @@ over footage). It plans the eight stages as tasks, each owned by the role that i
   `tidy storage` and act only on what they choose; clearing space cannot be undone, so ask first.
   When you finish a video, say what it shows for search: `find unseen`, look at the sheet, then
   `find describe ID "what it shows" --agent`.
+- Voice, colour and speakers (docs/guides/voice-colour-speakers.md): for the user's recordings,
+  `media voice FILE --plan` (noise, hum, room echo, uneven loudness) then `media voice FILE`;
+  several clips: `media match CLIP... [--to MAIN]` before they are joined; an interview:
+  `media speakers FILE --names "A,B" --roles "Host,Guest" --bars` puts each name on screen when
+  they first speak. Report what was measured before and after.
 - Same design, your content (docs/guides/same-design.md): when the user gives a video and asks for
   the same design with their own content, `recreate study REF` (a blueprint), look at its sheet,
   `recreate plan BLUEPRINT --script FILE`, build each scene as planned, and `recreate check` until

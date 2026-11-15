@@ -82,6 +82,15 @@ const usage=`Usage: tempoloom media <command> [options]
   voiceover (--text "TEXT" | --file SCRIPT.txt) [--voice ID] [--model ID] [--language CODE] [--speed 1.0] [--out FILE.mp3]
                                 ElevenLabs voice-over with word timings (only when the user asks; needs ELEVENLABS_API_KEY)
   voices                        ElevenLabs voices available to your key
+  voice FILE [--plan] [--denoise 0-1] [--hum 0|50|60] [--echo 0-1] [--no-even] [--deess 0-1] [--loudness -16] [--out FILE]
+                                Audio clean-up of a recorded voice: measures noise, hum, room echo, uneven loudness
+                                and clipping, fixes only what it found, and measures again (the picture is copied)
+  match CLIP CLIP... [--to REFERENCE] [--strength 0-1] [--plan] [--out-dir DIR]
+                                Colour matching: clips from different cameras or days brought to one look (to the
+                                reference, else to the clip closest to all the others); NAME-matched.mp4 each
+  speakers FILE [--count N] [--names "Sara,Ali"] [--roles "Host,Guest"] [--transcript WORDS.json] [--bars] [--out FILE]
+                                Speaker labels: who speaks when, a name for each voice (given, or from "I'm Sara"),
+                                captions with the names, and with --bars a name bar when each speaker first appears
   tighten FILE [--max-pause 0.6] [--no-fillers] [--captions] [--script SCRIPT.txt] [--brand] [--edl-out EDIT.json]
                                 Edit list that removes pauses, filler words and dead air (review, then edit)
 
@@ -146,6 +155,33 @@ export async function runMedia(argv:string[]):Promise<unknown>{
    const {runEdl}=await import('../editor/editor.js'),out=flag('--out')?path.resolve(flag('--out')!):await freeFile(input.replace(/\.[^.]+$/,'')+'-polished.mp4');
    const e=await runEdl({version:1,input,operations:ops,export:{preset:'social'}},path.dirname(input),{output:out});
    return {...summary,output:e.output,seconds:+e.info.duration.toFixed(2)};}
+  case 'voice':{
+   if(!rest[0]||rest[0].startsWith('--'))throw new Error('Usage: tempoloom media voice FILE [--plan] [--out FILE]');
+   const {cleanVoice}=await import('../editor/voice-clean.js');
+   const hum=number('--hum');if(hum!==undefined&&![0,50,60].includes(hum))throw new Error('--hum takes 0, 50 or 60');
+   const set={...(number('--denoise')!==undefined?{denoise:number('--denoise')!}:{}),...(hum!==undefined?{hum:hum as 0|50|60}:{}),...(number('--echo')!==undefined?{dereverb:number('--echo')!}:{}),
+    ...(rest.includes('--no-even')?{even:false}:rest.includes('--even')?{even:true}:{}),...(number('--deess')!==undefined?{deess:number('--deess')!}:{}),...(number('--loudness')!==undefined?{loudness:number('--loudness')!}:{})};
+   const r=await cleanVoice(rest[0],{plan:rest.includes('--plan'),set,...(flag('--out')?{out:flag('--out')!}:{}),onStep:s=>console.error(s)});
+   const show=(v:typeof r.before)=>({noise:`${v.snr} dB below the speech`,hum:v.hum.hz?`${v.hum.hz} Hz, ${v.hum.db} dB`:'none',echo:v.echoMs===null?'not measurable':`${v.echoMs} ms`,uneven:v.unevenDb===null?'not measurable':`${v.unevenDb} dB`,clipped:`${(v.clipped*100).toFixed(2)}%`});
+   return {problems:r.before.problems,doing:r.why,before:show(r.before),...(r.after?{after:show(r.after),left:r.after.problems,output:r.output}:{editOperation:r.op,next:'Run it: pnpm tempoloom media voice '+rest[0]+' (or put the operation in an edit list)'})};}
+  case 'match':{
+   const VAL=['--to','--strength','--out-dir'],clips=rest.filter((x,i)=>!x.startsWith('--')&&!VAL.includes(rest[i-1]??''));
+   if(!clips.length)throw new Error('Usage: tempoloom media match CLIP CLIP... [--to REFERENCE]');
+   const {matchClips}=await import('../editor/colour-match.js');
+   const r=await matchClips(clips,{...(flag('--to')?{ref:flag('--to')!}:{}),...(number('--strength')!==undefined?{strength:number('--strength')!}:{}),...(flag('--out-dir')?{out:flag('--out-dir')!}:{}),plan:rest.includes('--plan'),onStep:s=>console.error(s)});
+   return {reference:r.reference,...(r.referenceChosen?{why:'No --to: the clip whose look is closest to all the others, so the least changes'}:{}),
+    clips:r.clips.map(c=>({clip:c.clip,...(c.reference?{reference:true}:{difference:c.after===null?`${c.before}`:`${c.before} -> ${c.after}`,output:c.output,...(c.op&&!c.output?{editOperation:c.op}:{})}),...(!c.reference&&!c.op?{note:'already alike'}:{})})),
+    note:'Difference: how far its average colour and contrast are from the reference (under 3 reads as the same shoot).'};}
+  case 'speakers':{
+   if(!rest[0]||rest[0].startsWith('--'))throw new Error('Usage: tempoloom media speakers FILE [--names "A,B"] [--bars]');
+   const {nameSpeakers}=await import('../editor/speakers.js');
+   const list=(k:string)=>flag(k)?.split(',').map(x=>x.trim()).filter(Boolean);
+   let words:{word:string;start:number;end:number;speaker?:string}[]|undefined;
+   if(flag('--transcript')){const t=JSON.parse(await fs.readFile(path.resolve(flag('--transcript')!),'utf8')) as {words?:{text?:string;word?:string;start:number;end:number;type?:string;speaker?:string}[]};
+    words=(t.words??[]).filter(w=>!w.type||w.type==='word').map(w=>({word:(w.text??w.word??'').trim(),start:w.start,end:w.end,...(w.speaker?{speaker:w.speaker}:{})})).filter(w=>w.word);}
+   const r=await nameSpeakers(rest[0],{...(number('--count')?{count:number('--count')!}:{}),...(list('--names')?{names:list('--names')!}:{}),...(list('--roles')?{roles:list('--roles')!}:{}),...(words?{words}:{}),bars:rest.includes('--bars'),...(flag('--out')?{out:flag('--out')!}:{}),onStep:s=>console.error(s)});
+   return {speakers:r.speakers.map(s=>({speaker:s.id,name:s.name,named:s.named,seconds:s.seconds,turns:s.turns,...(s.pitchHz?{pitchHz:s.pitchHz}:{})})),turns:r.turns.length,separation:r.separation,notes:r.notes,
+    saved:r.json,...(r.srt?{captions:r.srt}:{}),nameBars:r.nameBars,...(r.video?{video:r.video}:{next:'Names on screen: add --bars (and --names "Sara,Ali" --roles "Host,Guest")'})};}
   case 'shake':{
    const files=rest.filter(x=>!x.startsWith('--'));if(!files.length)throw new Error('Usage: tempoloom media shake FILE [FILE...]');
    const {measureShake}=await import('../editor/steady.js'),clips=[];

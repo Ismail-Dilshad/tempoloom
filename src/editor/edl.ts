@@ -40,6 +40,11 @@ export const operationSchema=z.discriminatedUnion('op',[
  // A colour grade: brightness added (-0.3 to 0.3), contrast and saturation multiplied, warmth toward
  // orange (above 0) or blue (below 0). From edit like, to match another edit's colour.
  z.object({op:z.literal('grade'),brightness:z.number().min(-.3).max(.3).default(0),contrast:z.number().min(.5).max(1.6).default(1),saturation:z.number().min(0).max(2).default(1),warmth:z.number().min(-.3).max(.3).default(0)}).strict(),
+ // A recorded voice cleaned: rumble, mains hum, background noise, the room between words, harsh "s", uneven loudness.
+ z.object({op:z.literal('voice'),highpass:z.number().min(0).max(200).default(75),hum:z.union([z.literal(0),z.literal(50),z.literal(60)]).default(0),denoise:z.number().min(0).max(1).default(.5),
+  noiseFloor:z.number().min(-120).max(-10).optional(),speech:z.number().min(-80).max(0).optional(),dereverb:z.number().min(0).max(1).default(0),even:z.boolean().default(true),deess:z.number().min(0).max(1).default(0),loudness:z.number().min(-40).max(-5).optional()}).strict(),
+ // The colour of a clip brought to another's: per channel out = in x gain + offset (media match plans it).
+ z.object({op:z.literal('match'),r:z.tuple([z.number().min(.3).max(3),z.number().min(-128).max(128)]),g:z.tuple([z.number().min(.3).max(3),z.number().min(-128).max(128)]),b:z.tuple([z.number().min(.3).max(3),z.number().min(-128).max(128)])}).strict(),
  z.object({op:z.literal('steady'),smoothing:z.number().min(.2).max(4).default(1)}).strict(),
  // Parts of the clip, in any order (a part may come twice: an opening hook played first, then the talk).
  z.object({op:z.literal('arrange'),segments:z.array(range).min(1).max(2000)}).strict(),

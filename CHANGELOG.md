@@ -1,5 +1,20 @@
 # Changelog
 
+## 9.20.0: Your voice and footage (group 9 of 12)
+
+- **Audio clean-up** (`media voice FILE`, the `voice` edit operation): background noise, mains
+  hum, room echo between words, uneven loudness and clipping are measured; only what was found is
+  fixed (FFT noise reduction, hum notches, a downward expander between words, evening out), and
+  the voice is measured again: before and after in the result. The picture is copied untouched.
+- **Colour matching** (`media match CLIP...`, the `match` operation): clips from different cameras
+  or days get one look, the reference's average colour and contrast per channel, to a clip you
+  choose or to the most typical one; the difference before and after is reported.
+- **Speaker labels** (`media speakers FILE`): who speaks when, told apart by how each voice
+  sounds (or from a diarized transcript), named from your list or from how people introduce
+  themselves; captions that start each turn with the name, and name bars in your brand's colours
+  and font when each speaker first appears (`--bars`).
+- The footage analyst measures voice, colour and speakers; the finisher applies them.
+
 ## 9.19.0: Artist
 
 - **Paintings and drawings made like an artist makes them** (New video, A painting or drawing; or

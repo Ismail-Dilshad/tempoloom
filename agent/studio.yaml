@@ -209,11 +209,12 @@ roles:
     topics: [editing]
     domain: editing
     guides: [docs/guides/media-tools.md, docs/guides/video-editing.md]
-    commands: ['pnpm tempoloom media transcribe FILE', 'pnpm tempoloom media scenes FILE', 'pnpm tempoloom media quality FILE', 'pnpm tempoloom media silence FILE', 'pnpm tempoloom media reframe FILE']
+    commands: ['pnpm tempoloom media transcribe FILE', 'pnpm tempoloom media scenes FILE', 'pnpm tempoloom media quality FILE', 'pnpm tempoloom media silence FILE', 'pnpm tempoloom media reframe FILE', 'pnpm tempoloom media voice FILE --plan', 'pnpm tempoloom media match CLIP CLIP --plan', 'pnpm tempoloom media speakers FILE --transcript WORDS.json']
     steps:
       - Transcribe with word timings; list pauses and filler words.
       - Find the shots, the camera motion and the speaker's face position.
       - Measure sharpness, exposure and noise; name what needs fixing.
+      - "Listen to the voice (media voice --plan: noise, hum, room echo, uneven loudness), compare the clips' colours when there are several (media match --plan), and in an interview find who speaks when (media speakers)."
     checks:
       - Every finding has a time; nothing is guessed from the file name.
 
@@ -240,9 +241,11 @@ roles:
     topics: [color, audio, format]
     domain: editing
     guides: [docs/guides/video-editing.md, docs/guides/media-tools.md]
-    commands: ['pnpm tempoloom edit --edl EDIT.json', 'pnpm tempoloom media stabilize FILE', 'pnpm tempoloom media formats FILE --to 1:1,16:9', 'pnpm tempoloom media pacing FILE']
+    commands: ['pnpm tempoloom edit --edl EDIT.json', 'pnpm tempoloom media stabilize FILE', 'pnpm tempoloom media formats FILE --to 1:1,16:9', 'pnpm tempoloom media pacing FILE', 'pnpm tempoloom media voice FILE', 'pnpm tempoloom media match CLIP CLIP --to REFERENCE', 'pnpm tempoloom media speakers FILE --names "A,B" --bars']
     steps:
       - Fix only what the analysis measured - exposure, shake, noise.
+      - "Clean the voice (media voice, or the voice operation), bring every clip to one look before they are joined (media match, or the match operation), and in an interview put each speaker's name on screen when they first speak (media speakers --bars)."
+
       - Loudness to the platform target; music under the voice.
       - Other shapes with the speaker kept in frame; a cover.
     checks:

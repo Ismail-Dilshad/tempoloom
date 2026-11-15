@@ -1839,6 +1839,57 @@
    ],
    "status": "ready",
    "whenToUse": "After each pass of a painting, and before a painting job's paint step is finished."
+  },
+  {
+   "id": "media-voice",
+   "category": "audio",
+   "description": "Audio clean-up of a recorded voice: measures background noise, mains hum, room echo, uneven loudness and clipping, fixes only what it found (noise reduction, hum notches, the room between words, evening out), and measures again.",
+   "command": "pnpm tempoloom media voice FILE [--plan] [--denoise 0-1] [--hum 50|60] [--echo 0-1]",
+   "inputs": [
+    "FILE",
+    "--plan",
+    "--denoise",
+    "--hum",
+    "--echo",
+    "--no-even",
+    "--deess",
+    "--loudness",
+    "--out"
+   ],
+   "status": "ready",
+   "whenToUse": "A recorded voice with noise, hum, echo or uneven loudness; always measured in a footage edit's analysis."
+  },
+  {
+   "id": "media-match",
+   "category": "editing",
+   "description": "Colour matching: clips from different cameras or days measured and brought to one look (to a reference, or to the most typical clip), with the difference before and after.",
+   "command": "pnpm tempoloom media match CLIP CLIP... [--to REFERENCE] [--plan]",
+   "inputs": [
+    "CLIPS",
+    "--to",
+    "--strength",
+    "--plan",
+    "--out-dir"
+   ],
+   "status": "ready",
+   "whenToUse": "An edit joins clips shot on different cameras, settings or days."
+  },
+  {
+   "id": "media-speakers",
+   "category": "editing",
+   "description": "Speaker labels: who speaks when in an interview (by how each voice sounds, or from a diarized transcript), names from the user or from introductions, captions with names, and name bars on screen when each speaker first appears.",
+   "command": "pnpm tempoloom media speakers FILE [--names \"A,B\"] [--roles \"Host,Guest\"] [--transcript WORDS.json] [--bars]",
+   "inputs": [
+    "FILE",
+    "--count",
+    "--names",
+    "--roles",
+    "--transcript",
+    "--bars",
+    "--out"
+   ],
+   "status": "ready",
+   "whenToUse": "An interview, podcast or panel with more than one person speaking."
   }
  ]
 }

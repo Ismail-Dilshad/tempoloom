@@ -151,6 +151,14 @@ async function applyOperation(op:Operation,input:string,info:MediaInfo,out:strin
   case 'grade':{
    const w=op.warmth,f=`eq=brightness=${n(op.brightness)}:contrast=${n(op.contrast)}:saturation=${n(op.saturation)}${w?`,colorbalance=rs=${n(w)}:bs=${n(-w)}:rm=${n(w)}:bm=${n(-w)}:rh=${n(w/2)}:bh=${n(-w/2)}`:''}`;
    await vf(f);return {info,note:`graded: brightness ${op.brightness>=0?'+':''}${op.brightness}, contrast x${op.contrast}, saturation x${op.saturation}, warmth ${w>=0?'+':''}${w}`};}
+  case 'voice':{
+   if(!a)return {info,note:'no audio stream; skipped'};
+   const {voiceFilter}=await import('./voice-clean.js');
+   await ff(['-i',input,'-c:v','copy','-af',voiceFilter(op,{...(op.speech!==undefined?{speech:op.speech}:{})})+`,aresample=48000,atrim=duration=${n(info.duration)}`,'-c:a','aac','-b:a','256k',out]);
+   return {info,note:`voice cleaned (${[op.hum?op.hum+' Hz hum':'',op.denoise?'noise '+Math.round(op.denoise*100)+'%':'',op.dereverb?'room '+Math.round(op.dereverb*100)+'%':'',op.even?'evened':'',op.deess?'de-essed':''].filter(Boolean).join(', ')||'rumble only'})`};}
+  case 'match':{
+   const {matchFilter}=await import('./colour-match.js');await vf(matchFilter(op));
+   return {info,note:`colour matched (R x${op.r[0]}${op.r[1]>=0?'+':''}${op.r[1]}, G x${op.g[0]}${op.g[1]>=0?'+':''}${op.g[1]}, B x${op.b[0]}${op.b[1]>=0?'+':''}${op.b[1]})`};}
   case 'steady':{
    const before=await measureShake(input),filter=await steadyFilter(input,work,op.smoothing);await vf(filter);const after=await measureShake(out);
    return {info,note:`steadied: shake ${before.shake} → ${after.shake}${before.verdict==='too-shaky'?` (${before.why})`:''}`};}
