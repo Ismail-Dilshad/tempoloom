@@ -164,3 +164,55 @@ export function copiedTheme(l:Look){
  const text=l.palette.text??(dark?'#F5F5F5':'#111111'),accent=l.palette.accent??text;
  return {primary:accent,accent,background:bg,surface:mix(bg,dark?'#FFFFFF':'#FFFFFF',dark?.1:.65),text,muted:mix(text,bg,.4),radius:18,exact:true as const};
 }
+
+// ---------- the style mixer: two styles you taught, blended ----------
+/** A taught video's measurements as a look, so it can be mixed and used with --like. */
+export async function lookOfTaught(id:string):Promise<Look>{
+ const {video}=await import('./teach/teach.js');const v=video(id);
+ if(!v.measured)throw new Error(`The taught video "${id}" has not been measured yet`);
+ const m=v.measured,sat=(hex:string)=>{const h=hsl(hex);return h.s;};
+ const item:StyleItem={kind:'video',durationSeconds:m.media.seconds,brightness:m.color.brightness,
+  palette:{roles:{background:m.color.background,...(m.color.accent?{accent:m.color.accent}:{})},colours:m.color.palette.map(p=>({hex:p.hex,share:p.share,saturation:sat(p.hex)}))},
+  rhythm:{averageShotSeconds:m.pacing.shotMedian||null,cutsPerMinute:m.pacing.cutsPerMinute},motion:{energyMean:m.motion.energy,burstsPerSecond:m.motion.burstsPerSecond,dominantEasing:null}};
+ const audio=m.sound?{bpm:m.sound.bpm,confidence:m.sound.tempoConfidence,onsetsPerSecond:m.sound.eventsPerSecond,lufs:m.sound.lufs}:null;
+ return lookFromMeasurements([item],('taught-'+id).toLowerCase().replace(/[^a-z0-9-]+/g,'-').slice(0,40),{title:v.title},{audio});
+}
+/** A look by name, or a taught video by its id. */
+export async function styleOf(name:string):Promise<Look>{
+ try{return await readLook(name);}catch(e){try{return await lookOfTaught(name);}catch{throw e;}}
+}
+const lerp=(a:number|null,b:number|null,w:number)=>a===null?b:b===null?a:Number((a*w+b*(1-w)).toFixed(3));
+const hueMix=(a:number|null,b:number|null,w:number)=>{if(a===null)return b;if(b===null)return a;const d=((b-a+540)%360)-180;return Math.round((a+d*(1-w)+360)%360);};
+const hexMix=(a:string|undefined,b:string|undefined,w:number)=>{if(!a)return b;if(!b)return a;
+ const lin=(v:number)=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;},gam=(v:number)=>Math.round(255*(v<=.0031308?12.92*v:1.055*v**(1/2.4)-.055));
+ return '#'+[1,3,5].map(i=>gam(lin(parseInt(a.slice(i,i+2),16))*w+lin(parseInt(b.slice(i,i+2),16))*(1-w)).toString(16).padStart(2,'0')).join('');};
+/** Blends two styles: `weight` of the first (0.7 = 70% of A, 30% of B). Every measured number and
+ *  colour is mixed by the weights; the style traits are mixed so each keeps its share of the pull; a
+ *  choice that cannot be mixed (the music's mood, the text's side) comes from the bigger share. */
+export function mixLooks(a:Look,b:Look,weight:number,name?:string):Look{
+ const w=Math.min(1,Math.max(0,weight)),main=w>=.5?a:b,pa=Math.round(w*100);
+ const keys=[...new Set([...Object.keys(a.steer),...Object.keys(b.steer)])],steer:Record<string,number>={};
+ for(const k of keys){const v=Math.exp(w*Math.log(a.steer[k]??1)+(1-w)*Math.log(b.steer[k]??1));if(Math.abs(v-1)>.02)steer[k]=Number(v.toFixed(2));}
+ const ma=a.measured,mb=b.measured;
+ const bpm=a.music.bpm&&b.music.bpm?Math.round(a.music.bpm*w+b.music.bpm*(1-w)):main.music.bpm;
+ const look={version:1 as const,name:lookName.parse(name??`mix-${a.name}-${b.name}-${pa}`.slice(0,41).replace(/-+$/,'')),source:{title:`${pa}% ${a.name}, ${100-pa}% ${b.name}`},
+  measured:{brightness:lerp(ma.brightness,mb.brightness,w),backgroundSaturation:lerp(ma.backgroundSaturation,mb.backgroundSaturation,w),backgroundHue:hueMix(ma.backgroundHue,mb.backgroundHue,w),accentHue:hueMix(ma.accentHue,mb.accentHue,w),
+   energy:lerp(ma.energy,mb.energy,w),burstsPerSecond:lerp(ma.burstsPerSecond,mb.burstsPerSecond,w),easing:main.measured.easing,averageShotSeconds:lerp(ma.averageShotSeconds,mb.averageShotSeconds,w),cutsPerMinute:lerp(ma.cutsPerMinute,mb.cutsPerMinute,w)},
+  steer,music:{mood:main.music.mood,...(bpm?{bpm}:{})},
+  ...(a.type||b.type?{type:{scale:Number(((a.type?.scale??1)*w+(b.type?.scale??1)*(1-w)).toFixed(2)),weight:(main.type??a.type??b.type)!.weight}}:{}),
+  ...(a.layout||b.layout?{layout:{placement:(main.layout??a.layout??b.layout)!.placement,size:Number(((a.layout?.size??.56)*w+(b.layout?.size??.56)*(1-w)).toFixed(2))}}:{}),
+  ...(a.pacing||b.pacing?{pacing:{minSceneDuration:Number(((a.pacing?.minSceneDuration??2.6)*w+(b.pacing?.minSceneDuration??2.6)*(1-w)).toFixed(2)),wordsPerSecond:Number(((a.pacing?.wordsPerSecond??2.5)*w+(b.pacing?.wordsPerSecond??2.5)*(1-w)).toFixed(2))}}:{}),
+  ...(a.palette||b.palette?{palette:{background:hexMix(a.palette?.background,b.palette?.background,w)!,...(a.palette?.accent||b.palette?.accent?{accent:hexMix(a.palette?.accent,b.palette?.accent,w)!}:{}),...(a.palette?.text||b.palette?.text?{text:hexMix(a.palette?.text,b.palette?.text,w)!}:{})}}:{}),
+  extra:{busy:lerp((a.extra?.busy as number|null|undefined)??null,(b.extra?.busy as number|null|undefined)??null,w)},
+  summary:[`${pa}% "${a.name}" (${a.summary.slice(0,2).join(', ')}) and ${100-pa}% "${b.name}" (${b.summary.slice(0,2).join(', ')})`],created:new Date().toISOString()};
+ return lookSchema.parse(look);
+}
+/** Mixes two styles (looks or taught videos) and saves the mix as a look to use with --like. */
+export async function saveMix(a:string,b:string,weight:number,name?:string){
+ const mix=mixLooks(await styleOf(a),await styleOf(b),weight,name);
+ await fs.mkdir(looksDir(),{recursive:true});let target=path.join(looksDir(),mix.name+'.json');
+ // The same mix again replaces its own file (it is the same blend); another name never overwrites.
+ if(!name||!(await exists(target)))await fs.writeFile(target,JSON.stringify(mix,null,1)+'\n');
+ else {let k=2;while(await exists(target)){mix.name=`${name}-${k}`;target=path.join(looksDir(),mix.name+'.json');k++;}await fs.writeFile(target,JSON.stringify(mix,null,1)+'\n');}
+ return {look:mix,file:target};
+}

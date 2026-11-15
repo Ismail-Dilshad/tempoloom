@@ -3,7 +3,7 @@
 // preview, so a bad combination is caught before anyone looks at it.
 import type {Page} from 'playwright';
 
-export type FrameIssue={kind:'small-text'|'contrast'|'overlap'|'cut-off'|'empty'|'unsafe';detail:string;severity:'hard'|'soft'};
+export type FrameIssue={kind:'small-text'|'contrast'|'overlap'|'cut-off'|'empty'|'unsafe'|'phone-size'|'too-quick';detail:string;severity:'hard'|'soft'};
 export type SceneQuality={scene:string;time:number;score:number;issues:FrameIssue[];stats:{minTextPx:number;minContrast:number;overlap:number;spread:number}};
 export type Quality={score:number;passed:boolean;scenes:SceneQuality[];hard:number;soft:number;sound?:SoundQuality};
 export type SoundQuality={integratedLufs:number|null;truePeakDb:number|null;cuesPerSecond:number|null;issues:string[]};
@@ -86,7 +86,7 @@ export async function spread(page:Page,png:Buffer){
  },png.toString('base64'));
 }
 
-const PENALTY={'small-text':12,contrast:18,overlap:15,'cut-off':15,empty:60,unsafe:14};
+const PENALTY={'small-text':12,contrast:18,overlap:15,'cut-off':15,empty:60,unsafe:14,'phone-size':8,'too-quick':10};
 export function sceneScore(issues:FrameIssue[]){
  let score=100;const seen=new Map<string,number>();
  for(const i of issues){const n=seen.get(i.kind)??0;seen.set(i.kind,n+1);score-=PENALTY[i.kind]*(i.severity==='hard'?1.5:1)/(1+n*.6);}

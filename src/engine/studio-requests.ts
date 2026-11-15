@@ -39,6 +39,8 @@ export const requestInput=z.object({
  /** Same design, your content: the reference is recreated scene by scene (motion), or its editing
   *  style is applied to the user's footage (an edit), with the user's own content. */
  same:z.boolean().default(false),
+ /** Style mixer: two styles the user taught (looks, or taught videos by id), weight = the share of a. */
+ mix:z.object({a:z.string().min(1).max(60),b:z.string().min(1).max(60),weight:z.number().min(0).max(1)}).strict().optional(),
  /** A video the user taught, to make this one in its spirit. */
  like:z.string().regex(/^[a-z0-9][a-z0-9-]{0,70}$/).optional(),
  /** The taste profile to follow (the main one when not given). */
@@ -127,6 +129,7 @@ export function brief(r:StudioRequest){
   :`Edit it the same way: give the user's footage the editing style of ${of('reference').join(', ')} (its cut pace, punch-ins, captions, colour grade and music). Only the style: the footage and words are the user's.`)
   :`Reference to study (never to copy): ${of('reference').join(', ')}`);
  if(i.like)lines.push(`In the spirit of the video the user taught: ${i.like} (pnpm tempoloom teach show ${i.like})`);
+ if(i.mix)lines.push(`Style: a mix of ${Math.round(i.mix.weight*100)}% "${i.mix.a}" and ${100-Math.round(i.mix.weight*100)}% "${i.mix.b}" (pnpm tempoloom look mix ${i.mix.a} ${i.mix.b} --weight ${i.mix.weight}, then make --like the mixed look).`);
  if(i.profile&&i.profile!=='main')lines.push(`Taste profile: ${i.profile} (pnpm tempoloom taste show ${i.profile})`);
  if(i.second)lines.push(`A second opinion: ${i.secondProfile?`a reviewer with the "${i.secondProfile}" taste profile`:'a reviewer who watches as a general viewer'}, after the first review.`);
  if(of('asset').length)lines.push(`Other material: ${of('asset').join(', ')}`);
@@ -143,6 +146,8 @@ export function take(id:string,o:{job?:string}={}){
  const options=i.mode==='art'?[...(r.files.some(f=>f.kind==='reference')?['reference']:[]),...(i.second?['second']:[])]
   :[...(i.mode==='motion'?[...(i.script?[]:['write']),...(i.voice?['voice']:[]),...(i.pick&&!same?['pick']:[])]:[...(i.visuals&&!same?['visuals']:[])]),...(i.second?['second']:[]),...(same?['same']:[])];
  const name=o.job??((i.text||i.link||'video').toLowerCase().normalize('NFKD').replace(/^https?:\/\/(www\.)?/,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,32).replace(/-+$/,'')||'video')+'-'+id.slice(2,6);
+ // The mixed style is made now, so the job can use it by name.
+ if(i.mix&&i.mode==='motion'){const mx=i.mix;void import('./looks.js').then(m=>m.saveMix(mx.a,mx.b,mx.weight)).catch(e=>console.error('Style mix: '+(e as Error).message));}
  const p=plan(text,{type:i.mode==='art'?'painting':i.mode==='motion'?(same?'reference-match':'script-to-motion'):'footage-edit',options,job:name,source:id,...(i.profile?{profile:i.profile}:{}),...(i.second&&i.secondProfile?{secondProfile:i.secondProfile}:{})});
  fs.writeFileSync(path.join(jobDir(p.job),'request.md'),`# The request\n\n${text}\n`);
  // The user's own script becomes the job's script file: the script doctor's suggestions the user
@@ -215,7 +220,7 @@ export function jobView(p:Plan){
   const lost=st.state==='running'&&!isRunning(p.job);
   drive={state:lost?'stopped':st.state,why:lost?'The page was closed while it worked. Run it again: it continues from the step it was on.':st.why,spent:st.spent,model:st.model?.model??null,task:st.task,updated:st.updated};}catch{/* never driven here */}
  return {drive,job:p.job,kind:p.title,mode:p.type==='footage-edit'?'edit':p.type==='painting'?'art':'motion',request:p.request,created:p.created,updated:p.updated,verdict:p.verdict??null,finished,archived:!!p.archived,brief:briefInput,script:scriptView(p),
-  ratings:(p.ratings??[]).map(r=>({task:r.task,rating:r.rating,round:r.round,at:r.at})),
+  ratings:(p.ratings??[]).map(r=>({task:r.task,rating:r.rating,round:r.round,at:r.at})),locked:(p.locked??[]).map(l=>({id:l.id,scene:l.n,label:l.label})),
   done:n.done,of:n.of,waitingFor:finished?'nothing':(drive as {state:string}|null)?.state==='asking'?'you':(drive as {state:string}|null)?.state==='running'?'page':n.ready.length?'agent':n.waitingForUser.length?'you':'agent',
   agentReady:n.ready.map(x=>x.task),tasks,textEdits:p.type==='footage-edit'?textEdits().filter(d=>d.job===p.job).map(d=>({id:d.id,title:d.title,made:d.renders.length})):[],feedback:p.feedback.map(f=>({said:f.said,rule:f.rule,goesTo:f.roles.map(id=>roleOf(id).title)}))};
 }

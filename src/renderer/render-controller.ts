@@ -113,6 +113,10 @@ export async function preview(p:Project,scale=1,options:{pilot?:boolean}={}){
   await w.page.evaluate(x=>window.render(x),t);const dom=await checkFrame(w.page,safeZones);const sp=await spread(w.page,await w.page.screenshot({type:'jpeg',quality:80}));
   const issues=[...dom.issues];if(sp<3.5)issues.push({kind:'empty',detail:`almost nothing on screen (spread ${sp.toFixed(1)})`,severity:'hard'});
   results[i]={scene:s.id,time:Number(t.toFixed(2)),score:sceneScore(issues),issues,stats:{...dom.stats,spread:Number(sp.toFixed(1))}};}}));
+ // Readability on a phone: every text's size there, and whether it stays long enough to be read.
+ if(checked.length&&!process.env.TEMPOLOOM_NO_READABILITY){const {watchText,readIssues}=await import('./readability.js');
+  const seen=(await Promise.all(pages.map((w,k)=>watchText(w.page,checked.filter((_,i)=>i%pages.length===k))))).flat();
+  for(const t of seen){const r=results.find(x=>x?.scene===t.scene);if(!r)continue;const add=readIssues(t);if(add.length){r.issues.push(...add);r.score=sceneScore(r.issues);}}}
  sceneQA.push(...results.filter((x):x is SceneQuality=>!!x));
  const quality=sceneQA.length?summarize(sceneQA):undefined;
  const sheets:string[]=[];

@@ -84,7 +84,10 @@ export const operationSchema=z.discriminatedUnion('op',[
   // How they show (caption-styles.ts): a phrase at a time, one word at a time, the phrase with the
   // spoken word lit (karaoke), or words building up; the key word in the highlight colour; how each comes in.
   style:z.enum(['phrase','word','karaoke','build']).default('phrase'),reveal:z.enum(['none','fade','pop','rise','slide']).default('none'),
-  keyword:z.boolean().default(false),upper:z.boolean().default(false),highlight:color.default('#FFD400')}).strict()
+  keyword:z.boolean().default(false),upper:z.boolean().default(false),highlight:color.default('#FFD400'),
+  /** Text that reacts to the voice: each word grows with how loudly and how stressed it is said,
+   *  the most stressed take the highlight colour, and the loudest shake. `react` is how much (0 = off). */
+  react:z.number().min(0).max(1).default(0)}).strict()
   .refine(c=>!!c.srt!==!!c.cues,'Give exactly one of srt or cues'),
 ]);
 export type Operation=z.infer<typeof operationSchema>;

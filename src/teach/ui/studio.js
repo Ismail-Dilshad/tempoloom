@@ -82,6 +82,10 @@ App.register('studio/new',{
     ${!art&&N.files.some(f=>f.kind==='reference')?`<label class="check" style="margin-top:8px"><input type="checkbox" id="same" ${N.same?'checked':''}> ${m?'Same design, my content: recreate its design scene by scene with my script, logo and colours':'Edit my footage the same way as this reference: its pace, zooms, captions and colour'}</label>
      ${N.same?`<p class="muted small" style="margin:4px 0 0">Only the ${m?'design':'editing style'} is taken, never its ${m?'artwork, logo or words':'footage or words'}.${m?' The two looks to pick from are skipped: the look is the reference\'s.':''}</p>`:''}`:''}
     ${m&&S.taught.length?`<label class="f" for="like">In the spirit of a video you taught</label>${sel('like',[['','None'],...S.taught.map(v=>[v.id,esc(v.title.slice(0,60))])],N.like)}`:''}
+    ${m&&((S.looks||[]).length+S.taught.length)>=2?(()=>{const opts=[['','Choose a style'],...(S.looks||[]).map(l=>[l.name,esc(l.name+(l.summary?' ('+l.summary+')':''))]),...S.taught.map(v=>[v.id,esc('Taught: '+v.title.slice(0,50))])],w=N.mixWeight??70;
+     return `<label class="check" style="margin-top:12px"><input type="checkbox" id="useMix" ${N.useMix?'checked':''}> Mix two styles I taught</label>
+     <div class="mix"${N.useMix?'':' hidden'}><div class="two"><div><label class="f" for="mixA">Style A</label>${sel('mixA',opts,N.mixA||'')}</div><div><label class="f" for="mixB">Style B</label>${sel('mixB',opts,N.mixB||'')}</div></div>
+     <label class="f" for="mixWeight">How much of each: <b id="mixLabel">${w}% A, ${100-w}% B</b></label><input type="range" id="mixWeight" min="0" max="100" step="5" value="${w}" aria-valuetext="${w}% of style A"></div>`;})():''}
     ${art?'':fileRow('asset','Other files','(photos, screenshots, music, a PDF)','image/*,video/*,audio/*,.pdf,.txt,.md',true)}
     <div class="row" style="margin-top:18px"><button class="btn primary" id="send" ${Studio.sending||Studio.busy?'disabled':''}>Send to the studio</button><span class="muted small">Saved as you type</span></div>
    </div></div>`;
@@ -96,6 +100,9 @@ App.register('studio/new',{
   if(typeof SD!=='undefined')SD.last='';
   for(const id of ['script','voice','pick','captions','visuals'])if($('#'+id))$('#'+id).onchange=e=>{N[id]=e.target.checked;Studio.save();count();};
   if($('#same'))$('#same').onchange=e=>{N.same=e.target.checked;Studio.save();App.show(false);};
+  if($('#useMix'))$('#useMix').onchange=e=>{N.useMix=e.target.checked;Studio.save();App.show(false);};
+  for(const id of ['mixA','mixB'])if($('#'+id))$('#'+id).onchange=e=>{N[id]=e.target.value;Studio.save();};
+  if($('#mixWeight'))$('#mixWeight').oninput=e=>{N.mixWeight=Number(e.target.value);$('#mixLabel').textContent=`${N.mixWeight}% A, ${100-N.mixWeight}% B`;e.target.setAttribute('aria-valuetext',`${N.mixWeight}% of style A`);Studio.save();};
   if($('#second'))$('#second').onchange=e=>{N.second=e.target.checked;Studio.save();App.show(false);};
   if($('#useColors'))$('#useColors').onchange=e=>{N.useColors=e.target.checked;Studio.save();App.show(false);};
   for(const k of ['primary','accent','background'])if($('#c-'+k))$('#c-'+k).oninput=e=>{N[k]=e.target.value;Studio.save();};
@@ -125,9 +132,10 @@ async function sendBrief(){
  const N=Studio.N;if(Studio.sending)return;
  const body={mode:N.mode,text:N.text.trim(),script:N.mode==='motion'&&N.script,link:N.mode==='motion'?N.link.trim():'',voice:N.mode==='motion'&&N.voice,captions:N.captions,visuals:N.visuals,pick:N.mode==='motion'&&N.pick,same:!!N.same&&N.files.some(f=>f.kind==='reference'),
   colors:N.useColors?{primary:N.primary,accent:N.accent,background:N.background}:{},notes:N.notes.trim(),
-  ...(N.mode==='art'&&N.medium?{medium:N.medium}:{}),...(N.seconds&&N.mode!=='art'?{seconds:Number(N.seconds)}:{}),...(N.shape?{shape:N.shape}:{}),...(N.language?{language:N.language}:{}),...(N.mode==='motion'&&N.like?{like:N.like}:{}),...(N.profile?{profile:N.profile}:{}),second:N.second!==false,...(N.second!==false&&N.secondProfile?{secondProfile:N.secondProfile}:{})};
+  ...(N.mode==='art'&&N.medium?{medium:N.medium}:{}),...(N.seconds&&N.mode!=='art'?{seconds:Number(N.seconds)}:{}),...(N.shape?{shape:N.shape}:{}),...(N.language?{language:N.language}:{}),...(N.mode==='motion'&&N.like?{like:N.like}:{}),...(N.mode==='motion'&&N.useMix&&N.mixA&&N.mixB?{mix:{a:N.mixA,b:N.mixB,weight:(N.mixWeight??70)/100}}:{}),...(N.profile?{profile:N.profile}:{}),second:N.second!==false,...(N.second!==false&&N.secondProfile?{secondProfile:N.secondProfile}:{})};
  if(N.mode==='motion'&&!body.text&&!body.link)return toast('Write a script, a prompt or a topic, or give a link.',true);
  if(N.mode==='edit'&&!N.files.some(f=>f.kind==='footage'))return toast('Choose the footage to edit.',true);
+ if(N.mode==='motion'&&N.useMix&&(!N.mixA||!N.mixB||N.mixA===N.mixB))return toast('Choose two different styles to mix.',true);
  if(N.mode==='art'&&!body.text&&!N.files.some(f=>f.kind==='reference'))return toast('Say what to paint, or add a photo to paint from.',true);
  Studio.sending=true;
  try{const st=await api('/api/settings').catch(()=>null);
@@ -279,7 +287,8 @@ function timelineHtml(j,t,s){
  const scoped=new Set((t.scope?.scenes||[]).map(x=>x.n)),pend=(Studio.CM[j.job+'|'+t.id]||[]).filter(c=>c.slot==='show-'+s.k),word=tl.source==='scenes'?'Scene':'Shot';
  const marks=[...(t.comments||[]).filter(c=>c.slot==='show-'+s.k&&c.current),...pend].map(c=>`<i class="tl-mark" style="left:${Math.min(100,c.time/tl.duration*100)}%" title="${esc(fmtS(c.time)+(c.text?': '+c.text:''))}"></i>`).join('');
  return `<div class="tl-wrap" data-tl="${esc(key)}"><div class="tl" data-vid="${vid}" role="group" aria-label="${word}s of this video">${tl.scenes.map(x=>`<button type="button" class="tl-scene ${scoped.has(x.n)?'on':''}" style="flex:${Math.max(.2,x.end-x.start)}" title="${esc(`${word} ${x.n}, ${fmtS(x.start)} to ${fmtS(x.end)}${tl.source==='scenes'?': '+x.label:''}`)}" aria-label="${word} ${x.n}, from ${fmtS(x.start)}" onclick="seekTo('${vid}',${x.start})"><span>${x.n}</span></button>`).join('')}<i class="tl-head" aria-hidden="true"></i>${marks}</div>
-  <div class="muted small tl-note">${tl.scenes.length} ${word.toLowerCase()}${tl.scenes.length===1?'':'s'}. A comment changes only the ${word.toLowerCase()} it is on.</div></div>`;
+  <div class="muted small tl-note">${tl.scenes.length} ${word.toLowerCase()}${tl.scenes.length===1?'':'s'}. A comment changes only the ${word.toLowerCase()} it is on.</div>
+  ${tl.source==='scenes'?`<div class="tl-locks" role="group" aria-label="Lock scenes you like"><span class="muted small">Lock what you like:</span>${tl.scenes.map(x=>{const on=(j.locked||[]).some(l=>l.id===x.id);return `<button type="button" class="chip${on?' on':''}" aria-pressed="${on}" title="${esc(on?`Scene ${x.n} is final: no later round changes it. Click to unlock.`:`Mark scene ${x.n} final: no later round changes it`)}" onclick="lockScene('${j.job}',${x.n},${!on})">${on?'🔒 ':''}${x.n}</button>`;}).join('')}</div>`:''}</div>`;
 }
 async function loadTimeline(key,job,index,slot){
  Studio.TL[key]={loading:true};
@@ -287,6 +296,7 @@ async function loadTimeline(key,job,index,slot){
  const el=document.querySelector(`[data-tl="${CSS.escape(key)}"]`),c=Studio.TLctx[key];if(el&&c)el.outerHTML=timelineHtml(c.j,c.t,c.s);
 }
 const sceneAt=(key,time)=>{const tl=Studio.TL[key];if(!tl||!tl.scenes)return null;return tl.scenes.find(x=>time>=x.start&&time<x.end)||tl.scenes.at(-1);};
+window.lockScene=(job,n,on)=>act(async()=>{const r=await api(`/api/studio/jobs/${job}/lock`,{method:'POST',body:JSON.stringify({scenes:[n],on})});toast(r.note);await App.refresh(true);});
 window.seekTo=(vid,t)=>{const v=document.getElementById(vid);if(!v)return;v.currentTime=t+.01;v.focus();};
 // The playhead on the strip follows the video; a video drawn again goes back to where it was paused.
 const playhead=e=>{const v=e.target;if(v.tagName!=='VIDEO'||!v.duration)return;const h=document.querySelector(`.tl[data-vid="${v.id}"] .tl-head`);if(h)h.style.left=(v.currentTime/v.duration*100)+'%';};

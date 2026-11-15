@@ -865,3 +865,6 @@ body .number-control input[type=number]{margin:0!important}
 .space-kind{border-top:1px solid var(--line);padding:10px 0}.space-kind summary{cursor:pointer}
 /* Who works on a job */
 .drive .row{align-items:flex-start}.drive.asking{border-color:var(--warn)}.drive.failed{border-color:var(--bad)}.drive.running{border-color:var(--coral)}
+.tl-locks{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
+.tl-locks .chip{cursor:pointer}
+.tl-locks .chip.on{border-color:var(--accent,currentColor);color:var(--cream)}

@@ -1,5 +1,19 @@
 # Changelog
 
+## 9.22.0: Control over the look (group 11 of 12)
+
+- **Lock what you like** (Studio page, under a step's video; or `studio lock JOB 2,5`): locked
+  scenes are final. Every later round keeps them exactly; a step that changed one cannot finish
+  and a comment on one is refused until you unlock it. The agent is told at every step.
+- **Readability check** in every preview: each text watched from start to end as a phone shows it
+  (390 points wide), for its size there (12 pt or more) and how long it stays against how long its
+  words take to read; counting numbers and typed text are followed as one.
+- **Text that reacts to the voice**: captions whose words grow as they are said, as much as they
+  are stressed, the most stressed lit and shouted ones shaking (the `loud` caption style, or
+  `react` on any captions).
+- **Style mixer** (`look mix A B --weight 0.7`; on the page, Mix two styles I taught, with a
+  slider): two looks or taught videos blended by their shares, saved as a look for `--like`.
+
 ## 9.21.0: New kinds of video (group 10 of 12)
 
 - **Charts from data** (`make SCRIPT --chart DATA`, or a chart video on its own with `--title`):

@@ -209,7 +209,7 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
     return json(res,T.review(lesson[1]!,action as 'keep',{...(typeof b.title==='string'?{title:b.title}:{}),...(typeof b.body==='string'?{body:b.body}:{})}));}
    // ---------- the Studio page ----------
    if(m==='GET'&&p==='/studio'){res.setHeader('content-security-policy',"default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' blob: https:; frame-src https://www.youtube-nocookie.com https://www.instagram.com https://www.tiktok.com https://player.vimeo.com; frame-ancestors 'none'");return await file(req,res,path.join(here,'ui','index.html'));}
-   if(m==='GET'&&p==='/api/studio/state')return json(res,{...R.overview(),taught:T.videos().filter(v=>v.status==='learned').map(v=>({id:v.id,title:v.title})),profiles:Taste.profiles(),can:{maxMB:MAX_MB}});
+   if(m==='GET'&&p==='/api/studio/state')return json(res,{...R.overview(),taught:T.videos().filter(v=>v.status==='learned').map(v=>({id:v.id,title:v.title})),looks:(await (await import('../engine/looks.js')).listLooks()).map(l=>({name:l.name,summary:l.summary.slice(0,2).join(', ')})),profiles:Taste.profiles(),can:{maxMB:MAX_MB}});
    if(m==='POST'&&p==='/api/studio/requests')return json(res,R.newRequest());
    const rq=/^\/api\/studio\/requests\/(r-[a-f0-9]{8})(\/files|\/submit)?$/.exec(p);
    if(rq){const [,id,action]=rq;
@@ -240,6 +240,8 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
    if(vs&&m==='POST'&&vs[3])return json(res,V.bringBack(vs[1]!,vs[2]!,Number(vs[3])));
    const tl=/^\/api\/studio\/jobs\/([a-z0-9-]+)\/timeline\/(\d+)\/(show-\d+)$/.exec(p);
    if(m==='GET'&&tl)return json(res,await V.timeline(tl[1]!,Number(tl[2]),tl[3]!));
+   const lk=/^\/api\/studio\/jobs\/([a-z0-9-]+)\/lock$/.exec(p);
+   if(m==='POST'&&lk){const b=await body(req);const scenes=(Array.isArray(b.scenes)?b.scenes:[b.scene]).map(Number);return json(res,V.lock(lk[1]!,scenes,b.on!==false));}
    const cm=/^\/api\/studio\/jobs\/([a-z0-9-]+)\/comments\/([a-z][a-z-]{1,30})$/.exec(p);
    if(m==='POST'&&cm){const b=await body(req);if(!Array.isArray(b.comments))throw new HttpError(400,'Send the comments');
     return json(res,await V.comment(cm[1]!,cm[2]!,(b.comments as Record<string,unknown>[]).map(c=>({slot:String(c.slot??''),time:Number(c.time),text:String(c.text??'')}))));}

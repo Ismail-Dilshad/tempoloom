@@ -3,7 +3,7 @@
 // output; the user's feedback reaches the roles responsible; a verdict scores what was used.
 import {parseArgs} from 'node:util';
 import {plan,next,start,done,approve,feedback,status,verdict,retro,org,prompt,loadStudio,rate,pick,check,resume,RATE_REASONS} from '../engine/studio.js';
-import {versionsView,bringBack,comment} from '../engine/studio-versions.js';
+import {versionsView,bringBack,comment,lock} from '../engine/studio-versions.js';
 import {inbox,take} from '../engine/studio-requests.js';
 import {verdicts,type Verdict} from '../engine/feedback.js';
 import {say,FACES} from '../engine/studio-events.js';
@@ -54,6 +54,8 @@ const usage=`Usage: tempoloom studio <command>
   comment JOB TASK SECONDS "TEXT" [--video 1]
                                    The user's comment on a moment of a step's video: only the scene at that moment
                                    is redone (studio start says which; studio done checks the others are unchanged)
+  lock JOB SCENE[,SCENE]           The user marks scenes final: every later round keeps them exactly (studio done
+                                   refuses a step that changed one); unlock JOB SCENE[,SCENE] lets them change again
   resume JOB                       A job that stopped in the middle of a step: what was in progress, what it left,
                                    and how to continue (a render continues from its last finished scene)`;
 
@@ -90,6 +92,8 @@ async function main(){
   case 'retro':need(1,'JOB');return out(retro(a[0]!));
   case 'versions':need(2,'JOB TASK');return out(versionsView(a[0]!,a[1]!));
   case 'bring-back':need(3,'JOB TASK N');return out(bringBack(a[0]!,a[1]!,Number(a[2])));
+  case 'lock':case 'unlock':{need(2,'JOB SCENE[,SCENE]');const ns=a[1]!.split(',').map(x=>Number(x.trim()));if(ns.some(n=>!Number.isInteger(n)))throw new Error('Scenes are numbers, like 2,5');
+   return out(lock(a[0]!,ns,cmd==='lock'));}
   case 'comment':{need(4,'JOB TASK SECONDS "TEXT" [--video 1]');const sec=Number(a[2]);if(!Number.isFinite(sec))throw new Error('SECONDS is a number, like 4.5');
    const t=readPlan(a[0]!).tasks.find(x=>x.id===a[1]),vids=(t?.show??[]).map((f,k)=>({f,k})).filter(x=>/\.(mp4|webm|mov|m4v)$/i.test(x.f)),pickV=vids[(Number(v.video)||1)-1];
    if(!pickV)throw new Error(`"${a[1]}" showed ${vids.length?`${vids.length} video${vids.length>1?'s':''}`:'no video'}`);

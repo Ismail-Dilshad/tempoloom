@@ -264,10 +264,11 @@ async function applyOperation(op:Operation,input:string,info:MediaInfo,out:strin
    const cues=op.cues??parseSrt(await fs.readFile(path.resolve(base,op.srt!),'utf8'));
    const dir=path.join(work,'captions-'+randomUUID().slice(0,8));await fs.mkdir(dir,{recursive:true});
    // A styled look (words following the speech, a key word lit, a way of coming in) is one picture track.
-   if(op.style!=='phrase'||op.reveal!=='none'||op.keyword||op.upper){
-    const tr=await renderCaptionTrack(cues,op,{width:info.width,height:info.height},dir,info.fps,info.duration);
+   if(op.style!=='phrase'||op.reveal!=='none'||op.keyword||op.upper||op.react>0){
+    const emphasis=op.react>0&&a?await (await import('./captions.js')).wordEmphasis(input,cues):undefined;
+    const tr=await renderCaptionTrack(cues,op,{width:info.width,height:info.height},dir,info.fps,info.duration,emphasis?{emphasis}:{});
     await ff(['-i',input,'-f','concat','-safe','0','-i',tr.list,'-filter_complex','[1:v]format=rgba[c];[0:v][c]overlay=0:0:eof_action=pass,format=yuv420p[v]','-map','[v]',...(a?['-map','0:a','-c:a','copy']:['-an']),'-r',n(info.fps),'-c:v','libx264','-preset','veryfast','-crf','14','-pix_fmt','yuv420p',out]);
-    return {info,note:`${cues.length} captions (${op.style}${op.keyword?', key word lit':''}${op.reveal!=='none'?`, ${op.reveal} in`:''}), ${tr.language}, font ${path.basename(tr.font)}${moved}`};}
+    return {info,note:`${cues.length} captions (${op.style}${op.keyword?', key word lit':''}${op.reveal!=='none'?`, ${op.reveal} in`:''}${emphasis?`, reacting to the voice (${emphasis.flat().filter(e=>e>=1).length} stressed words)`:''}), ${tr.language}, font ${path.basename(tr.font)}${moved}`};}
    const {files,font,language}=await renderCaptionImages(cues,op,{width:info.width,height:info.height},dir);
    let graph='',last='0:v';
    cues.forEach((c,i)=>{const next=i===cues.length-1?'v':'c'+i;graph+=`${graph?';':''}[${last}][${i+1}:v]overlay=0:0:enable='between(t,${n(c.start)},${n(c.end)})'[${next}]`;last=next;});

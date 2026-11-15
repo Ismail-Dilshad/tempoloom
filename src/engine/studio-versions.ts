@@ -148,6 +148,7 @@ async function commentNow(job:string,task:string,list:CommentInput[]){
   if(c.text.length<3)throw new Error('Say what should change at that moment');
   const tl=await timeline(job,index,c.slot);if(!Number.isFinite(c.time)||c.time<0||c.time>tl.duration+.05)throw new Error(`${clock(c.time)} is not inside the video`);
   const scene=tl.scenes.find(s=>c.time>=s.start&&c.time<s.end)??tl.scenes.at(-1)!;
+  if(scene.id&&p.locked?.some(l=>l.id===scene.id))throw new Error(`Scene ${scene.n} is locked (you marked it final). Unlock it first to change it.`);
   made.push({id:'c-'+randomBytes(4).toString('hex'),at:now(),task,round:t.rounds,slot:c.slot,time:+c.time.toFixed(2),scene,text:c.text});
  }
  // Grouped by scene, in the order they play.
@@ -163,6 +164,20 @@ async function commentNow(job:string,task:string,list:CommentInput[]){
  emit(job,{type:'feedback',role:'you',task,text:`You commented on ${scenes.length===1?'one scene':`${scenes.length} scenes`} of ${t.title}`,data:{comments:made.length,scenes:scenes.map(s=>s.n)}});
  return {job,task,comments:made.map(c=>({at:clock(c.time),scene:c.scene.n,label:c.scene.label,text:c.text})),scenes:scenes.map(s=>s.n),rule:fb.rule,reopened:fb.reopened,
   note:`Only ${scenes.length===1?`scene ${scenes[0]!.n}`:`scenes ${scenes.map(s=>s.n).join(', ')}`} of this step will change; the rest stays as it is.`};
+}
+/** Marks scenes final (or not): later rounds must keep them exactly as they are now. `scenes` are
+ *  scene numbers (1-based) of the job's motion video. */
+export function lock(job:string,scenes:number[],on=true){
+ return change({kind:'ratings',job,title:`You ${on?'locked':'unlocked'} scene${scenes.length>1?'s':''} ${scenes.join(', ')}`},()=>{
+  const p=readPlan(job),ps=projectScenes(p.videoJob);
+  if(!ps)throw new Error('Scenes can be locked once the video has been made (its scenes are known)');
+  const bad=scenes.filter(n=>!Number.isInteger(n)||n<1||n>ps.length);if(bad.length)throw new Error(`No scene ${bad.join(', ')}: the video has ${ps.length} scenes`);
+  let locked=[...(p.locked??[])];
+  for(const n of scenes){const s=ps[n-1]!;locked=locked.filter(l=>l.id!==s.id);if(on)locked.push({id:s.id,n,label:s.text.replace(/\s+/g,' ').trim().slice(0,70),hash:sceneHash(s),at:now()});}
+  p.locked=locked.sort((a,b)=>a.n-b.n);savePlan(p);
+  emit(job,{type:'feedback',role:'you',text:`You ${on?'locked':'unlocked'} scene${scenes.length>1?'s':''} ${scenes.join(', ')}${on?': they stay as they are':''}`,data:{locked:p.locked.map(l=>l.n)}});
+  return {job,locked:p.locked.map(l=>({scene:l.n,label:l.label})),note:on?'Locked scenes stay exactly as they are in every later round.':'Unlocked: the next round may change them.'};
+ });
 }
 /** The scenes a redo changed that the user did not comment on (empty when it kept to its scenes). */
 export function outsideScope(p:Plan,t:Task):string[]{

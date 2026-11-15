@@ -1925,6 +1925,32 @@
    ],
    "status": "ready",
    "whenToUse": "The user gives photos to turn into a video."
+  },
+  {
+   "id": "studio-lock",
+   "category": "agent",
+   "description": "Lock what you like: scenes the user marks final stay exactly as they are in every later round (a step that changes one cannot finish).",
+   "command": "pnpm tempoloom studio lock JOB SCENE[,SCENE] | studio unlock JOB SCENE",
+   "inputs": [
+    "JOB",
+    "SCENES"
+   ],
+   "status": "ready",
+   "whenToUse": "Only when the user says a scene is final (or unlocks it); the page has a button for it."
+  },
+  {
+   "id": "look-mix",
+   "category": "design",
+   "description": "Style mixer: blends two styles the user taught (looks or taught videos) by a share, saved as a look to use with make --like.",
+   "command": "pnpm tempoloom look mix A B [--weight 0.7] [--name NAME]",
+   "inputs": [
+    "A",
+    "B",
+    "--weight",
+    "--name"
+   ],
+   "status": "ready",
+   "whenToUse": "The user wants a video between two styles they taught."
   }
  ]
 }

@@ -8,7 +8,9 @@ import {ROOT} from '../engine/config-root.js';
 export const MODES=['phrase','word','karaoke','build'] as const;
 export const REVEALS=['none','fade','pop','rise','slide'] as const;
 export type StyleFields={style?:typeof MODES[number];reveal?:typeof REVEALS[number];keyword?:boolean;upper?:boolean;highlight?:string;
- size?:number;color?:string;stroke?:string;strokeWidth?:number;background?:string|null;weight?:number;maxWidth?:number;position?:'bottom'|'center'|'top';margin?:number};
+ size?:number;color?:string;stroke?:string;strokeWidth?:number;background?:string|null;weight?:number;maxWidth?:number;position?:'bottom'|'center'|'top';margin?:number;
+ /** How much the words react to the voice (0 off): they grow with emphasis, stressed ones lit, shouted ones shake. */
+ react?:number};
 export type CaptionStyle={name:string;label:string;about:string;fields:StyleFields;yours:boolean;from?:string;created?:string};
 
 export const BUILT_IN:CaptionStyle[]=[
@@ -17,6 +19,7 @@ export const BUILT_IN:CaptionStyle[]=[
  {name:'word-pop',label:'Word by word',about:'One big word at a time, in capitals; each pops in.',fields:{style:'word',reveal:'pop',upper:true,size:.075,weight:800},yours:false},
  {name:'build-up',label:'Build up',about:'Words appear as they are said and stay until the phrase ends.',fields:{style:'build',reveal:'rise'},yours:false},
  {name:'key-word',label:'Key word',about:'A phrase at a time, its key word (a number, or the strongest word) in the highlight colour.',fields:{style:'phrase',keyword:true,reveal:'rise',highlight:'#FFD400'},yours:false},
+ {name:'loud',label:'Reacts to the voice',about:'The phrase, each word growing as it is said, as much as it is stressed; stressed words lit, shouted ones shake.',fields:{style:'karaoke',reveal:'pop',react:.8,highlight:'#FFD400',weight:800},yours:false},
  {name:'boxed',label:'Boxed',about:'On a dark box, no edge; each phrase slides up.',fields:{style:'phrase',reveal:'slide',background:'#000000B3',strokeWidth:0,weight:600},yours:false},
 ];
 const file=()=>path.join(path.resolve(ROOT,process.env.TEMPOLOOM_SETTINGS_DIR||'.tempoloom'),'caption-styles.json');
@@ -38,7 +41,7 @@ export function cleanFields(f:Record<string,unknown>):StyleFields{
  for(const k of ['keyword','upper'] as const)if(f[k]!==undefined)out[k]=f[k]===true||f[k]==='true';
  for(const k of ['highlight','color','stroke'] as const)if(f[k]!==undefined){if(!HEX.test(String(f[k])))throw new Error(`${k} is a colour like #FFD400`);out[k]=String(f[k]);}
  if(f.background!==undefined){if(f.background!==null&&f.background!==''&&!HEX.test(String(f.background)))throw new Error('background is a colour like #000000B3, or none');out.background=f.background===''?null:f.background as string|null;}
- num('size',.02,.2);num('strokeWidth',0,.4);num('weight',100,900);num('maxWidth',.3,1);num('margin',0,1);
+ num('size',.02,.2);num('strokeWidth',0,.4);num('react',0,1);num('weight',100,900);num('maxWidth',.3,1);num('margin',0,1);
  if(f.weight!==undefined)out.weight=Math.round(out.weight!);
  if(f.position!==undefined){if(!['bottom','center','top'].includes(String(f.position)))throw new Error('position is bottom, center or top');out.position=f.position as StyleFields['position'];}
  return out;
@@ -61,8 +64,8 @@ export function withPreset(op:Record<string,unknown>){
 /** The fields a captions operation gets from a style (yours by default), complete. */
 export function styleFor(name?:string){
  const s=captionStyles(),pick=name??s.default,st=s.styles.find(x=>x.name===pick)??BUILT_IN[0]!;
- return {style:'phrase' as StyleFields['style'] & string,reveal:'none' as StyleFields['reveal'] & string,keyword:false,upper:false,highlight:'#FFD400',...st.fields,name:st.name} as
-  Required<Pick<StyleFields,'style'|'reveal'|'keyword'|'upper'|'highlight'>>&StyleFields&{name:string};
+ return {style:'phrase' as StyleFields['style'] & string,reveal:'none' as StyleFields['reveal'] & string,keyword:false,upper:false,highlight:'#FFD400',react:0,...st.fields,name:st.name} as
+  Required<Pick<StyleFields,'style'|'reveal'|'keyword'|'upper'|'highlight'|'react'>>&StyleFields&{name:string};
 }
 /** A style's fields for a captions operation (without its name). */
 export const styleFields=(name?:string)=>{const {name:_,...f}=styleFor(name);return f;};

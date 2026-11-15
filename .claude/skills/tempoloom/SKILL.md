@@ -71,6 +71,11 @@ over footage). It plans the eight stages as tasks, each owned by the role that i
   `tidy storage` and act only on what they choose; clearing space cannot be undone, so ask first.
   When you finish a video, say what it shows for search: `find unseen`, look at the sheet, then
   `find describe ID "what it shows" --agent`.
+- Control (docs/guides/control.md): scenes the user locked (`studio start` lists them) stay exactly
+  as they are; give their scene visuals `"keep": true`. Fix every readability problem the preview
+  reports (too small on a phone, gone before it can be read). Captions that react to the voice:
+  the `loud` style or `"react": 0.8`. Two styles to blend: `look mix A B --weight 0.7`, then
+  `make --like` the mix.
 - New kinds of video (docs/guides/new-kinds.md): numbers the user gives become a chart on their
   sentence (`make SCRIPT --chart DATA.txt`, or a chart video alone with `--title`); a numbered
   script ("top 5", "3 reasons") is made as a list video by itself (one rhythm, the number and

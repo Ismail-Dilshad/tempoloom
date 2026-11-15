@@ -16,7 +16,7 @@ import {confidence} from './brain/brain.js';
 import {emit,events,WORKING_FACE} from './studio-events.js';
 import {doctorScript} from './script-doctor.js';
 import {change,touch,adapter,merge3,revertSet} from './history.js';
-import {keepVersion,outsideScope,type Comment,type Scene} from './studio-versions.js';
+import {keepVersion,outsideScope,projectScenes,sceneHash,type Comment,type Scene} from './studio-versions.js';
 
 const TOPICS=['motion','pacing','design','typography','color','captions','transitions','audio','voice','brand','cta','assets','kurdish','length','format','script','editing','art'] as const;
 const roleSchema=z.object({id:z.string().regex(/^[a-z][a-z-]{1,30}$/),department:z.string(),title:z.string(),agent:z.string().optional(),independent:z.boolean().optional(),mission:z.string(),
@@ -77,11 +77,18 @@ export type Plan={version:1;job:string;type:string;title:string;request:string;o
  /** The second reviewer's taste: another profile, or a general viewer when not set. */
  secondProfile?:string;
  /** The user's comments on moments of the videos steps showed. */
- comments?:Comment[]};
+ comments?:Comment[];
+ /** Scenes the user marked final: later rounds keep them exactly as they were when locked. */
+ locked?:{id:string;n:number;label:string;hash:string;at:string}[]};
 const now=()=>new Date().toISOString();
 const slug=(s:string)=>s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40);
 export const studioRoot=()=>path.resolve(ROOT,process.env.VIDEO_WORKSPACE||'workspace','studio');
 /** A second opinion, read: the points it disagrees on, or that it agrees with everything. */
+/** The locked scenes that are no longer as they were locked (missing or changed). */
+export function changedLocked(p:Plan):string[]{
+ const ps=projectScenes(p.videoJob);if(!ps||!p.locked?.length)return [];
+ return p.locked.filter(l=>{const s=ps.find(x=>x.id===l.id);return !s||sceneHash(s)!==l.hash;}).map(l=>`scene ${l.n}`);
+}
 export function opinionOf(md:string){
  const s=md.replace(/\r\n/g,'\n'),i=s.search(/^##\s*Disagree/im);let points:string[]=[];
  if(i>=0){const rest=s.slice(i).split('\n').slice(1),end=rest.findIndex(l=>/^##\s/.test(l));points=(end<0?rest:rest.slice(0,end)).map(l=>l.trim()).filter(l=>/^[-*\d]/.test(l)).map(l=>l.replace(/^([-*]|\d+[.)])\s*/,'')).filter(l=>l.length>3);}
@@ -191,6 +198,7 @@ export function start(job:string,taskId:string){
   ...(p.type==='footage-edit'&&t.id==='analysis'?{voiceColourSpeakers:'Listen and look before anyone cuts: pnpm tempoloom media voice FOOTAGE --plan (noise, hum, room echo, uneven loudness, clipping); with several clips, pnpm tempoloom media match CLIP CLIP... --plan (how far apart their colours are); with more than one person speaking, pnpm tempoloom media speakers FOOTAGE --transcript WORDS.json (who speaks when; names from the brief or from how they introduce themselves). Put what each found in analysis.md.'}:{}),
   ...(p.type==='footage-edit'&&t.id==='finish'?{voiceColourSpeakers:'Clean the voice with the voice operation media voice --plan gave (or media voice FOOTAGE), match the clips\' colours before they are joined (media match CLIP... --to THE_MAIN_CLIP, or the match operation), and in an interview put each speaker\'s name on screen when they first speak (media speakers FOOTAGE --names "A,B" --roles "Host,Guest" --bars). Say before and after in finish.md.'}:{}),
   ...(p.type==='footage-edit'&&t.id==='captions'?{speakerNames:'In an interview, captions can say who speaks: media speakers FOOTAGE --transcript WORDS.json --names "A,B" writes NAME.speakers.srt.'}:{}),
+  ...(p.locked?.length&&!t.gate?{lockedScenes:`The user locked ${p.locked.map(l=>`scene ${l.n} ("${l.label.slice(0,40)}")`).join(', ')}: they are final. Keep their words, timing and visuals exactly; in the request give their scene visuals "keep": true. A step that changes them cannot finish.`}:{}),
   // Same design, your content: the reference's design is kept scene by scene; only the content is the user's.
   ...(p.options.includes('same')&&p.type==='reference-match'?{sameDesign:({
    reference:`Study the reference into a blueprint: pnpm tempoloom recreate study REFERENCE.mp4 (the reference is in the request). Look at its sheet.jpg and add to reference.md what each scene's design is (a big number, a title card, an icon grid...). If it found too few or too many scenes, run it again with --scenes TIMES.`,
@@ -278,6 +286,8 @@ export function done(job:string,taskId:string,o:{output?:string;applied?:string[
  if(t.id==='script'&&out&&fs.existsSync(out)){const d=doctorScript(out);if(!d.answered)throw new Error(`The script doctor still finds ${d.weak.length?`weak line${d.weak.length>1?'s':''} ${d.weak.join(', ')}`:''}${d.weak.length&&d.unsourced.length?' and ':''}${d.unsourced.length?`no source for ${d.unsourced.map(u=>`"${u.claim}" (line ${u.line})`).join(', ')}`:''}. Fix them and run pnpm tempoloom write --doctor ${out}; keep a line as it is only when the brief asks: write --accept ${out} --why "WHY".`);}
  // A second opinion says where it disagrees, or that it does not, and why.
  if(t.id==='second'&&out&&fs.existsSync(out)){const o=opinionOf(fs.readFileSync(out,'utf8'));if(!o.points.length&&!o.none)throw new Error('Write the second opinion with a section "## Disagree" (one line per point: the time or scene, what you see, why, and the role that fixes it), or one line "No disagreement:" and why.');}
+ // Scenes the user locked stay exactly as they were, whatever the step (only the user unlocks them).
+ if(p.locked?.length&&t.produces&&!t.gate){const ch=changedLocked(p);if(ch.length)throw new Error(`${ch.join(', ')} ${ch.length>1?'are':'is'} locked (the user marked ${ch.length>1?'them':'it'} final) but changed. Put ${ch.length>1?'them':'it'} back exactly as ${ch.length>1?'they were':'it was'}: the same words and visual (set "keep": true on its scene visual so nothing redesigns it). Only the user can unlock a scene.`);}
  // A redo after comments on some scenes keeps the others as they were.
  if(t.scope&&!o.anyway){const off=outsideScope(p,t);if(off.length)throw new Error(`The user commented on ${t.scope.scenes.map(s=>'scene '+s.n).join(', ')} only, but ${off.join(', ')} changed too. Put ${off.length>1?'them':'it'} back as ${off.length>1?'they were':'it was'}, or finish with --anyway and say why in --note.`);}
  if(t.id==='learn'&&!p.verdict)throw new Error(`Ask the user for their verdict first: pnpm tempoloom studio verdict ${job} approved|revised|rejected`);
