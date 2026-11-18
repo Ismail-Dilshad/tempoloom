@@ -165,9 +165,7 @@ const Shell={
  icons(h){
   const waiting=h.you.length+(h.agent.length?1:0),choice=document.documentElement.dataset.themeChoice||'system';
   const box=$('#tb-icons');if(!box)return;const open=Pop.anchor?.id;
-  box.innerHTML=`<button class="iconbtn" id="tb-new" aria-label="New video" onclick="Dock.focus()">${I.add}</button>
-   <button class="iconbtn hide-sm" id="tb-help" aria-label="Help and shortcuts" onclick="Shell.help()">${I.help}</button>
-   <button class="iconbtn bell" id="tb-bell" aria-label="Waiting for you${waiting?': '+waiting:''}" aria-haspopup="menu" aria-expanded="false" onclick="Shell.bell(this)">${I.bell}${waiting?`<span class="dot">${waiting}</span>`:''}</button>
+  box.innerHTML=`<button class="iconbtn bell" id="tb-bell" aria-label="Waiting for you${waiting?': '+waiting:''}" aria-haspopup="menu" aria-expanded="false" onclick="Shell.bell(this)">${I.bell}${waiting?`<span class="dot">${waiting}</span>`:''}</button>
    <a class="iconbtn hide-sm" id="tb-settings" aria-label="Settings" href="#/settings">${I.gear}</a>
    <button class="avatar" id="tb-me" aria-label="Your menu" aria-haspopup="menu" aria-expanded="false" onclick="Shell.me(this)">${I.user}</button>`;
   if(open==='tb-bell'||open==='tb-me'){Pop.el?.remove();Pop.el=null;Pop.anchor=null;}
@@ -186,7 +184,7 @@ const Shell={
    <hr><a class="pop-item" role="menuitem" href="#/settings">${I.gear}<span>Models and keys</span></a>
    <a class="pop-item" role="menuitem" href="#/settings/history">${I.history||I.restore}<span>History</span></a>
    <a class="pop-item" role="menuitem" href="#/settings/backup">${I.box||I.export}<span>Backup and move</span></a>
-   <button class="pop-item" role="menuitem" data-close onclick="Shell.help()">${I.keyboard}<span>Keyboard shortcuts</span></button>`,{align:'end',label:'Your menu'});
+   <button class="pop-item" role="menuitem" data-close onclick="Shell.help()">${I.keyboard}<span>Help and shortcuts</span></button>`,{align:'end',label:'Your menu'});
  },
  help(){
   const keys=[['Ctrl K','Search places, tools and everything you made'],['/','Write in the prompt box'],['Enter','Send; Shift+Enter for a new line'],['Esc','Close the top menu, picker or panel'],['[','Collapse or expand the rail'],['G then C, P, L, T, B','Go to Create, Projects, Library, Tools, Brain']];
