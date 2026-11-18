@@ -27,65 +27,53 @@ const I={home:ICON('<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>'),add:IC
 
 /** What each of the mascot's faces means, in plain words. */
 const FACE_LABEL={idle:'Waiting',listening:'Reading',thinking:'Thinking',planning:'Planning',creating:'Making',rendering:'Rendering',done:'Done',excited:'Happy',confused:'Unsure',error:'Stuck','needs-approval':'Needs you',sleeping:'Asleep'};
-function arrangeToasts(change=()=>{}){
- const stack=$('#toasts');change();
- const items=[...stack.children],expanded=stack.matches(':hover,:focus-within');
- if(items[0])items[0].dataset.stacked='false';
- stack.style.setProperty('--toast-front-height',(items[0]?.offsetHeight||0)+'px');
- let y=0,height=0;
- items.forEach((el,index)=>{
-  const top=expanded?y:index*12;
-  el.style.setProperty('--toast-y',top+'px');
-  el.style.setProperty('--toast-scale',expanded?1:1-Math.min(index,2)*.04);
-  el.style.zIndex=String(items.length-index);
-  el.dataset.covered=String(!expanded&&index>=3);el.inert=!expanded&&index>=3;
-  el.dataset.stacked=String(!expanded&&index>0);
-  if(expanded||index<3)height=Math.max(height,top+el.offsetHeight);
-  y+=el.offsetHeight+10;
- });
- stack.style.height=height+'px';
- stack.onpointerenter=()=>arrangeToasts();stack.onpointerleave=()=>arrangeToasts();
- stack.onfocusin=()=>arrangeToasts();stack.onfocusout=()=>queueMicrotask(()=>arrangeToasts());
+/** Notifications in the style of Sileo (sileo.aaryan.design, MIT): a small pill with a badge and a
+ *  title springs open into a rounded body with the message, the two joined by an SVG "gooey" filter.
+ *  It opens a moment after it appears, closes again before it leaves, opens while you hover or focus
+ *  it (its timer waits), and Escape dismisses it. Newest on top. */
+let toastSerial=0;
+const TOAST_H=40,TOAST_BLUR=8,TOAST_R=16;
+function toastLayout(t){
+ const W=t.offsetWidth,open=t.dataset.open==='true',head=t.querySelector('.toast-head'),inner=t.querySelector('.toast-head-inner');
+ const pw=Math.min(W,Math.max(TOAST_H,Math.ceil(inner.scrollWidth)+16)),px=(W-pw)/2;
+ const desc=t.querySelector('.toast-desc'),full=Math.max(TOAST_H*2.25,TOAST_H+desc.scrollHeight),h=open?full:TOAST_H;
+ t.style.setProperty('--h',h+'px');t.style.setProperty('--pw',pw+'px');t.style.setProperty('--px',px+'px');
+ const svg=t.querySelector('svg'),pill=svg.querySelector('.pill'),body=svg.querySelector('.body'),f=svg.querySelector('filter');
+ svg.setAttribute('width',W);svg.setAttribute('height',full);svg.setAttribute('viewBox',`0 0 ${W} ${full}`);
+ f.setAttribute('width',W+TOAST_BLUR*4);f.setAttribute('height',full+TOAST_BLUR*4);
+ Object.assign(pill.style,{x:px+'px',width:pw+'px',height:(open?TOAST_H+TOAST_BLUR*3:TOAST_H)+'px'});
+ Object.assign(body.style,{height:(open?full-TOAST_H:0)+'px'});
+ head.style.maxWidth=pw+'px';
 }
 function toast(msg,bad){
- if([...$('#toasts').children].some(el=>el.dataset.message===msg&&!el.classList.contains('leaving')))return;
- const t=document.createElement('div');t.className='toast'+(bad?' bad':'');
- t.dataset.message=msg;t.tabIndex=0;
- const symbol=(bad?I.error:I.check)||ICON(bad?'<path d="M12 7v6M12 17h.01"/>':'<path d="m7 12 3 3 7-7"/>');
- t.innerHTML=`<div class="toast-heading"><div class="toast-symbol">${symbol}</div><strong>${bad?'Something went wrong':'Done'}</strong></div><div class="toast-reveal"><div><p dir="auto">${esc(msg)}</p></div></div>`;
- let closing=false,timer=null,remaining=bad?9000:3500,started=0,hovered=false,focused=false;
- const resume=()=>{
-  if(closing||hovered||focused||timer!==null)return;
-  started=performance.now();timer=setTimeout(dismiss,remaining);
- };
- const pause=()=>{
-  if(timer===null)return;
-  clearTimeout(timer);timer=null;
-  remaining=Math.max(0,remaining-(performance.now()-started));
- };
- const dismiss=()=>{
-  if(closing)return;
-  closing=true;clearTimeout(timer);
-  const remove=()=>{observer.disconnect();if(t.isConnected)arrangeToasts(()=>t.remove());};
-  if(matchMedia('(prefers-reduced-motion: reduce)').matches){remove();return;}
-  const appearance=getComputedStyle(t);
-  t.style.setProperty('--toast-exit-width',t.offsetWidth+'px');
-  t.style.setProperty('--toast-exit-transform',appearance.transform);
-  t.style.setProperty('--toast-exit-opacity',appearance.opacity);
-  t.classList.add('leaving');
-  t.addEventListener('animationend',e=>{if(e.target===t&&e.animationName==='toast-collapse')remove();});
-  setTimeout(remove,850);
- };
+ const stack=$('#toasts');
+ if([...stack.children].some(el=>el.dataset.message===msg&&el.dataset.leaving!=='true'))return;
+ const id='toast-goo-'+(++toastSerial),state=bad?'error':'success',life=bad?9000:6000,closeAt=life-2000;
+ const t=document.createElement('div');t.className='toast';t.dataset.state=state;t.dataset.message=msg;t.tabIndex=0;
+ t.setAttribute('role',bad?'alert':'status');
+ const icon=(bad?I.error:I.check)||ICON(bad?'<path d="M12 7v6M12 17h.01"/>':'<path d="m7 12 3 3 7-7"/>');
+ t.innerHTML=`<svg class="toast-shape" aria-hidden="true"><defs><filter id="${id}" filterUnits="userSpaceOnUse" x="${-TOAST_BLUR*2}" y="${-TOAST_BLUR*2}" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceGraphic" stdDeviation="${TOAST_BLUR}" result="blur"/><feColorMatrix in="blur" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -10" result="goo"/><feComposite in="SourceGraphic" in2="goo" operator="atop"/></filter></defs>
+  <g filter="url(#${id})"><rect class="pill" x="0" y="0" width="${TOAST_H}" height="${TOAST_H}" rx="${TOAST_R}" ry="${TOAST_R}"/><rect class="body" x="0" y="${TOAST_H}" width="100%" height="0" rx="${TOAST_R}" ry="${TOAST_R}"/></g></svg>
+  <div class="toast-head"><span class="toast-head-inner" style="display:inline-flex;align-items:center;gap:8px"><span class="toast-badge">${icon}</span><strong class="toast-title">${bad?'Something went wrong':'Done'}</strong></span></div>
+  <div class="toast-desc"><p dir="auto">${esc(msg)}</p></div>`;
+ stack.prepend(t);
+ let timer=null,openTimer=null,closeTimer=null,started=0,remaining=life,held=false,leaving=false;
+ const setOpen=on=>{t.dataset.open=String(on);toastLayout(t);};
+ const dismiss=()=>{if(leaving)return;leaving=true;[timer,openTimer,closeTimer].forEach(clearTimeout);setOpen(false);t.dataset.leaving='true';
+  t.style.marginBottom=-(TOAST_H+12)+'px';setTimeout(()=>t.remove(),matchMedia('(prefers-reduced-motion: reduce)').matches?0:600);};
+ const run=()=>{if(leaving||held)return;started=performance.now();timer=setTimeout(dismiss,remaining);
+  const toClose=remaining-(life-closeAt);if(toClose>0)closeTimer=setTimeout(()=>setOpen(false),toClose);};
+ const hold=()=>{if(held||leaving)return;held=true;clearTimeout(timer);clearTimeout(closeTimer);clearTimeout(openTimer);remaining=Math.max(1500,remaining-(performance.now()-started));setOpen(true);};
+ const release=()=>{if(!held||t.matches(':hover')||t.contains(document.activeElement))return;held=false;setOpen(false);run();};
+ t.onpointerenter=e=>{if(e.pointerType!=='touch')hold();};t.onpointerleave=()=>release();
+ t.onfocusin=()=>hold();t.onfocusout=e=>{if(!t.contains(e.relatedTarget))queueMicrotask(release);};
  t.onkeydown=e=>{if(e.key==='Escape'){e.stopPropagation();dismiss();}};
- t.onpointerenter=e=>{if(e.pointerType==='touch')return;hovered=true;pause();};
- t.onpointerleave=()=>{hovered=false;resume();};
- t.onfocusin=()=>{focused=true;pause();};
- t.onfocusout=e=>{if(t.contains(e.relatedTarget))return;focused=false;resume();};
- const observer=new ResizeObserver(()=>{if(t.isConnected)arrangeToasts();else observer.disconnect();});
- observer.observe(t);
- arrangeToasts(()=>$('#toasts').prepend(t));
- resume();
+ t.onclick=()=>{if(t.dataset.open!=='true')hold();};
+ t.dismiss=dismiss;
+ toastLayout(t);
+ requestAnimationFrame(()=>{t.dataset.ready='true';openTimer=setTimeout(()=>{if(!leaving)setOpen(true);},150);run();});
 }
+window.addEventListener('resize',()=>document.querySelectorAll('.toast').forEach(toastLayout));
 /** Routine changes are visible in the refreshed screen; reserve notifications for errors. */
 async function act(fn,done){try{await fn();}catch(e){toast(e.message,true);}await App.refresh(true);}
 /** A question with two answers; resolves true for yes. */

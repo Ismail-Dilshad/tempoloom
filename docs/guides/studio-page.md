@@ -64,6 +64,17 @@ Every icon is a Material Symbol (Outlined, weight 400), Google Flow's set, kept 
 symbol's name, the source and the Apache 2.0 licence. A new icon: copy its path from the same source
 into `MATERIAL_SYMBOLS` and its row into that README.
 
+## Notifications
+
+Notifications follow [Sileo](https://sileo.aaryan.design) (MIT, by Aaryan): a 40 px pill with a tinted
+badge and a coloured title appears at the top centre, springs open into a rounded body with the
+message (the two shapes joined by an SVG "gooey" filter), closes back into the pill two seconds
+before it leaves, and opens while you hover or focus it (its timer waits). Escape dismisses it.
+It is dark on the light theme and light on the dark one (`--toast-*` tokens); a confirmation lasts
+6 s ("Done"), an error 9 s ("Something went wrong", read out at once). The spring curve
+(`--spring`) and the filter's values are Sileo's; the code is our own, with no package added
+(`toast()` in `core.js`).
+
 ## Components
 
 One of each, used everywhere (`shell.css`, `shell.js`): the top bar, the rail and its links, the

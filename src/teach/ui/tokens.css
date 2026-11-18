@@ -16,6 +16,9 @@
  --good-soft:rgb(79 209 165/.14);--warn-soft:rgb(242 193 78/.14);--bad-soft:rgb(255 122 122/.14);
  --on-good:#06281C;--on-warn:#2E2203;--on-bad:#2E0A0A;
  --scrim:rgb(5 7 12/.6);
+ /* notifications (Sileo): light on the dark page, dark on the light one */
+ --toast-fill:#F2F2F2;--toast-text:#1A1A1A;--toast-desc:#575757;--toast-good:#15803D;--toast-bad:#C2272D;--toast-info:#1F5FD6;
+ --spring:linear(0,.002 .6%,.007 1.2%,.015 1.8%,.026 2.4%,.041 3.1%,.06 3.8%,.108 5.3%,.157 6.6%,.214 8%,.467 13.7%,.577 16.3%,.631 17.7%,.682 19.1%,.73 20.5%,.771 21.8%,.808 23.1%,.844 24.5%,.874 25.8%,.903 27.2%,.928 28.6%,.952 30.1%,.972 31.6%,.988 33.1%,1.01 35.7%,1.025 38.5%,1.034 41.6%,1.038 45%,1.035 50.1%,1.012 64.2%,1.003 73%,.999 83.7%,1);
  --shadow-pop:0 8px 24px rgb(0 0 0/.4);--shadow-float:0 16px 48px rgb(0 0 0/.5);
  /* type */
  --font-ui:'Tempoloom UI',system-ui,-apple-system,'Segoe UI',sans-serif;
@@ -57,5 +60,6 @@
  --good-soft:rgb(20 133 92/.10);--warn-soft:rgb(154 106 0/.10);--bad-soft:rgb(194 53 63/.08);
  --on-good:#FFFFFF;--on-warn:#FFFFFF;--on-bad:#FFFFFF;
  --scrim:rgb(17 24 39/.32);
+ --toast-fill:#1A1A1A;--toast-text:#F2F2F2;--toast-desc:#A8A8A8;--toast-good:#4ADE80;--toast-bad:#FF7B7B;--toast-info:#7FB2FF;
  --shadow-pop:0 8px 24px rgb(17 24 39/.12);--shadow-float:0 16px 48px rgb(17 24 39/.16);
 }

@@ -1,5 +1,12 @@
 # Changelog
 
+## 10.2.0: Sileo notifications
+
+- **Notifications in the style of [Sileo](https://sileo.aaryan.design)**: a pill with a badge and a
+  title at the top centre springs open into a body with the message, joined by a gooey SVG filter,
+  folds back before it leaves, and stays open while you hover or focus it. Dark on the light theme,
+  light on the dark one; Escape dismisses it; an error is read out at once.
+
 ## 10.1.0: A simpler page
 
 - **Five places**: Create, Projects, Library, Tools, Brain. Looks and Scenes are tabs of Library,

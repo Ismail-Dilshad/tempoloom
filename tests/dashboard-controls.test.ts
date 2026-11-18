@@ -169,66 +169,60 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
   expect(await page.locator('.toast').count()).toBe(0);
   await page.evaluate("(async()=>{const refresh=App.refresh;App.refresh=async()=>{};try{await act(async()=>{},'Saved');}finally{App.refresh=refresh;}})()");
   expect(await page.locator('.toast').count()).toBe(0);
+  // Notifications in the Sileo style: a pill at the top centre that springs open into a body.
   await page.evaluate(()=>{document.querySelector('#toasts')!.replaceChildren();(window as any).toast('Changes saved');});
   const notification=page.locator('.toast').filter({hasText:'Changes saved'});
   const bounds=await notification.boundingBox();
   expect(bounds).not.toBeNull();
   expect(bounds!.y).toBeLessThan(40);
   expect(Math.abs(bounds!.x+bounds!.width/2-195)).toBeLessThan(2);
+  expect(bounds!.width).toBeLessThanOrEqual(358);
   expect(await notification.locator('button').count()).toBe(0);
+  expect(await notification.getAttribute('role')).toBe('status');
+  expect(await notification.locator('.toast-title').innerText()).toBe('Done');
+  expect(await notification.locator('svg filter feColorMatrix').count()).toBe(1); // the gooey join
   await notification.focus();await page.keyboard.press('Escape');
   await notification.waitFor({state:'detached'});
   await page.emulateMedia({reducedMotion:'no-preference'});
   await page.evaluate(()=>{(window as any).toast('Your video brief has been saved and is ready for the studio.');});
-  const expanding=page.locator('.toast').last();
-  const compact=await expanding.boundingBox();
-  await expanding.evaluate(async el=>{await Promise.all(el.getAnimations({subtree:true}).map(animation=>animation.finished));});
-  const expanded=await expanding.boundingBox();
-  expect(expanded!.width).toBeGreaterThan(compact!.width);
-  expect(expanded!.height).toBeGreaterThan(compact!.height);
-  expect(expanded!.width).toBeLessThanOrEqual(358);
+  const expanding=page.locator('.toast').first();
+  expect((await expanding.boundingBox())!.height).toBeLessThan(48); // a pill first
+  await expect.poll(()=>expanding.getAttribute('data-open')).toBe('true');
+  await expect.poll(async()=>(await expanding.boundingBox())!.height).toBeGreaterThanOrEqual(90); // then it opens
   for(const theme of ['light','dark']){
    await page.evaluate(theme=>{document.documentElement.dataset.theme=theme;},theme);
    expect(await expanding.locator('p').isVisible()).toBe(true);
+   expect(await expanding.locator('.toast-shape rect').first().evaluate(el=>getComputedStyle(el).fill)).toBe(theme==='light'?'rgb(26, 26, 26)':'rgb(242, 242, 242)');
    if(process.env.DASHBOARD_SCREENSHOTS)await page.screenshot({path:'workspace/cache/dashboard-review/toast-'+theme+'.png'});
   }
   await expanding.focus();await page.keyboard.press('Escape');
-  const collapsed=await expanding.evaluate(el=>{
-   const animation=el.getAnimations().find(a=>(a as CSSAnimation).animationName==='toast-collapse')!;
-   animation.pause();animation.currentTime=490;
-   const width=el.getBoundingClientRect().width,opacity=getComputedStyle(el).opacity;
-   animation.play();return {width,opacity};
-  });
-  expect(collapsed.width).toBeCloseTo(160,0);
-  expect(collapsed.opacity).toBe('1');
+  await expect.poll(()=>expanding.getAttribute('data-leaving')).toBe('true');
   await expanding.waitFor({state:'detached'});
+  // Several at once: newest on top, 12 px apart, each dismissed on its own.
   await page.evaluate(()=>{
    document.querySelector('#toasts')!.replaceChildren();
    (window as any).toast('First stacked message');
    (window as any).toast('Second stacked message');
    (window as any).toast('Third stacked message');
   });
-  await page.locator('.toast').evaluateAll(async items=>{await Promise.all(items.flatMap(el=>el.getAnimations({subtree:true}).map(a=>a.finished)));});
-  const second=page.locator('.toast').filter({hasText:'Second stacked message'});
-  const stackedTop=(await second.boundingBox())!.y;
-  const newest=page.locator('.toast').filter({hasText:'Third stacked message'});
-  expect(stackedTop-(await newest.boundingBox())!.y).toBeCloseTo(12,0);
-  if(process.env.DASHBOARD_SCREENSHOTS)await page.screenshot({path:'workspace/cache/dashboard-review/toast-stack.png'});
-  await newest.hover();
-  await second.evaluate(async el=>{await Promise.all(el.getAnimations().map(a=>a.finished));});
-  expect((await second.boundingBox())!.y).toBeGreaterThan((await newest.boundingBox())!.y+(await newest.boundingBox())!.height);
   await page.mouse.move(10,500);
-  await second.evaluate(async el=>{await Promise.all(el.getAnimations().map(a=>a.finished));});
-  await page.locator('.toast').filter({hasText:'Third stacked message'}).dispatchEvent('keydown',{key:'Escape'});
+  await expect.poll(()=>page.locator('.toast[data-open=true]').count()).toBe(3);
+  await page.waitForTimeout(700);
+  const second=page.locator('.toast').filter({hasText:'Second stacked message'}),newest=page.locator('.toast').filter({hasText:'Third stacked message'});
+  const nb=(await newest.boundingBox())!,sb=(await second.boundingBox())!;
+  expect(sb.y-(nb.y+nb.height)).toBeCloseTo(12,0);
+  if(process.env.DASHBOARD_SCREENSHOTS)await page.screenshot({path:'workspace/cache/dashboard-review/toast-stack.png'});
+  await newest.dispatchEvent('keydown',{key:'Escape'});
   await page.waitForFunction(()=>document.querySelectorAll('.toast').length===2);
-  expect(await second.evaluate(el=>getComputedStyle(el).transitionProperty)).toContain('translate');
-  await second.evaluate(async el=>{await Promise.all(el.getAnimations().map(a=>a.finished));});
-  expect((await second.boundingBox())!.y).toBeLessThan(stackedTop);
-  expect((await second.boundingBox())!.y).toBeLessThan(40);
+  await page.waitForTimeout(700);
+  expect((await second.boundingBox())!.y).toBeLessThan(sb.y);
+  // An error says so, and the same message twice shows once.
   await page.evaluate(()=>{document.querySelector('#toasts')!.replaceChildren();});
   await page.evaluate(()=>{(window as any).toast('Cannot save this change',true);(window as any).toast('Cannot save this change',true);});
   expect(await page.locator('.toast').count()).toBe(1);
   expect(await page.locator('.toast').innerText()).toContain('Cannot save this change');
+  expect(await page.locator('.toast').getAttribute('role')).toBe('alert');
+  expect(await page.locator('.toast .toast-title').innerText()).toBe('Something went wrong');
   await page.evaluate(()=>{document.querySelector('#toasts')!.replaceChildren();});
   await page.evaluate(()=>{(window as any).dialog('<h2>Animated options</h2><label for="animated-select">Choose style</label><select id="animated-select"><option>Soft</option><option>Rounded</option></select>');});
   const animatedSelect=page.getByRole('combobox',{name:/Choose style/});
@@ -247,14 +241,15 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
   await page.evaluate(()=>{(window as any).toast('Expires independently');(window as any).toast('Take your time reading');});
   const paused=page.locator('.toast').filter({hasText:'Take your time reading'});
   await page.waitForTimeout(1000);
-  await paused.hover();
-  await page.waitForTimeout(3600);
+  await paused.hover(); // held open while you read it
+  await page.waitForTimeout(5500);
   expect(await paused.isVisible()).toBe(true);
+  expect(await paused.getAttribute('data-open')).toBe('true');
   expect(await page.locator('.toast').filter({hasText:'Expires independently'}).count()).toBe(0);
   await page.mouse.move(10,500);
   await page.waitForTimeout(1600);
   expect(await paused.isVisible()).toBe(true);
-  await paused.waitFor({state:'detached',timeout:1500});
+  await paused.waitFor({state:'detached',timeout:5000});
   await page.evaluate(()=>{location.hash='/studio/scores';});
   await page.getByRole('heading',{name:'First-pass approval'}).waitFor();
   await page.getByText('View chart data').click();

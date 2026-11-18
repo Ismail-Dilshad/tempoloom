@@ -385,3 +385,25 @@ input[type=checkbox]:checked::after{border-color:var(--on-accent)}
 .more-opts{margin-top:var(--space-5);border-top:1px solid var(--line);padding-top:var(--space-2)}
 .more-opts>summary{cursor:pointer;font:var(--type-body-strong);color:var(--text-2);padding:var(--space-2) 0}
 .more-opts>summary:hover{color:var(--text)}
+
+/* ---------- notifications, Sileo style: a pill that springs open into a body, joined by a gooey filter ---------- */
+.toasts{position:fixed;top:max(12px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:var(--z-toast);display:flex;flex-direction:column;align-items:center;gap:12px;padding:0;pointer-events:none;width:var(--toast-w)}
+:root{--toast-w:min(350px,calc(100vw - 32px))}
+.toast{--h:40px;position:relative;width:var(--toast-w);height:var(--h);pointer-events:auto;cursor:default;outline:none;opacity:0;transform:translateY(-6px) scale(.95);transition:transform 396ms var(--spring),opacity 396ms var(--spring),height 600ms var(--spring),margin 396ms var(--spring)}
+.toast[data-ready=true]{opacity:1;transform:none}
+.toast[data-leaving=true]{opacity:0;transform:translateY(-6px) scale(.95);pointer-events:none}
+.toast-shape{position:absolute;top:0;left:0;overflow:visible;pointer-events:none}
+.toast-shape rect{fill:var(--toast-fill)}
+.toast[data-ready=true] .toast-shape rect{transition:x 600ms var(--spring),width 600ms var(--spring),height 600ms var(--spring)}
+.toast-head{position:absolute;top:0;left:var(--px);height:40px;max-width:var(--pw);display:flex;align-items:center;gap:8px;padding:8px;z-index:2}
+.toast[data-ready=true] .toast-head{transition:left 600ms var(--spring),transform 600ms var(--spring)}
+.toast[data-open=true] .toast-head{transform:translateY(3px) scale(.9)}
+.toast-badge{display:grid;place-items:center;flex:none;width:24px;height:24px;border-radius:999px;color:var(--tone);background:color-mix(in srgb,var(--tone) 20%,transparent)}
+.toast-badge svg{width:16px;height:16px}
+.toast-title{font:500 13px/16px var(--font-ui);color:var(--tone);white-space:nowrap;padding-inline-end:6px}
+.toast[data-state=success]{--tone:var(--toast-good)}.toast[data-state=error]{--tone:var(--toast-bad)}.toast[data-state=info]{--tone:var(--toast-info)}
+.toast-desc{position:absolute;top:40px;left:0;right:0;z-index:1;opacity:0;pointer-events:none;transition:opacity 48ms ease 24ms}
+.toast[data-open=true] .toast-desc{opacity:1;pointer-events:auto;transition:opacity 360ms ease 180ms}
+.toast-desc p{margin:0;padding:12px 16px 16px;font:400 14px/20px var(--font-ui);color:var(--toast-desc);overflow-wrap:anywhere}
+.toast:focus-visible .toast-shape{filter:drop-shadow(0 0 0 var(--accent)) drop-shadow(0 0 2px var(--accent))}
+@media(prefers-reduced-motion:reduce){.toast,.toast *,.toast-shape rect{transition-duration:.01ms!important;transition-delay:0s!important}}
