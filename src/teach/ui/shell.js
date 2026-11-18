@@ -166,7 +166,6 @@ const Shell={
   const waiting=h.you.length+(h.agent.length?1:0),choice=document.documentElement.dataset.themeChoice||'system';
   const box=$('#tb-icons');if(!box)return;const open=Pop.anchor?.id;
   box.innerHTML=`<button class="iconbtn bell" id="tb-bell" aria-label="Waiting for you${waiting?': '+waiting:''}" aria-haspopup="menu" aria-expanded="false" onclick="Shell.bell(this)">${I.bell}${waiting?`<span class="dot">${waiting}</span>`:''}</button>
-   <a class="iconbtn hide-sm" id="tb-settings" aria-label="Settings" href="#/settings">${I.gear}</a>
    <button class="avatar" id="tb-me" aria-label="Your menu" aria-haspopup="menu" aria-expanded="false" onclick="Shell.me(this)">${I.user}</button>`;
   if(open==='tb-bell'||open==='tb-me'){Pop.el?.remove();Pop.el=null;Pop.anchor=null;}
   void choice;

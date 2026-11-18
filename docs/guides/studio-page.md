@@ -8,7 +8,7 @@ the page is `src/teach/ui/` talking to `src/teach/server.ts`.
 
 | Region | Size | What it does |
 | --- | --- | --- |
-| Top bar | 64 px | Page name, search everything (Ctrl+K), the bell, settings, your menu (theme, help and shortcuts) |
+| Top bar | 64 px | Page name, search everything (Ctrl+K), the bell, your menu (theme, settings, history, backup, help and shortcuts) |
 | Rail | 232 px, 72 px collapsed | Create, Projects / Library + / Tools, Brain; your agent's face, Trash, Collapse |
 | Canvas | up to 1280 px of content | The place: tabs, a title, its grid or its workspace |
 | Prompt box | 600 px, pinned 24 px from the bottom | On Create, starts a video; inside a project, says what to change |
