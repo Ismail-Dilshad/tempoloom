@@ -36,7 +36,7 @@
  /* motion */
  --dur-fast:120ms;--dur-base:180ms;--dur-slow:260ms;--ease:cubic-bezier(.2,0,0,1);
  /* layout */
- --topbar-h:64px;--rail-w:232px;--rail-w-collapsed:72px;--panel-w:480px;--dock-w:600px;--content-max:1280px;
+ --topbar-h:64px;--rail-w:232px;--rail-w-collapsed:72px;--panel-w:480px;--dock-w:600px;--dock-space:184px;--content-max:1280px;
  /* layers */
  --z-dock:20;--z-chrome:30;--z-panel:40;--z-menu:50;--z-dialog:60;--z-toast:70;--z-tooltip:80;
 

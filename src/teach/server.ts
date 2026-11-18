@@ -86,7 +86,7 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
    if(m==='GET'&&p==='/font-ui.ttf')return await file(req,res,path.join(ROOT,'assets/fonts/open/Inter-Variable.ttf'),'max-age=86400');
    if(m==='GET'&&p==='/font-ui-ar.ttf')return await file(req,res,path.join(ROOT,'assets/fonts/open/NotoSansArabic-Variable.ttf'),'max-age=86400');
    if(m==='GET'&&p==='/favicon.svg')return await file(req,res,path.join(ROOT,'assets/brand/web/favicon.svg'),'max-age=86400');
-   if(m==='GET'&&p==='/mark.svg')return await file(req,res,path.join(ROOT,'assets/brand/logo/svg/tempoloom-mascot-simple.svg'),'max-age=86400');
+   if(m==='GET'&&p==='/mark.svg')return await file(req,res,path.join(ROOT,'assets/brand/logo/svg/tempoloom-mascot.svg'),'max-age=86400');
    if(m==='GET'&&p==='/font-ar.ttf')return await file(req,res,path.join(ROOT,'assets/fonts/open/Vazirmatn-Variable.ttf'),'max-age=86400');
    if(m==='GET'&&p==='/logo-light.svg')return await file(req,res,path.join(ROOT,'assets/brand/logo/svg/tempoloom-wordmark-for-light.svg'),'max-age=86400');
    const face=/^\/mascot\/([a-z-]+)\.svg$/.exec(p);

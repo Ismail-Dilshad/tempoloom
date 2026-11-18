@@ -55,14 +55,14 @@ App.register('create',{
    {label:'Learn a channel',about:'Save a creator\'s style as a look',icon:'channel',run:"openTool('look-channel')"}];
   const ideaHtml=ideas.map(x=>x.href?`<a class="idea" href="${x.href}"><span class="art">${I[x.icon]}</span><span>${esc(x.label)}<small>${esc(x.about)}</small></span></a>`
    :`<button type="button" class="idea" onclick="${x.run}"><span class="art">${I[x.icon]}</span><span>${esc(x.label)}<small>${esc(x.about)}</small></span></button>`).join('');
+  const strip=`<section class="idea-strip" aria-label="Start from an idea"><h3>Start from an idea</h3><div class="idea-row">${ideaHtml}</div></section>`;
   if(!jobs.length&&!queued.length){
-   el.innerHTML=`<div class="no-head"><div class="hero-empty"><img src="/mark.svg?v=5" alt="" width="88" height="88"><h2>Start creating or drop media</h2><p>Describe a video below, paste a script or a link, or drop your footage anywhere on this page.</p></div>
-    <div class="section-head"><h3>Start from an idea</h3></div><div class="idea-row">${ideaHtml}</div></div>`;return;}
-  el.innerHTML=`<div class="no-head">
+   el.innerHTML=`<div class="no-head create-page"><div class="hero-empty"><img src="/mark.svg?v=6" alt="Tempoloom" width="112" height="112"><h2>Start creating or drop media</h2><p>Describe a video below, paste a script or a link, or drop your footage anywhere on this page.</p></div>${strip}</div>`;return;}
+  el.innerHTML=`<div class="no-head create-page">
    ${App.home.you.length?`<div class="banner you" style="margin-bottom:24px"><b>Waiting for you:</b> ${App.home.you.map(j=>`<a href="#/projects/${encodeURIComponent(j.job)}">${esc(j.title)}</a>`).join(', ')}</div>`:''}
-   <div class="section-head"><h3>Your projects</h3><a href="#/projects">See all ${jobs.length+queued.length}</a></div>
-   <div class="card-grid">${queued.map(r=>queuedCard(r)).join('')}${jobs.slice(0,8-Math.min(queued.length,4)).map(j=>{const now=live(j);return projectCard(j,{working:!!now,face:now?.face});}).join('')}</div>
-   <div class="section-head"><h3>Start from an idea</h3></div><div class="idea-row">${ideaHtml}</div></div>`;
+   <div class="create-projects"><div class="section-head"><h3>Your projects</h3><a href="#/projects">See all ${jobs.length+queued.length}</a></div>
+   <div class="card-grid">${queued.map(r=>queuedCard(r)).join('')}${jobs.slice(0,8-Math.min(queued.length,4)).map(j=>{const now=live(j);return projectCard(j,{working:!!now,face:now?.face});}).join('')}</div></div>
+   ${strip}</div>`;
  }});
 function queuedCard(r){
  return `<div class="pcard-wrap" style="position:relative"><div class="pcard"><span class="thumb">${I[r.input?.mode==='edit'?'film':r.input?.mode==='art'?'brush':'spark']}<span class="badge">Sent, not started</span></span>
