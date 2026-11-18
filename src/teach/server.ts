@@ -37,7 +37,7 @@ const LANGS=languageSchema.options;
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const MAX_MB=Number(process.env.TEACH_MAX_MB||'2048');
-const UI=new Set(['tokens.css','shell.css','shell.js','create.js','places.js','app.css','core.js','taste.js','teach.js','learned.js','studio.js','gallery.js','live.js','settings.js','backup.js','script.js','ideas.js','history.js','text.js','find.js']);
+const UI=new Set(['tokens.css','shell.css','shell.js','create.js','places.js','icons.js','app.css','core.js','taste.js','teach.js','learned.js','studio.js','gallery.js','live.js','settings.js','backup.js','script.js','ideas.js','history.js','text.js','find.js']);
 const TYPES:Record<string,string>={'.js':'text/javascript; charset=utf-8','.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.mp4':'video/mp4','.jpg':'image/jpeg','.svg':'image/svg+xml','.ttf':'font/ttf','.json':'application/json; charset=utf-8',
  '.png':'image/png','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.webm':'video/webm','.mov':'video/quicktime','.m4v':'video/mp4','.mp3':'audio/mpeg','.wav':'audio/wav','.m4a':'audio/mp4'};
 class HttpError extends Error{constructor(public status:number,message:string){super(message);}}
@@ -85,13 +85,13 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
    if(m==='GET'&&p==='/font.ttf')return await file(req,res,path.join(ROOT,'assets/fonts/open/Fredoka-Variable.ttf'),'max-age=86400');
    if(m==='GET'&&p==='/font-ui.ttf')return await file(req,res,path.join(ROOT,'assets/fonts/open/Inter-Variable.ttf'),'max-age=86400');
    if(m==='GET'&&p==='/font-ui-ar.ttf')return await file(req,res,path.join(ROOT,'assets/fonts/open/NotoSansArabic-Variable.ttf'),'max-age=86400');
-   if(m==='GET'&&p==='/favicon.svg')return await file(req,res,path.join(ROOT,'assets/brand/web/favicon.svg'),'max-age=86400');
-   if(m==='GET'&&p==='/mark.svg')return await file(req,res,path.join(ROOT,'assets/brand/logo/svg/tempoloom-mascot.svg'),'max-age=86400');
+   if(m==='GET'&&p==='/favicon.svg')return await file(req,res,path.join(ROOT,'assets/brand/web/favicon.svg'),'no-cache');
+   if(m==='GET'&&p==='/mark.svg')return await file(req,res,path.join(ROOT,'assets/brand/logo/svg/tempoloom-mascot.svg'),'no-cache');
    if(m==='GET'&&p==='/font-ar.ttf')return await file(req,res,path.join(ROOT,'assets/fonts/open/Vazirmatn-Variable.ttf'),'max-age=86400');
-   if(m==='GET'&&p==='/logo-light.svg')return await file(req,res,path.join(ROOT,'assets/brand/logo/svg/tempoloom-wordmark-for-light.svg'),'max-age=86400');
+   if(m==='GET'&&p==='/logo-light.svg')return await file(req,res,path.join(ROOT,'assets/brand/logo/svg/tempoloom-wordmark-for-light.svg'),'no-cache');
    const face=/^\/mascot\/([a-z-]+)\.svg$/.exec(p);
-   if(m==='GET'&&face&&(FACES as readonly string[]).includes(face[1]!))return await file(req,res,path.join(ROOT,'assets/brand/expressions/svg',`mascot-${face[1]}.svg`),'max-age=86400');
-   if(m==='GET'&&p==='/logo.svg')return await file(req,res,path.join(ROOT,'assets/brand/logo/svg/tempoloom-wordmark-for-dark.svg'),'max-age=86400');
+   if(m==='GET'&&face&&(FACES as readonly string[]).includes(face[1]!))return await file(req,res,path.join(ROOT,'assets/brand/expressions/svg',`mascot-${face[1]}.svg`),'no-cache');
+   if(m==='GET'&&p==='/logo.svg')return await file(req,res,path.join(ROOT,'assets/brand/logo/svg/tempoloom-wordmark-for-dark.svg'),'no-cache');
       const given=Buffer.from(String(req.headers['x-teach-key']??url.searchParams.get('k')??'')),want=Buffer.from(key);
    if(given.length!==want.length||!timingSafeEqual(given,want))throw new HttpError(403,'Open the Teach page with the link from the terminal (pnpm tempoloom teach open)');
    res.setHeader('x-content-type-options','nosniff');res.setHeader('referrer-policy','no-referrer');

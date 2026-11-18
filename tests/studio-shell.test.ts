@@ -37,6 +37,16 @@ describe('design tokens',()=>{
  });
 });
 
+describe('the icons',()=>{
+ it('are Material Symbols, with their source and licence recorded',()=>{
+  const js=fs.readFileSync(path.join(UI,'icons.js'),'utf8'),names=[...js.matchAll(/^ ([a-z]+):\['([a-z_0-9]+)'/gm)];
+  expect(names.length).toBeGreaterThan(60);
+  for(const k of ['home','spark','film','palette','scenes','folder','tools','brain','trash','bell','send','sliders','rules'])expect(js).toMatch(new RegExp(`^ ${k}:\\[`,'m'));
+  expect(fs.readFileSync('assets/icons/material-symbols/LICENSE.txt','utf8')).toMatch(/Apache License/);
+  const readme=fs.readFileSync('assets/icons/material-symbols/README.md','utf8');for(const [,,n] of names)expect(readme).toContain(`| ${n} |`);
+ });
+});
+
 describe('the brand',()=>{
  it('is blue in every logo, mascot, icon and the brand profile',()=>{
   const old=/#0B3B3C|#FF6B4A|#FFF1D6|#F2DDB3|#E6CE9C|#082D2E/i;
@@ -53,9 +63,11 @@ describe('the page server',()=>{
   const {serve}=await import('../src/teach/server.js'),s=await serve({port:4830});
   try{
    const base=`http://127.0.0.1:${s.port}`,h={'x-teach-key':s.key};
-   for(const f of ['font-ui.ttf','font-ui-ar.ttf','favicon.svg','mark.svg','tokens.css','shell.css','shell.js','create.js','places.js'])expect((await fetch(base+'/'+f)).status,f).toBe(200);
+   for(const f of ['font-ui.ttf','font-ui-ar.ttf','favicon.svg','mark.svg','tokens.css','shell.css','shell.js','create.js','places.js','icons.js'])expect((await fetch(base+'/'+f)).status,f).toBe(200);
    const page=await (await fetch(base+'/?k='+s.key)).text();
-   for(const f of ['/tokens.css','/shell.css','/shell.js','/create.js','/places.js'])expect(page).toContain(f);
+   for(const f of ['/tokens.css','/shell.css','/shell.js','/create.js','/places.js','/icons.js'])expect(page).toContain(f);
+   expect(page.indexOf('/icons.js')).toBeGreaterThan(page.indexOf('/places.js')); // the icon set is drawn last, over every screen's own
+   expect((await fetch(base+'/logo.svg')).headers.get('cache-control')).toBe('no-cache'); // a recoloured logo shows at once
    const {tools}=await (await fetch(base+'/api/tools',{headers:h})).json() as {tools:{id:string;name:string;group:string;icon:string;command:string;open?:string}[]};
    expect(tools.map(t=>t.id)).toEqual(expect.arrayContaining(['media-voice','media-speakers','media-match','edit-by-text','look-channel','paint-from','edit-export-timeline']));
    expect(tools.find(t=>t.id==='edit-by-text')).toMatchObject({name:'Edit by text',open:'#/tools/text'});

@@ -57,7 +57,7 @@ App.register('create',{
    :`<button type="button" class="idea" onclick="${x.run}"><span class="art">${I[x.icon]}</span><span>${esc(x.label)}<small>${esc(x.about)}</small></span></button>`).join('');
   const strip=`<section class="idea-strip" aria-label="Start from an idea"><h3>Start from an idea</h3><div class="idea-row">${ideaHtml}</div></section>`;
   if(!jobs.length&&!queued.length){
-   el.innerHTML=`<div class="no-head create-page"><div class="hero-empty"><img src="/mark.svg?v=6" alt="Tempoloom" width="112" height="112"><h2>Start creating or drop media</h2><p>Describe a video below, paste a script or a link, or drop your footage anywhere on this page.</p></div>${strip}</div>`;return;}
+   el.innerHTML=`<div class="no-head create-page"><div class="hero-empty"><img src="/mark.svg?v=10" alt="Tempoloom" width="112" height="112"><h2>Start creating or drop media</h2><p>Describe a video below, paste a script or a link, or drop your footage anywhere on this page.</p></div>${strip}</div>`;return;}
   el.innerHTML=`<div class="no-head create-page">
    ${App.home.you.length?`<div class="banner you" style="margin-bottom:24px"><b>Waiting for you:</b> ${App.home.you.map(j=>`<a href="#/projects/${encodeURIComponent(j.job)}">${esc(j.title)}</a>`).join(', ')}</div>`:''}
    <div class="create-projects"><div class="section-head"><h3>Your projects</h3><a href="#/projects">See all ${jobs.length+queued.length}</a></div>

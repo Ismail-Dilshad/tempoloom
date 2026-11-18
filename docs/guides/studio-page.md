@@ -57,6 +57,13 @@ Type is Inter (open licence, `assets/fonts/open/`), with Noto Sans Arabic for Ar
 scale of 28 / 22 / 18 / 15 / 14 / 13 / 12 px. Spacing is a 4-point scale; radii are 6, 8, 12, 16, 24
 and full; motion is 120, 180 and 260 ms on one easing, and reduced motion turns slides into fades.
 
+## Icons
+
+Every icon is a Material Symbol (Outlined, weight 400), Google Flow's set, kept as paths in
+`icons.js` and drawn in the current text colour; `assets/icons/material-symbols/` records each
+symbol's name, the source and the Apache 2.0 licence. A new icon: copy its path from the same source
+into `MATERIAL_SYMBOLS` and its row into that README.
+
 ## Components
 
 One of each, used everywhere (`shell.css`, `shell.js`): the top bar, the rail and its links, the

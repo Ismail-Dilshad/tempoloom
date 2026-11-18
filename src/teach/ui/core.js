@@ -51,8 +51,8 @@ function toast(msg,bad){
  if([...$('#toasts').children].some(el=>el.dataset.message===msg&&!el.classList.contains('leaving')))return;
  const t=document.createElement('div');t.className='toast'+(bad?' bad':'');
  t.dataset.message=msg;t.tabIndex=0;
- const symbol=bad?'<path d="M12 7v6M12 17h.01"/>':'<path d="m7 12 3 3 7-7"/>';
- t.innerHTML=`<div class="toast-heading"><div class="toast-symbol">${ICON(symbol)}</div><strong>${bad?'Something went wrong':'Done'}</strong></div><div class="toast-reveal"><div><p dir="auto">${esc(msg)}</p></div></div>`;
+ const symbol=(bad?I.error:I.check)||ICON(bad?'<path d="M12 7v6M12 17h.01"/>':'<path d="m7 12 3 3 7-7"/>');
+ t.innerHTML=`<div class="toast-heading"><div class="toast-symbol">${symbol}</div><strong>${bad?'Something went wrong':'Done'}</strong></div><div class="toast-reveal"><div><p dir="auto">${esc(msg)}</p></div></div>`;
  let closing=false,timer=null,remaining=bad?9000:3500,started=0,hovered=false,focused=false;
  const resume=()=>{
   if(closing||hovered||focused||timer!==null)return;
@@ -125,7 +125,7 @@ const Controls={
    trigger.id='select-control-'+(++this.serial);trigger.setAttribute('role','combobox');trigger.setAttribute('aria-haspopup','listbox');trigger.setAttribute('aria-expanded','false');
    const labels=[...select.labels];labels.forEach(label=>label.htmlFor=trigger.id);
    const label=select.getAttribute('aria-label')||labels.map(l=>l.textContent.trim()).join(' ')||'Choose an option';
-   const sync=()=>{trigger.innerHTML=`<span>${esc(select.selectedOptions[0]?.textContent||'Choose an option')}</span>${ICON('<path d="m7 10 5 5 5-5"/>')}`;trigger.disabled=select.disabled;trigger.setAttribute('aria-label',label+': '+(select.selectedOptions[0]?.textContent||''));};
+   const sync=()=>{trigger.innerHTML=`<span>${esc(select.selectedOptions[0]?.textContent||'Choose an option')}</span>${I.chevron||ICON('<path d="m7 10 5 5 5-5"/>')}`;trigger.disabled=select.disabled;trigger.setAttribute('aria-label',label+': '+(select.selectedOptions[0]?.textContent||''));};
    wrap.append(trigger);sync();select.addEventListener('change',sync);
    trigger.onclick=()=>this.open?.trigger===trigger?this.close():this.show(select,trigger);
    trigger.onkeydown=e=>{
@@ -155,7 +155,7 @@ const Controls={
     button.type='button';button.className='number-step '+(direction<0?'decrease':'increase');
     button.setAttribute('aria-label',(direction<0?'Decrease ':'Increase ')+name);
     button.title=(direction<0?'Decrease ':'Increase ')+name+' · Shift for 10 steps';
-    button.innerHTML=ICON(direction<0?'<path d="M5 12h14"/>':'<path d="M5 12h14M12 5v14"/>');
+    button.innerHTML=(direction<0?I.remove:I.add)||ICON(direction<0?'<path d="M5 12h14"/>':'<path d="M5 12h14M12 5v14"/>');
     button.onpointerdown=e=>{
      if(e.button!==0||button.disabled)return;
      e.preventDefault();button.focus();
@@ -476,7 +476,7 @@ const App={
   const links=PLACES.map(p=>{if(p==='-')return '<hr>';const c=p.count?p.count(h):null,here=this.place===p.id;
    return `<a class="navlink" href="#/${p.id}" ${here?'aria-current="page"':''} data-tooltip-rail="${esc(p.label)}">${I[p.icon]}<span class="lbl">${p.label}</span>${c&&c[1]?`<span class="n hot" title="${c[1]} waiting for you">${c[1]}</span>`:''}${p.plus?`<span class="plus" role="button" tabindex="0" aria-label="${esc(p.plus.label)}" onclick="event.preventDefault();event.stopPropagation();${p.plus.run}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();${p.plus.run}}">${I.add}</span>`:''}</a>`;}).join('');
   const navScroll=$('.rail-body')?.scrollTop||0,m=h.mascot,collapsed=$('#app').dataset.rail==='collapsed';
-  $('#side').innerHTML=`<header class="rail-head side-header"><a class="logo" href="#/create" aria-label="Tempoloom, Create"><img class="logo-mark" src="/logo${light?'-light':''}.svg?v=5" alt="Tempoloom" width="146" height="31"><img class="logo-small" src="/mark.svg?v=5" alt="" width="32" height="32"></a></header>
+  $('#side').innerHTML=`<header class="rail-head side-header"><a class="logo" href="#/create" aria-label="Tempoloom, Create"><img class="logo-mark" src="/logo${light?'-light':''}.svg?v=10" alt="Tempoloom" width="146" height="31"><img class="logo-small" src="/mark.svg?v=10" alt="" width="32" height="32"></a></header>
    <nav class="rail-body side-body" aria-label="Places">${links}</nav>
    <footer class="rail-foot side-footer">
     ${m?`<a class="agent-chip" href="${m.job?'#/projects/'+encodeURIComponent(m.job):'#/projects'}" title="${esc((m.who||'Your agent')+': '+(m.detail||FACE_LABEL[m.face]||''))}"><img src="/mascot/${esc(m.face)}.svg" alt="${esc(FACE_LABEL[m.face]||'')}" width="36" height="28"><span><b>${esc(m.who||'Your agent')}</b><small dir="auto">${esc(m.detail||FACE_LABEL[m.face]||'')}</small></span></a>`:''}

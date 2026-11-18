@@ -1,5 +1,15 @@
 # Changelog
 
+## 10.0.1: Material Symbols and a full-screen Create
+
+- **Icons**: the page draws every icon from Google's Material Symbols (Outlined), the set Google
+  Flow uses, in one file (`src/teach/ui/icons.js`); source and Apache 2.0 licence in
+  `assets/icons/material-symbols/`.
+- **Create fills the screen**: the welcome or your projects take the room, every idea card shows
+  above the prompt box (one swipeable row on phones), and nothing is hidden behind the box. The
+  middle shows the Tempoloom clapper logo.
+- The logos, mascot faces and favicon are sent fresh every time, so a recoloured logo shows at once.
+
 ## 10.0.0: The Studio page, redesigned in blue
 
 - **Seven places instead of seventeen screens**, in Google Flow's layout: Create, Projects, Looks,
