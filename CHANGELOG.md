@@ -1,5 +1,16 @@
 # Changelog
 
+## 10.1.0: A simpler page
+
+- **Five places**: Create, Projects, Library, Tools, Brain. Looks and Scenes are tabs of Library,
+  with Teach a video; old addresses open their new place.
+- **A project shows what matters first**: its newest video, what waits for you and the button to
+  approve. Every step, the team at work, the request and the script check are under Details.
+- **Settings for a video**: shape, length, language and voice-over (captions for an edit); taste
+  profile, two looks, second opinion, colours and style are under More options.
+- **Brain has three tabs**: Taste, Lessons (with the patterns your good examples share) and What worked.
+- The project page's header loses its duplicate "Tell the studio something": the prompt box does it.
+
 ## 10.0.1: Material Symbols and a full-screen Create
 
 - **Icons**: the page draws every icon from Google's Material Symbols (Outlined), the set Google

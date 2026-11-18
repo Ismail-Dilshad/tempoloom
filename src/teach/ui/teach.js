@@ -509,7 +509,7 @@ function setupEditor(d){
  marks();paint();
 }
 window.addEventListener('hashchange',()=>{
- if(!location.hash.startsWith('#/teach/add')){
+ if(!/^#\/(teach\/add|library\/teach)(\/|$)/.test(location.hash)){
   $('#view').classList.remove('teach-editor-view');
   if(Teach.ed){Teach.ed.video.pause();Teach.ed.dispose?.();Teach.ed=null;}
  }

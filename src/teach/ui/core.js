@@ -371,32 +371,30 @@ window.safeToggle=()=>{const s=App.home?.safe;if(!s)return;const order=['',...s.
 document.addEventListener('loadedmetadata',e=>{const v=e.target;if(v.tagName!=='VIDEO')return;const w=v.closest('.safe-wrap');if(w)w.classList.toggle('vertical',v.videoHeight/v.videoWidth>=1.5);},true);
 
 // ---------- places, routes and the shell ----------
-/** The rail: seven places in Flow's order, with dividers after Scenes and Library. */
+/** The rail: five places in Flow's order, with dividers around Library. */
 const PLACES=[
  {id:'create',label:'Create',icon:'spark'},
  {id:'projects',label:'Projects',icon:'film',count:h=>[h.studio.jobs,h.studio.waitingForYou]},
- {id:'looks',label:'Looks',icon:'palette'},
- {id:'scenes',label:'Scenes',icon:'scenes'},
  '-',
  {id:'library',label:'Library',icon:'folder',plus:{label:'Add to your library',run:'libraryAdd()'}},
  '-',
  {id:'tools',label:'Tools',icon:'tools'},
  {id:'brain',label:'Brain',icon:'brain',count:h=>[h.teach.lessons,0]}];
 /** Public address -> the screen that draws it. Longer addresses first. */
-const ROUTES=[['create','create'],['projects/finished','studio/gallery'],['projects','studio/videos'],['looks','looks'],['scenes','scenes'],
- ['library/references','teach/library'],['library/tidy','find'],['library','library'],
+const ROUTES=[['create','create'],['projects/finished','studio/gallery'],['projects','studio/videos'],
+ ['library/looks','looks'],['library/scenes','scenes'],['library/references','teach/library'],['library/teach','teach/add'],['library/tidy','find'],['library','library'],
  ['tools/text','studio/text'],['tools/trends','studio/ideas'],['tools','tools'],
- ['brain/taste','taste'],['brain/lessons','teach/lessons'],['brain/patterns','teach/patterns'],['brain/worked','studio/scores'],['brain/teach','teach/add'],['brain','taste'],
+ ['brain/taste','taste'],['brain/lessons','teach/lessons'],['brain/worked','studio/scores'],['brain','taste'],
  ['settings/history','history'],['settings/backup','backup'],['settings/appearance','appearance'],['settings','settings'],['trash','trash']];
 /** Old addresses keep working: each opens its new place. */
 const REDIRECTS=[['home','create'],['studio/new','create'],['studio/ideas','tools/trends'],['studio/live','projects'],['studio/videos','projects'],['studio/gallery','projects/finished'],
- ['studio/scores','brain/worked'],['studio/text','tools/text'],['taste','brain/taste'],['teach/add','brain/teach'],['teach/library','library/references'],
- ['teach/lessons','brain/lessons'],['teach/patterns','brain/patterns'],['find','library/tidy'],['history','settings/history'],['backup','settings/backup']];
+ ['studio/scores','brain/worked'],['studio/text','tools/text'],['taste','brain/taste'],['teach/add','library/teach'],['teach/library','library/references'],
+ ['teach/lessons','brain/lessons'],['teach/patterns','brain/lessons'],['brain/patterns','brain/lessons'],['brain/teach','library/teach'],['looks','library/looks'],['scenes','library/scenes'],['find','library/tidy'],['history','settings/history'],['backup','settings/backup']];
 /** Tabs inside a place. */
 const TABS={projects:[['projects','All projects'],['projects/finished','Finished videos']],
- library:[['library','Your media'],['library/references','Taught videos'],['library/tidy','Find and tidy']],
+ library:[['library','Your media'],['library/looks','Looks'],['library/scenes','Scenes'],['library/references','Taught videos'],['library/tidy','Find and tidy']],
  tools:[['tools','All tools'],['tools/text','Edit by text'],['tools/trends','Trend watch']],
- brain:[['brain/taste','Taste'],['brain/lessons','Lessons'],['brain/patterns','Patterns'],['brain/worked','What worked'],['brain/teach','Teach a video']],
+ brain:[['brain/taste','Taste'],['brain/lessons','Lessons'],['brain/worked','What worked']],
  settings:[['settings','Models and keys'],['settings/appearance','Appearance'],['settings/history','History'],['settings/backup','Backup and move']]};
 const longest=list=>[...list].sort((a,b)=>b[0].length-a[0].length);
 function resolveRoute(h){

@@ -366,3 +366,22 @@ input[type=checkbox]:checked::after{border-color:var(--on-accent)}
 }
 @media(prefers-reduced-motion:reduce){.rail,.dock-wrap,.progress i{transition:none}}
 @media(forced-colors:active){.navlink[aria-current=page]{outline:1px solid Highlight}.chip.on,.seg-tiles button[aria-pressed=true]{outline:1px solid Highlight}}
+
+/* ---------- a project: the video and what waits for you first, the rest under Details ---------- */
+.job-simple{display:flex;flex-direction:column;gap:var(--space-4);max-width:960px}
+.job-video{margin-top:var(--space-4)}
+.job-video video{display:block;width:100%;max-height:60vh;border-radius:var(--radius-md);background:#000}
+.job-video p{margin:var(--space-2) 0 0}
+.job-yours{display:flex;flex-direction:column;gap:var(--space-4)}
+.job-details{border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface-1)}
+.job-details>summary{display:flex;align-items:center;gap:var(--space-2);min-height:52px;padding:0 var(--space-4);cursor:pointer;font:var(--type-body-strong);color:var(--text-2);list-style:none}
+.job-details>summary::-webkit-details-marker{display:none}
+.job-details>summary::before{content:'';width:8px;height:8px;border-inline-end:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg);transition:transform var(--dur-fast) var(--ease)}
+.job-details[open]>summary::before{transform:rotate(45deg)}
+.job-details>summary:hover{color:var(--text)}
+.job-details[open]{padding-bottom:var(--space-4)}
+.job-details[open]>:not(summary){margin-inline:var(--space-4)}
+.job-details>.card+.card,.job-details>section+section{margin-top:var(--space-3)}
+.more-opts{margin-top:var(--space-5);border-top:1px solid var(--line);padding-top:var(--space-2)}
+.more-opts>summary{cursor:pointer;font:var(--type-body-strong);color:var(--text-2);padding:var(--space-2) 0}
+.more-opts>summary:hover{color:var(--text)}

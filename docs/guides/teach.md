@@ -14,7 +14,7 @@ pnpm tempoloom teach next          # what the agent runs
 
 `teach open` prints a link like `http://127.0.0.1:4747/?k=…` and opens it. The page listens on
 this computer only and needs the key in the link. The same server has the
-[Studio page](studio.md#the-studio-page): Teach a video is in Brain. On it you:
+[Studio page](studio.md#the-studio-page): Teach a video is in Library. On it you:
 
 - **Add a video**: drop a file (up to 2 GB; `TEACH_MAX_MB` changes it) or paste a link. A link
   shows its title, length and size first and is downloaded, for study only, when you confirm
@@ -30,7 +30,7 @@ this computer only and needs the key in the link. The same server has the
   when you tick it).
 
 Teach and the [Studio](studio.md#the-studio-page) are one app ([its design](studio-page.md)): a rail
-with seven places, Create as the home page, a bell that always shows what to tell your agent, and a
+with five places, Create as the home page, a bell that always shows what to tell your agent, and a
 dark, light or system theme. What you teach lives in two places:
 
 - **Teach a video**: drop several videos at once; each waits in a queue to be set up.

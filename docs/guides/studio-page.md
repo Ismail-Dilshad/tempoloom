@@ -1,6 +1,6 @@
 # The Studio page's design
 
-The page (`pnpm tempoloom studio open`) is one shell with seven places. Everything starts in the
+The page (`pnpm tempoloom studio open`) is one shell with five places. Everything starts in the
 prompt box; everything else opens in one panel on the right. The engine behind it does not change:
 the page is `src/teach/ui/` talking to `src/teach/server.ts`.
 
@@ -9,7 +9,7 @@ the page is `src/teach/ui/` talking to `src/teach/server.ts`.
 | Region | Size | What it does |
 | --- | --- | --- |
 | Top bar | 64 px | Page name, search everything (Ctrl+K), new video, help, the bell, settings, your menu (theme) |
-| Rail | 232 px, 72 px collapsed | Create, Projects, Looks, Scenes / Library + / Tools, Brain; your agent's face, Trash, Collapse |
+| Rail | 232 px, 72 px collapsed | Create, Projects / Library + / Tools, Brain; your agent's face, Trash, Collapse |
 | Canvas | up to 1280 px of content | The place: tabs, a title, its grid or its workspace |
 | Prompt box | 600 px, pinned 24 px from the bottom | On Create, starts a video; inside a project, says what to change |
 | Right panel | 480 px | One at a time: rules, settings, a tool, help; pushes the canvas on wide screens, covers it below 1280 px |
@@ -24,10 +24,10 @@ the prompt box spans the screen and panels become full-height sheets.
 | --- | --- | --- |
 | `#/create` | Create (home) | `create.js` |
 | `#/projects`, `#/projects/JOB`, `#/projects/finished` | Projects, a workspace, finished videos | `places.js`, `studio.js`, `gallery.js` |
-| `#/looks`, `#/scenes` | Looks, Scenes | `places.js` |
-| `#/library`, `#/library/references`, `#/library/tidy` | Your media, taught videos, Find and tidy | `places.js`, `teach.js`, `find.js` |
+| `#/library`, `#/library/looks`, `#/library/scenes` | Your media, Looks, Scenes | `places.js` |
+| `#/library/references`, `#/library/teach`, `#/library/tidy` | Taught videos, Teach a video, Find and tidy | `teach.js`, `find.js` |
 | `#/tools`, `#/tools/text`, `#/tools/trends` | Tools, Edit by text, Trend watch | `places.js`, `text.js`, `ideas.js` |
-| `#/brain/taste` … `#/brain/teach` | Taste, Lessons, Patterns, What worked, Teach a video | `taste.js`, `learned.js`, `studio.js`, `teach.js` |
+| `#/brain/taste`, `#/brain/lessons`, `#/brain/worked` | Taste, Lessons with patterns, What worked | `taste.js`, `learned.js`, `studio.js` |
 | `#/settings`, `#/settings/appearance`, `/history`, `/backup` | Settings | `settings.js`, `places.js`, `history.js`, `backup.js` |
 | `#/trash` | Trash | `places.js` |
 
@@ -86,3 +86,10 @@ states. Each has hover, pressed, keyboard focus, selected and disabled states.
 Ctrl+K searches places, tools and everything you made · `/` writes in the prompt box · Enter sends
 (Shift+Enter for a new line) · Esc closes the top menu, picker or panel · `[` collapses the rail ·
 G then C, P, L, T, B or S goes to Create, Projects, Library, Tools, Brain or Scenes.
+
+## Kept simple on purpose
+
+The rail has five places; a project shows its newest video and what waits for you, with every step,
+the team and the request folded under Details; the prompt box's Settings shows four choices, with
+the rest under More options; Brain has three tabs. Every feature is still there, one fold or one
+Ctrl+K away.

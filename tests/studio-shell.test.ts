@@ -102,8 +102,8 @@ describe('places and old addresses',()=>{
    expect(new URL(page.url()).hash).toBe('');
    expect(await page.locator('#title').innerText()).toBe('Create');
    const moves:[string,string,string][]=[['home','create','Create'],['studio/new','create','Create'],['studio/videos','projects','Projects'],['studio/gallery','projects/finished','Projects'],
-    ['studio/scores','brain/worked','Brain'],['studio/ideas','tools/trends','Tools'],['studio/text','tools/text','Tools'],['taste','brain/taste','Brain'],['teach/add','brain/teach','Brain'],
-    ['teach/library','library/references','Library'],['teach/lessons','brain/lessons','Brain'],['teach/patterns','brain/patterns','Brain'],['find','library/tidy','Library'],
+    ['studio/scores','brain/worked','Brain'],['studio/ideas','tools/trends','Tools'],['studio/text','tools/text','Tools'],['taste','brain/taste','Brain'],['teach/add','library/teach','Library'],
+    ['teach/library','library/references','Library'],['teach/lessons','brain/lessons','Brain'],['teach/patterns','brain/lessons','Brain'],['looks','library/looks','Library'],['scenes','library/scenes','Library'],['brain/teach','library/teach','Library'],['find','library/tidy','Library'],
     ['history','settings/history','Settings'],['backup','settings/backup','Settings'],['settings','settings','Settings']];
    for(const [old,now,place] of moves){
     await page.evaluate(h=>{location.hash='/'+h;},old);
@@ -111,7 +111,7 @@ describe('places and old addresses',()=>{
     await page.waitForFunction(p=>document.querySelector('#title')?.textContent===p||p==='Settings',place);
     const current=page.locator('.rail .navlink[aria-current=page] .lbl');
     if(place!=='Settings')expect(await current.innerText(),old).toBe(place);
-    if(now.includes('/'))await expect.poll(()=>page.locator('.tabs [aria-current=page]').count(),{message:old}).toBe(1);
+    if(now.includes('/')&&now!=='library/teach')await expect.poll(()=>page.locator('.tabs [aria-current=page]').count(),{message:old}).toBe(1);
    }
    // The command menu reaches places and tools by name.
    await page.keyboard.press('Control+k');await page.getByRole('textbox',{name:/Search places, tools/}).fill('clean audio');

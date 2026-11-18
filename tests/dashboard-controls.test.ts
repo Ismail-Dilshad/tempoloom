@@ -55,8 +55,8 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
   const header=await page.locator('.rail-head').boundingBox(),navigation=await page.locator('.rail-body').boundingBox(),footer=await page.locator('.rail-foot').boundingBox();
   expect(navigation!.y).toBeGreaterThanOrEqual(header!.y+header!.height);
   expect(footer!.y+footer!.height).toBeCloseTo(1000,0);
-  // The rail: seven places in order, Trash and Collapse at its foot.
-  expect(await page.locator('.rail-body .navlink .lbl').allInnerTexts()).toEqual(['Create','Projects','Looks','Scenes','Library','Tools','Brain']);
+  // The rail: five places in order, Trash and Collapse at its foot.
+  expect(await page.locator('.rail-body .navlink .lbl').allInnerTexts()).toEqual(['Create','Projects','Library','Tools','Brain']);
   await page.getByRole('button',{name:'Collapse',exact:true}).click();
   expect(await page.locator('#app').getAttribute('data-rail')).toBe('collapsed');
   await page.keyboard.press('[');
@@ -68,6 +68,7 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
   await page.getByRole('button',{name:'16:9'}).click();
   expect(await page.getByRole('button',{name:'16:9'}).getAttribute('aria-pressed')).toBe('true');
   const length=page.getByRole('button',{name:'2 min'});await length.click();
+  expect(await page.getByText('More options').isVisible()).toBe(true);expect(await page.getByRole('checkbox',{name:/second opinion/}).isVisible()).toBe(false);
   const language=page.getByRole('combobox',{name:/^Language:/});
   await language.click();await page.getByRole('option',{name:'Arabic',exact:true}).click();
   expect(await page.locator('#language').inputValue()).toBe('ar');

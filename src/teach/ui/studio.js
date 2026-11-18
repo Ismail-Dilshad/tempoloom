@@ -200,31 +200,32 @@ window.tellStudio=job=>{
 };
 const gateTitle=t=>t.title.replace(/^The user approves/,'Approve').replace(/^The user picks/,'Pick');
 function jobHtml(j,live){
- const final=j.tasks.find(t=>t.id==='final'),shown=j.tasks.filter(t=>!t.gate&&t.status!=='todo'),working=live?.driver.state==='working';
- const dot=t=>t.rating?(t.rating.rating==='bad'?'b':t.rating.rating==='good'?'g':''):'';
- return `<div class="jobgrid">
-  <nav class="stepnav" aria-label="Steps">${j.tasks.filter(t=>!t.gate).map(t=>t.status==='todo'?`<a style="opacity:.5"><span class="dot"></span>${esc(shortStep(t))}</a>`:`<a href="#step-${t.id}" onclick="event.preventDefault();jumpStep('${t.id}')" ${t.status==='doing'?'class="doing"':''}><span class="dot ${t.status==='doing'?'live-pulse':dot(t)}"></span>${esc(shortStep(t))}</a>`).join('')}</nav>
-  <div>
-   <div class="card"><div class="row">${stateBadge(j,working)}<span class="badge st">${j.mode==='edit'?'edit':j.mode==='art'?'painting':'motion'}</span><span class="muted small" style="margin-left:auto">${j.done} of ${j.of} steps, started ${ago(j.created)}</span></div>
-    <div class="prog"><i style="width:${Math.round(j.done/j.of*100)}%"></i></div>
-    <details><summary>The request</summary><div class="out" dir="auto">${esc(j.request)}</div></details></div>
+ const final=j.tasks.find(t=>t.id==='final'),working=live?.driver.state==='working';
+ // The newest video the studio showed, and the steps that lead to the approval waiting for you.
+ const latest=[...j.tasks].reverse().find(t=>!t.gate&&t.show?.some(s=>s.type==='video')),lv=latest?.show.filter(s=>s.type==='video').at(-1);
+ let cut=-1;j.tasks.forEach((t,i)=>{if(t.gate&&t.status==='approved')cut=i;});
+ const early=j.tasks.slice(0,cut+1),rest=j.tasks.slice(cut+1),html=l=>l.map(t=>t.gate?gateHtml(j,t):stepHtml(j,t,final)).join('');
+ const yours=j.waitingFor==='you'&&!j.finished,top=yours?rest:j.finished&&final?[final]:[];
+ const banner=live?.driver.state==='stopped'?`<div class="banner stopped"><b>It stopped in the middle of a step.</b> ${esc(live.driver.label)}, nothing heard since ${esc(ago(live.driver.since))}. Tell your agent “Resume the studio job ${esc(j.job)}”: it continues where it stopped.</div>`
+  :j.finished||working||j.drive?'':yours?`<div class="banner you"><b>Your turn.</b> Look at what the studio made below, rate it if you like, then approve to continue.</div>`:`<div class="banner">${AGENT_LINE}</div>`;
+ const open=Studio.openDetails===j.job;
+ return `<div class="job-simple">
+  <section class="card job-now"><div class="row">${stateBadge(j,working)}<span class="badge st">${j.mode==='edit'?'Edit':j.mode==='art'?'Painting':'Motion graphics'}</span><span class="muted small" style="margin-inline-start:auto">${j.done} of ${j.of} steps, started ${ago(j.created)}</span></div>
+   <div class="progress" style="margin-top:12px"><i style="width:${Math.round(j.done/j.of*100)}%"></i></div>
+   ${lv?`<div class="job-video">${safeVideo(`<video controls preload="metadata" src="${mediaUrl(j,latest,'show-'+lv.k)}"></video>`)}<p class="muted small">${esc(latest.title)}, ${esc(lv.name)}</p></div>`:''}</section>
+  ${banner}
+  ${top.length?`<div class="job-yours">${html(top)}</div>`:''}
+  <details class="job-details" ${open?'open':''} ontoggle="Studio.openDetails=this.open?'${esc(j.job)}':null"><summary>Details: every step, the team at work, the request</summary>
    ${j.finished?'':driveHtml(j)}
+   <section class="card"><h3 style="margin:0 0 8px">The request</h3><div class="out" dir="auto">${esc(j.request)}</div></section>
    ${j.script?`<section class="card sd-card" id="script-check"><div class="teach-section-head"><h3>The script, line by line</h3><span class="muted small">${j.script.mine?'Your script':'Written by the studio'}${j.script.kept?`, ${j.script.kept} better line${j.script.kept>1?'s':''} kept`:''}</span></div>
     ${j.script.mine&&j.script.open&&j.script.canChange?'<p class="muted small" style="margin:0 0 8px">The studio suggests better versions of some lines. Keep the ones you like: the line changes in the script before the storyboard is made. Your other words stay exactly as you wrote them.</p>':''}${!j.script.canChange&&j.script.open?'<p class="muted small" style="margin:0 0 8px">The storyboard is being made from this script, so lines can no longer change here.</p>':''}${j.script.accepted?`<p class="muted small">Kept as it is because: ${esc(j.script.accepted)}</p>`:''}
     ${typeof scriptDoctorHtml==='function'?scriptDoctorHtml(j.script,{job:j.job,canChange:j.script.canChange}):''}</section>`:''}
    ${(j.textEdits||[]).length?`<section class="card"><div class="teach-section-head"><h3>Edit it by its words</h3></div><p class="muted small" style="margin-top:0">The cuts are planned from what is said. Strike a sentence or bring one back, choose the opening and the takes.</p>${j.textEdits.map(e=>`<a class="btn small" href="#/studio/text/${encodeURIComponent(e.id)}">${esc(e.title)}${e.made?`, ${e.made} made`:''}</a>`).join(' ')}</section>`:''}
    ${typeof liveHtml==='function'?liveHtml(live):''}
-   ${live?.driver.state==='stopped'?`<div class="banner stopped"><b>It stopped in the middle of a step.</b> ${esc(live.driver.label)}, nothing heard since ${esc(ago(live.driver.since))}. Tell your agent “Resume the studio job ${esc(j.job)}”: it continues where it stopped, and a render from its last finished scene. <button class="iconbtn" style="vertical-align:middle" title="Copy the command" aria-label="Copy the command" onclick="copyText('pnpm tempoloom studio resume ${esc(j.job)}')">${I.copy}</button></div>`
-   :j.finished||working||j.drive?'':j.waitingFor==='you'?`<div class="banner you"><b>Your turn.</b> Look at the steps below, rate them, then approve to continue.</div>`:`<div class="banner">${AGENT_LINE}${j.agentReady.length?`<div class="muted small" style="margin-top:4px">Ready for it: ${j.agentReady.map(esc).join(', ')}</div>`:''}</div>`}
-   ${(()=>{
-    // Steps before the last approval are folded away, unless one of them is being redone.
-    let cut=-1;j.tasks.forEach((t,i)=>{if(t.gate&&t.status==='approved')cut=i;});
-    const early=j.tasks.slice(0,cut+1),rest=j.tasks.slice(cut+1),html=l=>l.map(t=>t.gate?gateHtml(j,t):stepHtml(j,t,final)).join('');
-    const open=Studio.openEarly===j.job||early.some(t=>!t.gate&&(t.status==='redo'||t.status==='doing'))||!rest.some(t=>t.gate||t.status!=='todo');
-    const n=early.filter(t=>!t.gate).length;
-    return cut<0?html(j.tasks):`<details ${open?'open':''} ontoggle="Studio.openEarly=this.open?'${esc(j.job)}':null"><summary>${n} earlier step${n===1?'':'s'}, approved</summary>${html(early)}</details>${html(rest)}`;})()}
-   ${j.feedback.length?`<h2 style="margin:22px 0 6px">Rules this video created</h2>${j.feedback.map(f=>`<div class="lesson"><div dir="auto">${esc(f.rule)}</div><div class="muted small">Sent to: ${f.goesTo.map(esc).join(', ')}</div></div>`).join('')}`:''}
-  </div></div>`;
+   <h3 style="margin:20px 0 8px">Every step</h3>${html(early.concat(yours?[]:rest).filter(t=>!top.includes(t)))}
+   ${j.feedback.length?`<h3 style="margin:20px 0 8px">Rules this video created</h3>${j.feedback.map(f=>`<div class="lesson"><div dir="auto">${esc(f.rule)}</div><div class="muted small">Sent to: ${f.goesTo.map(esc).join(', ')}</div></div>`).join('')}`:''}
+  </details></div>`;
 }
 const shortStep=t=>({intake:'Intake',brief:'Brief',research:'Research',facts:'Facts',script:'Script',style:'Look',storyboard:'Storyboard',sound:'Sound',voice:'Voice',design:'Design',build:'Preview',review:'Review',final:'Final video',learn:'Wrap-up',analysis:'Footage analysis','cut-plan':'Cut plan',overlays:'Visuals',captions:'Captions',finish:'Finishing',reference:'Reference'})[t.id]||t.title;
 function gateHtml(j,t){
@@ -271,7 +272,7 @@ function stepHtml(j,t,final){
     <div class="row" style="margin-top:8px"><button class="btn small primary" onclick="rateNow('${J}','${t.id}','bad',${isFinal})">Send and redo this step</button><span class="muted small">The reason is saved as a rule for the ${esc(t.owner)}, and only this step is redone.</span></div></div>`:''}`:''}
  </div>`;
 }
-window.jumpStep=id=>{const el=document.getElementById('step-'+id);if(!el)return;const d=el.closest('details');if(d)d.open=true;el.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});};
+window.jumpStep=id=>{const el=document.getElementById('step-'+id);if(!el)return;for(let d=el.closest('details');d;d=d.parentElement?.closest('details'))d.open=true;el.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});};
 window.zoomImage=(src,name)=>dialog(`<img alt="${esc(name)}" src="${esc(src)}" style="display:block;max-width:100%;max-height:76vh;margin:0 auto;border-radius:10px"><div class="row" style="justify-content:space-between;margin-top:12px"><span class="muted small">${esc(name)}</span><span class="row"><a class="btn small ghost" href="${esc(src)}&dl=1" download>${I.down} Download</a><button class="btn small" onclick="closeDialog()">Close</button></span></div>`,{wide:true});
 window.toggleBad=(job,task)=>{const f=Studio.form(job,task);f.open=!f.open;App.show(false);};
 window.toggleReason=(job,task,id)=>{const f=Studio.form(job,task);f.reasons.has(id)?f.reasons.delete(id):f.reasons.add(id);App.show(false);};

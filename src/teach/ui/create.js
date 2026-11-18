@@ -168,18 +168,20 @@ window.settingsPanel=()=>{
   body:`<span class="field-label">Shape</span>${seg('shape',SHAPES,N.shape)}
    ${art?sel('medium',[['','Studio chooses'],['watercolor','Watercolour'],['oil','Oil'],['acrylic','Acrylic'],['gouache','Gouache'],['pencil','Pencil'],['charcoal','Charcoal'],['ink','Ink'],['pastel','Pastel'],['mixed','Mixed media']],N.medium||'','Medium')
     :`<span class="field-label">Length</span>${seg('seconds',LENGTHS,N.seconds)}${sel('language',LANGS,N.language,'Language')}`}
+   ${art?'':`<div style="margin-top:16px">${m?toggle('voice',N.voice,'Add a voice-over','Uses your ElevenLabs account.'):toggle('captions',N.captions,'Captions','')}</div>`}
+   <details class="more-opts" ${store.get('more-opts',false)?'open':''} ontoggle="store.set('more-opts',this.open)"><summary>More options</summary>
    ${(S.profiles||[]).length>1?sel('profile',S.profiles.map(p=>[p.id==='main'?'':p.id,p.name]),N.profile,'Taste profile'):''}
-   <span class="field-label">Before it goes on</span>
    ${m?toggle('pick',N.pick,'Show me two looks and let me pick','The studio waits for your choice before it builds.'):''}
+   ${N.mode==='edit'?toggle('visuals',N.visuals,'Designed visuals over the footage','Where they help.'):''}
    ${toggle('second',N.second!==false,'A second opinion','Another reviewer with a different taste checks it.')}
    ${N.second!==false?sel('secondProfile',[['','A general viewer'],...(S.profiles||[]).filter(p=>p.id!==(N.profile||'main')).map(p=>[p.id,p.name])],N.secondProfile||'','Their taste'):''}
-   ${art?'':`<span class="field-label">Sound and words</span>${m?toggle('voice',N.voice,'Add a voice-over','Uses your ElevenLabs account.'):toggle('captions',N.captions,'Captions','')+toggle('visuals',N.visuals,'Designed visuals over the footage','Where they help.')}`}
-   ${art?'':`<span class="field-label">Brand</span>${toggle('useColors',N.useColors,'Use these colours for this video','')}
+   ${art?'':`${toggle('useColors',N.useColors,'Use these colours for this video','')}
     <div class="row" style="gap:12px;margin:4px 0 0 12px" ${N.useColors?'':'hidden'}>${[['primary','Main'],['accent','Accent'],['background','Background']].map(([k,l])=>`<label class="row small" style="gap:6px"><input type="color" id="c-${k}" value="${esc(N[k])}"> ${l}</label>`).join('')}</div>`}
    ${m&&S.taught?.length?sel('like',[['','None'],...S.taught.map(v=>[v.id,v.title.slice(0,60)])],N.like,'In the spirit of a video you taught'):''}
-   ${m&&styles.length>2?`<span class="field-label">Style</span>${toggle('useMix',N.useMix,'Mix two styles I taught','')}
+   ${m&&styles.length>2?`${toggle('useMix',N.useMix,'Mix two styles I taught','')}
     <div ${N.useMix?'':'hidden'}>${sel('mixA',styles,N.mixA||'','Style A')}${sel('mixB',styles,N.mixB||'','Style B')}
-    <label class="field-label" for="mixWeight">How much of each: <b id="mixLabel">${N.mixWeight??70}% A, ${100-(N.mixWeight??70)}% B</b></label><input type="range" id="mixWeight" min="0" max="100" step="5" value="${N.mixWeight??70}" style="width:100%"></div>`:''}`,
+    <label class="field-label" for="mixWeight">How much of each: <b id="mixLabel">${N.mixWeight??70}% A, ${100-(N.mixWeight??70)}% B</b></label><input type="range" id="mixWeight" min="0" max="100" step="5" value="${N.mixWeight??70}" style="width:100%"></div>`:''}
+   </details>`,
   foot:`<button class="btn primary" onclick="Panel.close();dockRefresh()">Done</button>`});
  const B=Panel.body(),redraw=()=>{const y=B.scrollTop;settingsPanel();Panel.body().scrollTop=y;};
  B.querySelectorAll('[data-seg]').forEach(b=>b.onclick=()=>{N[b.dataset.seg]=b.dataset.v;Studio.save();redraw();});

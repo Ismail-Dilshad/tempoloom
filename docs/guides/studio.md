@@ -170,23 +170,21 @@ pnpm tempoloom studio inbox     # the agent: new requests, tasks ready, what wai
 pnpm tempoloom studio take r-1a2b3c4d
 ```
 
-**The page.** Seven places on the rail, in this order, with everything else opening in one panel on
-the right (see [the page's design](studio-page.md)):
+**The page.** Five places on the rail, with everything else opening in one panel on the right
+(see [the page's design](studio-page.md)):
 
 | Place | What it holds |
 | --- | --- |
 | Create | The home page: the prompt box at the bottom, your newest projects, ideas to start from |
-| Projects | Every video (All, Making, Waiting for you, Done) and each one's workspace; Finished videos |
-| Looks | Looks learned from a video or a channel, and videos you taught, to use in a new video |
-| Scenes | Every scene of every project; locked ones stay as they are |
-| Library | Your media (logos, pictures, music, sounds, clips), taught videos, Find and tidy |
+| Projects | Every video (All, Making, Waiting for you, Done); Finished videos. A project shows its newest video and what waits for you first; every step, the team and the request are under Details |
+| Library | Your media (logos, pictures, music, sounds, clips), Looks, Scenes, Taught videos (and Teach a video), Find and tidy |
 | Tools | Every tool the studio has beyond making a video, from `agent/tools/registry.json` |
-| Brain | Taste, Lessons, Patterns, What worked (scores), Teach a video |
+| Brain | Taste, Lessons (with the patterns your good examples share), What worked |
 
 Trash and Collapse sit at the foot of the rail; Settings (models and keys, appearance, history,
 backup) and the bell (what waits for you, what to tell your agent) are in the top bar. Ctrl+K
-searches places, tools and everything you made. Old addresses (`#/studio/new`, `#/teach/lessons`
-and the rest) open their new place.
+searches places, tools and everything you made. Old addresses (`#/studio/new`, `#/teach/lessons`,
+`#/looks` and the rest) open their new place.
 
 **The brief.** Two modes. *Motion graphics video*: a finished script (used word for word), a
 prompt, a topic, or only a link. *Edit my footage*: up to eight files, with instructions or
@@ -219,8 +217,8 @@ other used lose, and the pick is passed to the next roles.
 
 **More on the page.** The prompt box keeps what you write (it is saved as you type); its pill picks
 the kind of video and offers presets; + adds files for this video or from your library; Rules
-holds notes and shows the rules the studio follows; Settings holds the shape, length, language,
-voice, captions, colours, style and second opinion. Inside a project the same box tells the studio
+holds notes and shows the rules the studio follows; Settings holds the shape, length, language and voice-over (captions
+for an edit); More options holds the taste profile, two looks, second opinion, colours and style. Inside a project the same box tells the studio
 what to change ("Tell the studio something": it becomes a rule for the roles it concerns). Follow a
 job with the step list on the left, open a picture large, download any shown file, copy the
 script. Move to trash hides a job (nothing is deleted); the Trash restores it or deletes it for

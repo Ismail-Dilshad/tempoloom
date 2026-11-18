@@ -10,7 +10,7 @@ const PF={get filter(){return store.get('projects-filter','all');},set filter(v)
  scr.title=a=>{const j=a&&Studio.S?.jobs.find(x=>x.job===a);return j?jobTitle(j):'Projects';};
  scr.head=a=>a?head(a):{title:'Projects',text:'Every video the studio is making or has made. Open one to follow its steps, versions and scenes.'};
  scr.actions=a=>{const j=a&&Studio.S?.jobs.find(x=>x.job===a);
-  return j?`<a class="btn small ghost" href="#/projects">${I.back} All projects</a><button class="btn small" onclick="openProjectTools('${esc(j.job)}')">${I.tools} Tools</button><button class="btn small" onclick="tellStudio('${esc(j.job)}')">Tell the studio something</button><button class="btn small ghost" onclick="archiveJob('${esc(j.job)}',${!j.archived})">${j.archived?I.restore+' Restore':I.trash+' Move to trash'}</button>`
+  return j?`<a class="btn small ghost" href="#/projects">${I.back} All projects</a><button class="btn small" onclick="openProjectTools('${esc(j.job)}')">${I.tools} Tools</button><button class="btn small ghost" onclick="archiveJob('${esc(j.job)}',${!j.archived})">${j.archived?I.restore+' Restore':I.trash+' Move to trash'}</button>`
    :`<button class="btn primary" onclick="Dock.focus()">${I.add} New video</button>`;};
  scr.render=function(el,arg,changed){
   if(arg)return render.call(this,el,arg,changed);
@@ -48,14 +48,14 @@ App.register('looks',{
  actions:()=>`<button class="btn" onclick="openTool('looks')">${I.eye} Learn a look</button><button class="btn" onclick="openTool('look-channel')">${I.channel} Learn a channel</button>`,
  render(el){
   const S=this.data,looks=S.looks||[],taught=S.taught||[];
-  if(!looks.length&&!taught.length){el.innerHTML=`<div class="empty"><h2>No looks yet</h2><p>Teach a video you like, or learn a look from a video or a whole channel. Then mix two of them into a style of your own.</p><div class="row" style="justify-content:center"><a class="btn primary" href="#/brain/teach">Teach a video</a><button class="btn" onclick="openTool('look-channel')">Learn a channel</button></div></div>`;return;}
+  if(!looks.length&&!taught.length){el.innerHTML=`<div class="empty"><h2>No looks yet</h2><p>Teach a video you like, or learn a look from a video or a whole channel. Then mix two of them into a style of your own.</p><div class="row" style="justify-content:center"><a class="btn primary" href="#/library/teach">Teach a video</a><button class="btn" onclick="openTool('look-channel')">Learn a channel</button></div></div>`;return;}
   const card=(name,about,icon,actions)=>`<div class="scene-card"><div class="row" style="gap:12px;flex-wrap:nowrap"><span class="empty-art" style="width:40px;height:40px;border-radius:8px;flex:none">${I[icon]}</span><div style="min-width:0"><b dir="auto" style="font:var(--type-title-3)">${esc(name)}</b>${about?`<p class="muted small" dir="auto" style="margin:2px 0 0">${esc(about)}</p>`:''}</div></div><div class="row">${actions}</div></div>`;
   el.innerHTML=`${looks.length?`<div class="section-head"><h3>Learned looks</h3><span class="muted small">${looks.length}</span></div>
    <div class="card-grid">${looks.map(l=>card(l.name,l.summary,l.name.startsWith('channel-')?'channel':'palette',`<button class="btn small" onclick="useLook('${esc(l.name)}')">Use in a new video</button>`)).join('')}</div>`:''}
    ${taught.length?`<div class="section-head"><h3>Videos you taught</h3><span class="muted small">${taught.length}</span></div>
    <div class="card-grid">${taught.map(v=>card(v.title,'',`eye`,`<button class="btn small" onclick="useTaught('${esc(v.id)}')">Make one in this spirit</button>`)).join('')}</div>`:''}`;
  }});
-window.useLook=name=>{const N=Studio.N;N.mode='motion';N.useMix=true;N.mixA=name;if(N.mixB===name)N.mixB='';Studio.save();location.hash='#/create';setTimeout(()=>{settingsPanel();toast('Choose a second style to mix with, or set the share to 100% A.');},150);};
+window.useLook=name=>{store.set('more-opts',true);const N=Studio.N;N.mode='motion';N.useMix=true;N.mixA=name;if(N.mixB===name)N.mixB='';Studio.save();location.hash='#/create';setTimeout(()=>{settingsPanel();toast('Choose a second style to mix with, or set the share to 100% A.');},150);};
 window.useTaught=id=>{const N=Studio.N;N.mode='motion';N.like=id;Studio.save();location.hash='#/create';setTimeout(()=>{Dock.focus();toast('The next video follows the spirit of that video. Describe it below.');},150);};
 
 // ---------- Scenes ----------
@@ -149,3 +149,16 @@ App.register('appearance',{
    ${[['dark','Dark','Near-black, easy on the eyes and on video.'],['light','Light','Bright surfaces for daylight rooms.'],['system','System','Follows your computer\'s setting.']].map(([k,l,a])=>`<label class="radio-card"><input type="radio" name="theme" value="${k}" ${c===k?'checked':''} onchange="App.theme('${k}');App.show(false)"><span><b>${l}</b><small>${a}</small></span></label>`).join('')}</div>
    <h2 style="margin-top:24px">Rail</h2><label class="radio-card" style="margin-top:8px"><input type="checkbox" ${rail?'checked':''} onchange="App.collapse();App.show(false)"><span><b>Show the rail as icons</b><small>Press [ anywhere to switch.</small></span></label></section>`;
  }});
+
+// ---------- Brain, Lessons: lessons and the patterns your good examples share, on one page ----------
+(()=>{
+ const les=App.screens['teach/lessons'],pat=App.screens['teach/patterns'];if(!les||!pat)return;const render=les.render;
+ les.render=function(el,...rest){
+  render.call(this,el,...rest);
+  const sec=document.createElement('section');sec.className='lessons-patterns';
+  sec.innerHTML=`<div class="section-head" style="margin-top:40px"><h3>Patterns your good examples share</h3></div><div></div>`;
+  pat.render.call({data:this.data},sec.lastElementChild);
+  el.append(sec);
+ };
+})();
+

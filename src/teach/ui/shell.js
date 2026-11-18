@@ -126,7 +126,7 @@ const Cmd={
   const out=[];
   out.push({label:'Make a new video',icon:'spark',group:'Actions',run:()=>Dock.focus()});
   out.push({label:'Add files to your library',icon:'upload',group:'Actions',run:()=>libraryAdd()});
-  out.push({label:'Teach a video',icon:'add',group:'Actions',run:()=>{location.hash='#/brain/teach';}});
+  out.push({label:'Teach a video',icon:'add',group:'Actions',run:()=>{location.hash='#/library/teach';}});
   for(const p of PLACES)if(p!=='-')out.push(go(p.label,'#/'+p.id,p.icon,'Go to'));
   for(const [place,tabs] of Object.entries(TABS))for(const [path,l] of tabs)if(path.includes('/'))out.push(go(l,'#/'+path,PLACES.find(p=>p.id===place)?.icon||'gear','Go to',PLACES.find(p=>p.id===place)?.label||'Settings'));
   out.push(go('Trash','#/trash','trash','Go to'));
@@ -193,7 +193,7 @@ const Shell={
   Panel.open({id:'help',title:'Help',sub:'Everything starts in the prompt box. The rail takes you to what you made and what you keep.',
    body:`<h3 class="field-label">Keyboard</h3>${keys.map(([k,l])=>`<div class="list-row"><div><b>${esc(l)}</b></div><kbd>${esc(k)}</kbd></div>`).join('')}
     <h3 class="field-label">Where things are</h3>
-    ${[['Create','Start a video from words, a link or your footage.'],['Projects','Every video, its steps, versions and scenes.'],['Looks','Styles you taught, mixed or learned from a channel.'],['Scenes','Scenes from every project; locked ones stay as they are.'],['Library','Your logos, music, pictures, clips and taught videos.'],['Tools','Clean audio, match colours, captions, timelines and more.'],['Brain','What the studio learned: your taste, lessons and what worked.']].map(([a,b])=>`<div class="list-row"><div><b>${a}</b><small>${b}</small></div></div>`).join('')}`});
+    ${[['Create','Start a video from words, a link or your footage.'],['Projects','Every video you made or are making.'],['Library','Your media, looks, scenes and taught videos.'],['Tools','Clean audio, match colours, captions, timelines and more.'],['Brain','What the studio learned: your taste, lessons and what worked.']].map(([a,b])=>`<div class="list-row"><div><b>${a}</b><small>${b}</small></div></div>`).join('')}`});
  },
  start(){
   let g=0;
@@ -210,7 +210,7 @@ const Shell={
    if(e.key==='/'&&Dock.el){e.preventDefault();Dock.focus();return;}
    if(e.key==='['){e.preventDefault();App.collapse();return;}
    if(e.key==='g'){g=Date.now();return;}
-   if(Date.now()-g<900){const to={c:'create',p:'projects',l:'library',t:'tools',b:'brain',s:'scenes'}[e.key];if(to){e.preventDefault();location.hash='#/'+to;}g=0;}
+   if(Date.now()-g<900){const to={c:'create',p:'projects',l:'library',t:'tools',b:'brain',s:'library/scenes'}[e.key];if(to){e.preventDefault();location.hash='#/'+to;}g=0;}
   });
  },
 };
