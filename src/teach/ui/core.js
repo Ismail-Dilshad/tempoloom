@@ -369,21 +369,63 @@ function safeApply(root=document){
 }
 window.safeToggle=()=>{const s=App.home?.safe;if(!s)return;const order=['',...s.chosen],mode=store.get('safe-show','');store.set('safe-show',order[(order.indexOf(mode)+1)%order.length]);safeApply();};
 document.addEventListener('loadedmetadata',e=>{const v=e.target;if(v.tagName!=='VIDEO')return;const w=v.closest('.safe-wrap');if(w)w.classList.toggle('vertical',v.videoHeight/v.videoWidth>=1.5);},true);
+
+// ---------- places, routes and the shell ----------
+/** The rail: seven places in Flow's order, with dividers after Scenes and Library. */
+const PLACES=[
+ {id:'create',label:'Create',icon:'spark'},
+ {id:'projects',label:'Projects',icon:'film',count:h=>[h.studio.jobs,h.studio.waitingForYou]},
+ {id:'looks',label:'Looks',icon:'palette'},
+ {id:'scenes',label:'Scenes',icon:'scenes'},
+ '-',
+ {id:'library',label:'Library',icon:'folder',plus:{label:'Add to your library',run:'libraryAdd()'}},
+ '-',
+ {id:'tools',label:'Tools',icon:'tools'},
+ {id:'brain',label:'Brain',icon:'brain',count:h=>[h.teach.lessons,0]}];
+/** Public address -> the screen that draws it. Longer addresses first. */
+const ROUTES=[['create','create'],['projects/finished','studio/gallery'],['projects','studio/videos'],['looks','looks'],['scenes','scenes'],
+ ['library/references','teach/library'],['library/tidy','find'],['library','library'],
+ ['tools/text','studio/text'],['tools/trends','studio/ideas'],['tools','tools'],
+ ['brain/taste','taste'],['brain/lessons','teach/lessons'],['brain/patterns','teach/patterns'],['brain/worked','studio/scores'],['brain/teach','teach/add'],['brain','taste'],
+ ['settings/history','history'],['settings/backup','backup'],['settings/appearance','appearance'],['settings','settings'],['trash','trash']];
+/** Old addresses keep working: each opens its new place. */
+const REDIRECTS=[['home','create'],['studio/new','create'],['studio/ideas','tools/trends'],['studio/live','projects'],['studio/videos','projects'],['studio/gallery','projects/finished'],
+ ['studio/scores','brain/worked'],['studio/text','tools/text'],['taste','brain/taste'],['teach/add','brain/teach'],['teach/library','library/references'],
+ ['teach/lessons','brain/lessons'],['teach/patterns','brain/patterns'],['find','library/tidy'],['history','settings/history'],['backup','settings/backup']];
+/** Tabs inside a place. */
+const TABS={projects:[['projects','All projects'],['projects/finished','Finished videos']],
+ library:[['library','Your media'],['library/references','Taught videos'],['library/tidy','Find and tidy']],
+ tools:[['tools','All tools'],['tools/text','Edit by text'],['tools/trends','Trend watch']],
+ brain:[['brain/taste','Taste'],['brain/lessons','Lessons'],['brain/patterns','Patterns'],['brain/worked','What worked'],['brain/teach','Teach a video']],
+ settings:[['settings','Models and keys'],['settings/appearance','Appearance'],['settings/history','History'],['settings/backup','Backup and move']]};
+const longest=list=>[...list].sort((a,b)=>b[0].length-a[0].length);
+function resolveRoute(h){
+ for(const [old,now] of longest(REDIRECTS))if(h===old||h.startsWith(old+'/'))return {redirect:now+h.slice(old.length)};
+ for(const [pub,view] of longest(ROUTES))if(h===pub||h.startsWith(pub+'/')){const rest=h.slice(pub.length+1);return {path:pub,view,arg:rest?decodeURIComponent(rest):null};}
+ return {path:'create',view:'create',arg:null};
+}
+/** The public address that shows a screen (the shortest one). */
+const publicOf=view=>ROUTES.filter(r=>r[1]===view).sort((a,b)=>a[0].length-b[0].length)[0]?.[0]??view;
+
 const App={
- home:null,route:'home',arg:null,screens:{},
- /** Sections: [route, label, icon, group, count from home]. */
- nav:[['home','Home','home',''],['taste','Your taste','heart',''],
-  ['teach/add','Teach a video','add','Teach'],['teach/library','Library','lib','Teach',h=>[h.teach.videos+h.teach.waiting,h.teach.waiting]],['teach/lessons','Lessons','lesson','Teach',h=>[h.teach.lessons,0]],['teach/patterns','Patterns','pattern','Teach',h=>[h.teach.patterns,0]],
-  ['studio/new','New video','add','Studio'],['studio/videos','Videos','film','Studio',h=>[h.studio.jobs,h.studio.waitingForYou]],['studio/gallery','Gallery','gallery','Studio',h=>[h.made||0,0]],['studio/scores','Scores','chart','Studio',h=>[h.scores.good+h.scores.bad,0]]],
+ home:null,route:'create',arg:null,path:'create',screens:{},nav:[],
  register(route,screen){this.screens[route]=screen;},
- go(route,arg){location.hash='#/'+route+(arg?'/'+encodeURIComponent(arg):'');},
- parse(){const h=location.hash.replace(/^#\/?/,''),known=Object.keys(this.screens).sort((a,b)=>b.length-a.length).find(r=>h===r||h.startsWith(r+'/'));
-  if(!known){this.route=location.pathname==='/studio'?'studio/new':'home';this.arg=null;return;}
-  this.route=known;this.arg=h.length>known.length?decodeURIComponent(h.slice(known.length+1)):null;},
+ go(route,arg){location.hash='#/'+(this.screens[route]?publicOf(route):route)+(arg?'/'+encodeURIComponent(arg):'');},
+ get place(){return this.path.split('/')[0];},
+ parse(){
+  let h=location.hash.replace(/^#\/?/,'');
+  if(!h&&location.pathname==='/studio')h='create';
+  let r=resolveRoute(h);
+  if(r.redirect){h=r.redirect;history.replaceState(null,'',location.pathname+location.search+'#/'+h);r=resolveRoute(h);}
+  if(!this.screens[r.view])r={path:'create',view:'create',arg:null};
+  this.route=r.view;this.path=r.path;this.arg=r.arg;
+ },
  async start(){
-  Controls.start();Tooltips.start();
+  Controls.start();Tooltips.start();Shell.start();
+  $('#app').dataset.rail=store.get('rail','');
   $('#menu').innerHTML=I.menu;$('#menu').onclick=()=>$('#app').classList.toggle('open');$('#scrim').onclick=()=>$('#app').classList.remove('open');
-  window.addEventListener('hashchange',()=>{this.parse();$('#app').classList.remove('open');this.changed=true;const s=this.screens[this.route];if(!s.load||s.data)this.show();this.refresh(!!s.load&&!s.data);window.scrollTo(0,0);$('#view').focus({preventScroll:true});});
+  $('#search-icon').outerHTML=I.search;
+  window.addEventListener('hashchange',()=>{const before=this.route;this.parse();$('#app').classList.remove('open');if(before!==this.route)Panel.close(true);Overlay.close(true);Pop.close();this.changed=true;const s=this.screens[this.route];if(!s.load||s.data)this.show();this.refresh(!!s.load&&!s.data);window.scrollTo(0,0);$('#view').focus({preventScroll:true});});
   this.parse();await this.refresh(true);
   setInterval(()=>{if(!document.hidden)this.refresh(false);},2500);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)this.refresh(false);});
@@ -395,7 +437,7 @@ const App={
    const [h,d]=await Promise.all([api('/api/home'),s.load?s.load():null]);
    const changed=JSON.stringify(h)!==JSON.stringify(this.home)||(s.load&&JSON.stringify(d)!==JSON.stringify(s.data));
    this.home=h;if(s.load)s.data=d;this.offline=false;
-   const typing=/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName||''),playing=[...document.querySelectorAll('video,audio')].some(m=>!m.paused),busy=$('#modal').innerHTML||Controls.open;
+   const typing=/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName||''),playing=[...document.querySelectorAll('video,audio')].some(m=>!m.paused),busy=$('#modal').innerHTML||Controls.open||Shell.busy();
    this.side();
    if(force||(changed&&!typing&&!playing&&!busy&&!(s.hold&&s.hold())))this.show(false);
   }catch(e){if(!this.offline){this.offline=true;toast(e.message==='Failed to fetch'?'The page lost the server. Is the terminal still open? Start it again with: pnpm tempoloom studio open':e.message,true);}}
@@ -404,40 +446,52 @@ const App={
   const s=this.screens[this.route];if(!s||!this.home)return;
   if(s.load&&!s.data)return;
   routeChanged=routeChanged||this.changed;this.changed=false;
-  const y=window.scrollY;
-  $('#title').innerHTML=esc(s.title(this.arg))+(s.sub?`<span class="sub">${esc(s.sub(this.arg)||'')}</span>`:'');
-  document.title=(this.home.you.length?`(${this.home.you.length}) `:'')+s.title(this.arg)+' · Tempoloom';
-  this.side();const view=$('#view');s.render(view,this.arg,routeChanged);
-  // Every page shares the Teach page's layout: one centred workspace with a title, a line of
-  // explanation and its actions. A page that is only an empty state, or lays itself out, is left alone.
-  const lone=view.children.length===1&&view.firstElementChild.classList.contains('empty'),own=!!view.querySelector('.teach-workspace,.teach-upload');
+  const y=window.scrollY,place=PLACES.find(p=>p.id===this.place),inside=!!this.arg&&this.place==='projects';
+  const title=inside||!place?s.title(this.arg):place.label;
+  $('#title').textContent=title;
+  document.title=(this.home.you.length?`(${this.home.you.length}) `:'')+title+' · Tempoloom';
+  this.side();const view=$('#view');view.dataset.screen=this.route;s.render(view,this.arg,routeChanged);
+  // Every page: tabs of its place, then a title, a line of explanation and its actions.
+  const lone=view.children.length===1&&view.firstElementChild.classList.contains('empty'),own=!!view.querySelector('.teach-workspace,.teach-upload,.no-head');
   const head=!lone&&!own&&s.head?s.head(this.arg):null,actions=s.actions?s.actions(this.arg):'';
   if(head){const w=document.createElement('div');w.className='teach-workspace';
    w.innerHTML=`<header class="teach-workspace-head"><div><h2 dir="auto">${esc(head.title)}</h2><p class="muted">${esc(head.text)}</p></div>${actions?`<div class="row head-actions">${actions}</div>`:''}</header>`;
    while(view.firstChild)w.append(view.firstChild);view.append(w);}
-  $('#actions').innerHTML=head?'':actions;
+  const tabs=TABS[this.place];
+  if(tabs&&!(this.arg&&['projects','projects/finished'].includes(this.path))){const nav=document.createElement('nav');nav.className='tabs';nav.setAttribute('aria-label',(place?.label||'')+' sections');
+   nav.innerHTML=tabs.map(([p,l])=>`<a href="#/${p}" ${this.path===p||(p==='brain/taste'&&this.path==='brain')?'aria-current="page"':''}>${esc(l)}</a>`).join('');view.prepend(nav);}
+  $('#actions').innerHTML=head||lone?'':actions;
   const emptyIcon=this.route==='studio/scores'?I.chart:this.route==='teach/lessons'?I.lesson:this.route==='teach/patterns'?I.pattern:this.route==='teach/library'?I.lib:I.film;
-  $('#view').querySelectorAll('.empty').forEach(el=>{
+  view.querySelectorAll('.empty').forEach(el=>{
    if(!el.querySelector('.empty-art'))el.insertAdjacentHTML('afterbegin',`<div class="empty-art" aria-hidden="true"><div>${emptyIcon}</div></div>`);
   });
+  Dock.mount(this.route,this.arg);
   safeApply(view);
   if(!routeChanged)window.scrollTo(0,y);
  },
+ /** The rail and the top bar's icons, from the home summary. */
  side(){
-  const h=this.home;if(!h)return;let grp='';
-  const links=this.nav.map(([r,l,ic,g,count])=>{const c=count?count(h):null,head=g&&g!==grp?`<div class="grp">${g}</div>`:'';grp=g||grp;
-   return head+`<a class="navlink" href="#/${r}" ${this.route===r?'aria-current="page"':''}>${I[ic]}<span>${l}</span>${c&&(c[0]||c[1])?`<span class="n ${c[1]?'hot':''}" title="${c[1]?c[1]+' waiting':''}">${c[1]||c[0]}</span>`:''}</a>`;}).join('');
-  const a=h.agent,light=document.documentElement.dataset.theme==='light';
-  const navScroll=$('.side-body')?.scrollTop||0,footerScroll=$('.side-footer')?.scrollTop||0;
-  $('#side').innerHTML=`<header class="side-header"><a class="logo" href="#/home" aria-label="Tempoloom home"><img class="logo-mark" src="/logo${light?'-light':''}.svg?v=4" alt="Tempoloom" width="146" height="31"></a></header><nav class="side-body" aria-label="Main navigation">${links}</nav><footer class="side-footer">
-   ${h.mascot?`<a class="agent-face" href="${h.mascot.job?'#/studio/videos/'+encodeURIComponent(h.mascot.job):'#/home'}" title="${esc(FACE_LABEL[h.mascot.face]||h.mascot.face)}"><img src="/mascot/${esc(h.mascot.face)}.svg" alt="${esc(FACE_LABEL[h.mascot.face]||'')}" width="44" height="34"><span><b>${esc(h.mascot.who||'Your agent')}</b><small dir="auto">${esc(h.mascot.detail||FACE_LABEL[h.mascot.face]||'')}</small></span></a>`:''}
-   <div class="agent ${a.length?'busy':''}">${a.length?`<b>Your agent has work</b>${a.map(x=>`<div class="muted" style="margin-top:6px">${esc(x.why)}. Tell it:</div><div class="say"><span>“${esc(x.say)}”</span><button class="iconbtn" title="Copy the command" aria-label="Copy the command ${esc(x.command)}" onclick="copyText('${esc(x.command)}')">${I.copy}</button></div>`).join('')}`
-    :`<b>Your agent is up to date</b><div class="muted">Nothing is waiting for it.</div>`}</div>
-   <a class="navlink" href="#/settings" ${this.route==='settings'?'aria-current="page"':''}>${I.gear||''}<span>Models and keys</span></a>
-   ${this.screens.history?`<a class="navlink" href="#/history" ${this.route==='history'?'aria-current="page"':''}>${I.history||''}<span>History</span></a>`:''}
-   <a class="navlink" href="#/backup" ${this.route==='backup'?'aria-current="page"':''}>${I.box||''}<span>Backup and move</span></a>
-   <button class="navlink" onclick="App.theme()">${light?I.moon:I.sun}<span>${light?'Dark':'Light'} theme</span></button></footer>`;
-  $('.side-body').scrollTop=navScroll;$('.side-footer').scrollTop=footerScroll;
+  const h=this.home;if(!h)return;
+  const light=document.documentElement.dataset.theme==='light';
+  const links=PLACES.map(p=>{if(p==='-')return '<hr>';const c=p.count?p.count(h):null,here=this.place===p.id;
+   return `<a class="navlink" href="#/${p.id}" ${here?'aria-current="page"':''} data-tooltip-rail="${esc(p.label)}">${I[p.icon]}<span class="lbl">${p.label}</span>${c&&c[1]?`<span class="n hot" title="${c[1]} waiting for you">${c[1]}</span>`:''}${p.plus?`<span class="plus" role="button" tabindex="0" aria-label="${esc(p.plus.label)}" onclick="event.preventDefault();event.stopPropagation();${p.plus.run}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();${p.plus.run}}">${I.add}</span>`:''}</a>`;}).join('');
+  const navScroll=$('.rail-body')?.scrollTop||0,m=h.mascot,collapsed=$('#app').dataset.rail==='collapsed';
+  $('#side').innerHTML=`<header class="rail-head side-header"><a class="logo" href="#/create" aria-label="Tempoloom, Create"><img class="logo-mark" src="/logo${light?'-light':''}.svg?v=5" alt="Tempoloom" width="146" height="31"><img class="logo-small" src="/mark.svg?v=5" alt="" width="32" height="32"></a></header>
+   <nav class="rail-body side-body" aria-label="Places">${links}</nav>
+   <footer class="rail-foot side-footer">
+    ${m?`<a class="agent-chip" href="${m.job?'#/projects/'+encodeURIComponent(m.job):'#/projects'}" title="${esc((m.who||'Your agent')+': '+(m.detail||FACE_LABEL[m.face]||''))}"><img src="/mascot/${esc(m.face)}.svg" alt="${esc(FACE_LABEL[m.face]||'')}" width="36" height="28"><span><b>${esc(m.who||'Your agent')}</b><small dir="auto">${esc(m.detail||FACE_LABEL[m.face]||'')}</small></span></a>`:''}
+    <a class="navlink" href="#/trash" ${this.place==='trash'?'aria-current="page"':''}>${I.trash}<span class="lbl">Trash</span></a>
+    <button class="navlink collapse-btn" onclick="App.collapse()" aria-pressed="${collapsed}">${I.collapse}<span class="lbl">${collapsed?'Expand':'Collapse'}</span></button></footer>`;
+  $('.rail-body').scrollTop=navScroll;
+  Shell.icons(h);
  },
- theme(){const t=document.documentElement.dataset.theme==='light'?'dark':'light';document.documentElement.dataset.theme=t;store.set('theme',t);try{localStorage.setItem('tl-theme',t);}catch{/* private window */}this.side();},
+ collapse(){const on=$('#app').dataset.rail!=='collapsed';$('#app').dataset.rail=on?'collapsed':'';store.set('rail',on?'collapsed':'');this.side();},
+ /** Dark, light or the system's choice; remembered. */
+ theme(choice){
+  if(!choice)choice=document.documentElement.dataset.theme==='light'?'dark':'light';
+  const t=choice==='system'?(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'):choice;
+  document.documentElement.dataset.theme=t;document.documentElement.dataset.themeChoice=choice;
+  try{localStorage.setItem('tl-theme',choice);}catch{/* private window */}this.side();
+ },
 };
+matchMedia('(prefers-color-scheme: light)').addEventListener?.('change',()=>{if(document.documentElement.dataset.themeChoice==='system')App.theme('system');});

@@ -119,7 +119,7 @@ describe.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('clips drawn by the motion 
   const {mapMotion}=await import('../src/engine/motion-kit/map.js');
   const r=await mapMotion(['Erbil','Duhok'],{out:path.join(tmp,'kit','map.mp4'),seconds:3,shape:'1:1',draft:true});
   expect(r.places.map(p=>p.from)).toEqual(['built-in','built-in']);expect(r.route).toBe(true);
-  const accent=(t:number)=>count(frame(r.file,t,'1080:1080:0:0'),(R,G,B)=>R>220&&G>80&&G<140&&B<110);
+  const accent=(t:number)=>count(frame(r.file,t,'1080:1080:0:0'),(R,G,B)=>B>220&&R<120&&G>110&&G<180); // the brand's blue
   expect(accent(2.8)).toBeGreaterThan(accent(.6)); // more of the route at the end
  },120000);
  it('screenshots inside a moving phone',async()=>{

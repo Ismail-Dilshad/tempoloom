@@ -11,11 +11,11 @@
     "minWidthPx": 120
   },
   "colors": {
-    "primary": "#0B3B3C",
-    "accent": "#FF6B4A",
-    "background": "#FFF1D6",
-    "text": "#0B3B3C",
-    "neutral": "#082D2E"
+    "primary": "#0B1F4A",
+    "accent": "#4C8DFF",
+    "background": "#EAF1FF",
+    "text": "#0B1F4A",
+    "neutral": "#081738"
   },
   "fonts": {
     "note": "Font catalog ids. null means: choose by style within the language policy (Kurdish uses only the open Kurdish-capable fonts).",

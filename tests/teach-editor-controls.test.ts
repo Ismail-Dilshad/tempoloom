@@ -24,6 +24,8 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('teaching modes compose editable 
   await page.route('http://teach.test/**',async route=>{
    const url=new URL(route.request().url());
    if(url.pathname==='/api/home')return route.fulfill({json:{teach:{videos:0,waiting:0,lessons:0,patterns:0},studio:{jobs:0},scores:{good:0,bad:0},brain:{total:0,byStatus:{}},you:[],agent:[],activity:[]}});
+   if(url.pathname==='/api/studio/state')return route.fulfill({json:{requests:[],jobs:[],taught:[],looks:[],profiles:[],reasons:[],scores:{rules:[]},can:{maxMB:2048}}});
+   if(url.pathname==='/api/studio/live')return route.fulfill({json:{jobs:[]}});
    if(url.pathname==='/api/state')return route.fulfill({json:{videos:sent?[]:[draft],topics,can:{maxMB:2048,speech:true}}});
    if(url.pathname==='/api/videos/editor-demo/crop'){
     cropRequest=route.request().postDataJSON();
@@ -40,7 +42,7 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('teaching modes compose editable 
    }
    if(url.pathname.startsWith('/logo'))return route.fulfill({body:await fs.readFile('assets/brand/logo/svg/tempoloom-wordmark-for-'+(url.pathname.includes('light')?'light':'dark')+'.svg'),contentType:'image/svg+xml'});
    const name=url.pathname==='/'?'index.html':path.basename(url.pathname);
-   if(!['index.html','app.css','core.js','home.js','teach.js','studio.js'].includes(name))return route.fulfill({status:204});
+   if(!['index.html','tokens.css','app.css','shell.css','core.js','shell.js','create.js','places.js','teach.js','studio.js'].includes(name))return route.fulfill({status:204});
    return route.fulfill({body:await fs.readFile(path.resolve('src/teach/ui',name)),contentType:name.endsWith('.js')?'text/javascript':name.endsWith('.css')?'text/css':'text/html'});
   });
   await page.goto('http://teach.test/#/teach/add');
@@ -91,7 +93,8 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('teaching modes compose editable 
   await page.locator('#play').click();
   await page.waitForFunction(()=>!(document.querySelector('#v') as HTMLVideoElement).paused);
   await page.evaluate(()=>{location.hash='/home';});
-  await page.getByRole('heading',{name:'Your creative workspace.'}).waitFor();
+  await page.getByRole('heading',{name:'Start creating or drop media'}).waitFor();
+  expect(new URL(page.url()).hash).toBe('#/create');
   await page.evaluate(()=>{location.hash='/teach/add';});
   await page.getByRole('heading',{name:'Shape what your studio learns'}).waitFor();
   expect(await page.locator('#study-title').inputValue()).toContain('Motion study');
@@ -167,7 +170,7 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('teaching modes compose editable 
    await page.waitForFunction(()=>document.querySelectorAll('#filmstrip img').length===8);
    await fs.mkdir('workspace/cache/dashboard-review',{recursive:true});
    await page.screenshot({path:'workspace/cache/dashboard-review/teach-editor-light.png',fullPage:true});
-   await page.locator('.side-footer').getByRole('button',{name:'Dark theme',exact:true}).click();
+   await page.locator('#tb-me').click();await page.getByRole('menuitemradio',{name:'Dark'}).click();
    await page.waitForFunction(()=>{const img=document.querySelector<HTMLImageElement>('.logo-mark');return img?.complete&&img.naturalWidth>0;});
    await page.screenshot({path:'workspace/cache/dashboard-review/teach-editor-dark.png',fullPage:true});
   }
@@ -184,10 +187,10 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('teaching modes compose editable 
   await page.getByRole('button',{name:'Teach this video',exact:false}).click();
   await expect.poll(()=>sent).not.toBeNull();
   await page.evaluate(()=>{location.hash='/home';});
-  await page.getByRole('heading',{name:'Your creative workspace.'}).waitFor();
+  await page.getByRole('heading',{name:'Start creating or drop media'}).waitFor();
   releaseSubmission();
   await page.getByText('Sent. It is being measured.',{exact:true}).waitFor();
-  expect(new URL(page.url()).hash).toBe('#/home');
+  expect(new URL(page.url()).hash).toBe('#/create');
   await page.evaluate(()=>{location.hash='/teach/library';});
   await page.getByRole('heading',{name:'No videos taught yet'}).waitFor();
   expect(sent).toMatchObject({title:'My reference — ڕیتم',verdict:'bad',topics:['script','pacing','design'],segment:{start:0,end:5},marks:[{t:2,note:'Watch the transition'}],keepPlayback:false,sound:false,speech:false,crop:{x:.21875,y:0,w:.5625,h:1}});

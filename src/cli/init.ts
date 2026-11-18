@@ -22,7 +22,7 @@ async function ask(question:string,current:string|undefined,given:string|undefin
  const answer=(await rl.question(`${question}${current?` [${current}]`:''}: `)).trim();
  return answer||current;
 }
-const hex=(s:string|undefined,label:string)=>{if(s===undefined)return undefined;if(!/^#[0-9a-f]{6}$/i.test(s))throw new Error(label+' must be a hex color like #0B3B3C');return s.toUpperCase();};
+const hex=(s:string|undefined,label:string)=>{if(s===undefined)return undefined;if(!/^#[0-9a-f]{6}$/i.test(s))throw new Error(label+' must be a hex color like #0B1F4A');return s.toUpperCase();};
 
 try{
  // 1. Default language (used when the script's language cannot be detected).

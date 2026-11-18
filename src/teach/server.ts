@@ -6,6 +6,7 @@ import {z} from 'zod';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import {randomBytes,timingSafeEqual} from 'node:crypto';
 import {pipeline} from 'node:stream/promises';
 import {Transform} from 'node:stream';
@@ -36,7 +37,7 @@ const LANGS=languageSchema.options;
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const MAX_MB=Number(process.env.TEACH_MAX_MB||'2048');
-const UI=new Set(['app.css','core.js','home.js','taste.js','teach.js','learned.js','studio.js','gallery.js','live.js','settings.js','backup.js','script.js','ideas.js','history.js','text.js','find.js']);
+const UI=new Set(['tokens.css','shell.css','shell.js','create.js','places.js','app.css','core.js','taste.js','teach.js','learned.js','studio.js','gallery.js','live.js','settings.js','backup.js','script.js','ideas.js','history.js','text.js','find.js']);
 const TYPES:Record<string,string>={'.js':'text/javascript; charset=utf-8','.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.mp4':'video/mp4','.jpg':'image/jpeg','.svg':'image/svg+xml','.ttf':'font/ttf','.json':'application/json; charset=utf-8',
  '.png':'image/png','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.webm':'video/webm','.mov':'video/quicktime','.m4v':'video/mp4','.mp3':'audio/mpeg','.wav':'audio/wav','.m4a':'audio/mp4'};
 class HttpError extends Error{constructor(public status:number,message:string){super(message);}}
@@ -82,6 +83,10 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
 // The fonts and the logo are the project's own public files; everything else needs the key.
    if(m==='GET'&&UI.has(p.slice(1)))return await file(req,res,path.join(here,'ui',p.slice(1)));
    if(m==='GET'&&p==='/font.ttf')return await file(req,res,path.join(ROOT,'assets/fonts/open/Fredoka-Variable.ttf'),'max-age=86400');
+   if(m==='GET'&&p==='/font-ui.ttf')return await file(req,res,path.join(ROOT,'assets/fonts/open/Inter-Variable.ttf'),'max-age=86400');
+   if(m==='GET'&&p==='/font-ui-ar.ttf')return await file(req,res,path.join(ROOT,'assets/fonts/open/NotoSansArabic-Variable.ttf'),'max-age=86400');
+   if(m==='GET'&&p==='/favicon.svg')return await file(req,res,path.join(ROOT,'assets/brand/web/favicon.svg'),'max-age=86400');
+   if(m==='GET'&&p==='/mark.svg')return await file(req,res,path.join(ROOT,'assets/brand/logo/svg/tempoloom-mascot-simple.svg'),'max-age=86400');
    if(m==='GET'&&p==='/font-ar.ttf')return await file(req,res,path.join(ROOT,'assets/fonts/open/Vazirmatn-Variable.ttf'),'max-age=86400');
    if(m==='GET'&&p==='/logo-light.svg')return await file(req,res,path.join(ROOT,'assets/brand/logo/svg/tempoloom-wordmark-for-light.svg'),'max-age=86400');
    const face=/^\/mascot\/([a-z-]+)\.svg$/.exec(p);
@@ -93,6 +98,29 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
 
    if(m==='GET'&&p==='/'){res.setHeader('content-security-policy',"default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' blob: https:; frame-src https://www.youtube-nocookie.com https://www.instagram.com https://www.tiktok.com https://player.vimeo.com; frame-ancestors 'none'");return await file(req,res,path.join(here,'ui','index.html'));}
    if(m==='GET'&&p==='/api/home')return json(res,home());
+   // ---------- the page's places: tools from the registry, your library, scenes across projects ----------
+   if(m==='GET'&&p==='/api/tools'){const {readRegistry}=await import('../cli/tools-registry.js');return json(res,{tools:(await readRegistry()).tools.filter(t=>t.page&&t.status==='ready').map(t=>({id:t.id,command:t.command,description:t.description,whenToUse:t.whenToUse,inputs:t.inputs,...t.page}))});}
+   if(m==='GET'&&p==='/api/library'){const L=await import('../engine/my-library.js');return json(res,{entries:L.libraryEntries().map(e=>({id:e.id,kind:e.kind,name:e.name,added:e.added,bytes:e.bytes,description:e.description,tags:e.tags,width:e.width,height:e.height,seconds:e.seconds,bpm:e.bpm??null,energy:e.energy,colours:e.colours??[],uses:e.uses.length})),kinds:L.LIB_KINDS});}
+   if(m==='POST'&&p==='/api/library/upload'){
+    const L=await import('../engine/my-library.js'),name=path.basename(url.searchParams.get('name')||'file').replace(/[^\p{L}\p{N}._ -]/gu,'_').slice(0,120)||'file';
+    const length=Number(req.headers['content-length']??0);if(length>MAX_MB*1048576)throw new HttpError(413,`The file is over ${MAX_MB} MB`);
+    const dir=await fsp.mkdtemp(path.join(os.tmpdir(),'tl-lib-'));let size=0;
+    const limit=new Transform({transform(c:Buffer,_e,cb){size+=c.length;size>MAX_MB*1048576?cb(new HttpError(413,`The file is over ${MAX_MB} MB`)):cb(null,c);}});
+    try{await pipeline(req,limit,fs.createWriteStream(path.join(dir,name)));if(!size)throw new HttpError(400,'The upload was empty');const r=await L.addToLibrary([path.join(dir,name)]);if(!r.added.length)throw new HttpError(400,r.skipped[0]||'This file cannot go in the library');return json(res,{added:r.added.map(a=>a.id)});}
+    catch(e){throw e instanceof HttpError?e:new HttpError(400,(e as Error).message);}
+    finally{await fsp.rm(dir,{recursive:true,force:true});}
+   }
+   const libItem=/^\/api\/library\/([a-z0-9-]{1,120})(\/file)?$/.exec(p);
+   if(libItem){const L=await import('../engine/my-library.js');let e;try{e=L.libraryEntry(libItem[1]!);}catch{throw new HttpError(404,'Not in your library');}
+    if(m==='GET'&&libItem[2])return await file(req,res,e.file,'max-age=3600');
+    if(m==='DELETE'&&!libItem[2]){await L.removeEntry(e.id);return json(res,{removed:e.id});}}
+   if(m==='GET'&&p==='/api/scenes'){
+    const S=await import('../engine/studio.js'),V=await import('../engine/studio-versions.js'),out:{job:string;title:string;n:number;label:string;start:number;seconds:number;locked:boolean}[]=[];
+    for(const j of R.overview().jobs){let plan;try{plan=S.readPlan(j.job);}catch{continue;}
+     const scenes=V.projectScenes((plan as {videoJob?:string}).videoJob)??[],locked=new Set((plan.locked??[]).map(l=>l.id));
+     scenes.forEach((sc,i)=>out.push({job:j.job,title:String((j as {request?:string}).request??j.job).split('\n')[0]!.slice(0,90),n:i+1,label:sc.text.slice(0,140),start:sc.start,seconds:sc.duration,locked:locked.has(sc.id)}));}
+    return json(res,{scenes:out});
+   }
    // ---------- find and tidy: one search over everything, the same thing kept once, space ----------
    if(m==='GET'&&p==='/api/find'){const F=await import('../engine/find.js'),ks=(url.searchParams.get('kinds')||'').split(',').filter((k):k is import('../engine/find.js').FindKind=>F.kinds.includes(k as never));
     return json(res,await F.find(url.searchParams.get('q')||'',{kinds:ks,limit:60}));}

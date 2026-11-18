@@ -4,22 +4,31 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Tempoloom</title>
-<script>try{document.documentElement.dataset.theme=localStorage.getItem('tl-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');}catch{document.documentElement.dataset.theme='dark';}</script>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<script>try{const t=localStorage.getItem('tl-theme');document.documentElement.dataset.themeChoice=t||'system';document.documentElement.dataset.theme=t==='light'||t==='dark'?t:(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');const r=localStorage.getItem('tl-rail');if(r==='"collapsed"')document.documentElement.dataset.rail='collapsed';}catch{document.documentElement.dataset.theme='dark';}</script>
+<link rel="stylesheet" href="/tokens.css">
 <link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/shell.css">
 </head>
 <body>
-<div class="app" id="app">
- <aside class="side" id="side" aria-label="Sections"></aside>
+<div class="shell app" id="app">
+ <aside class="rail side" id="side" aria-label="Places"></aside>
  <div class="scrim" id="scrim"></div>
- <div class="main">
-  <div class="top"><button class="iconbtn menu" id="menu" aria-label="Open the menu"></button><h1 id="title"></h1><form class="topfind" id="topfind" role="search" onsubmit="event.preventDefault();findGo(this.q.value)"><input type="search" name="q" id="topq" placeholder="Search everything" aria-label="Search your videos, scenes, lessons and clips" autocomplete="off" maxlength="200"></form><div class="row" id="actions"></div></div>
-  <main class="view" id="view" tabindex="-1"></main>
- </div>
+ <header class="topbar" id="topbar">
+  <div class="tb-left"><button class="iconbtn menu" id="menu" aria-label="Open the menu"></button><h1 class="tb-title" id="title"></h1><span id="page-menu"></span></div>
+  <form class="tb-search topfind" id="topfind" role="search" onsubmit="event.preventDefault();findGo(this.q.value)"><span id="search-icon"></span><input type="search" name="q" id="topq" placeholder="Search everything" aria-label="Search your videos, scenes, lessons and library" autocomplete="off" maxlength="200"><kbd aria-hidden="true">Ctrl K</kbd></form>
+  <div class="tb-right"><div class="tb-actions" id="actions"></div><div class="row" id="tb-icons" style="gap:4px;flex-wrap:nowrap"></div></div>
+ </header>
+ <main class="canvas main" id="canvas"><div class="view" id="view" tabindex="-1"></div></main>
+ <aside class="panel" id="panel" hidden aria-labelledby="panel-title"></aside>
+ <div id="dock-slot"></div>
 </div>
 <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+<div id="pop-slot"></div>
+<div id="overlay-slot"></div>
 <div id="modal"></div>
 <script src="/core.js"></script>
-<script src="/home.js"></script>
+<script src="/shell.js"></script>
 <script src="/taste.js"></script>
 <script src="/teach.js"></script>
 <script src="/learned.js"></script>
@@ -33,6 +42,8 @@
 <script src="/history.js"></script>
 <script src="/text.js"></script>
 <script src="/find.js"></script>
+<script src="/create.js"></script>
+<script src="/places.js"></script>
 <script>App.start();</script>
 </body>
 </html>

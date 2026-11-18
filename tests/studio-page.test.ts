@@ -138,7 +138,7 @@ describe('the app',()=>{
   const {serve}=await import('../src/teach/server.js');const s=await serve({port:0});
   try{
    const base=`http://127.0.0.1:${s.port}`,h={'x-teach-key':s.key},jh={...h,'content-type':'application/json'};
-   for(const f of ['app.css','core.js','home.js','teach.js','studio.js'])expect((await fetch(base+'/'+f)).status,f).toBe(200);
+   for(const f of ['tokens.css','app.css','shell.css','core.js','shell.js','create.js','places.js','teach.js','studio.js'])expect((await fetch(base+'/'+f)).status,f).toBe(200);
    expect((await fetch(base+'/server.ts')).status).toBe(403);
    expect(await (await fetch(base+'/?k='+s.key)).text()).toContain('/core.js');
    const home=await (await fetch(base+'/api/home',{headers:h})).json() as {brain:{total:number};teach:{lessons:number};activity:{kind:string}[];agent:unknown[]};

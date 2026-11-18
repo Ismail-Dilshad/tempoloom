@@ -179,7 +179,14 @@
     "--channels"
    ],
    "status": "ready",
-   "whenToUse": "When the user wants ideas for formats that work now for their topics, or before writing a script for a watched topic (trends list)."
+   "whenToUse": "When the user wants ideas for formats that work now for their topics, or before writing a script for a watched topic (trends list).",
+   "page": {
+    "name": "Trend watch",
+    "icon": "trend",
+    "group": "Ideas",
+    "about": "Formats getting popular for the topics you watch.",
+    "open": "#/tools/trends"
+   }
   },
   {
    "id": "make",
@@ -219,7 +226,14 @@
     "job"
    ],
    "status": "ready",
-   "whenToUse": "When the user wants to edit footage by its words, cut what was said twice, find a stronger opening, make a vertical version that follows them, or use their own clips as b-roll; and to plan the cuts of a footage-edit studio job."
+   "whenToUse": "When the user wants to edit footage by its words, cut what was said twice, find a stronger opening, make a vertical version that follows them, or use their own clips as b-roll; and to plan the cuts of a footage-edit studio job.",
+   "page": {
+    "name": "Edit by text",
+    "icon": "text",
+    "group": "Words",
+    "about": "Cut your footage by editing its transcript.",
+    "open": "#/tools/text"
+   }
   },
   {
    "id": "looks",
@@ -232,7 +246,13 @@
     "like"
    ],
    "status": "ready",
-   "whenToUse": "The user shares a video and says they want that feel, vibe or style for their video."
+   "whenToUse": "The user shares a video and says they want that feel, vibe or style for their video.",
+   "page": {
+    "name": "Learn a look",
+    "icon": "eye",
+    "group": "Style",
+    "about": "Learns a look from one video you like."
+   }
   },
   {
    "id": "music",
@@ -1030,7 +1050,13 @@
     "--download"
    ],
    "status": "ready",
-   "whenToUse": "Research stage of any promo or product video: run it on the official site, then confirm the logo and colours by eye. The user's own files win over the scan."
+   "whenToUse": "Research stage of any promo or product video: run it on the official site, then confirm the logo and colours by eye. The user's own files win over the scan.",
+   "page": {
+    "name": "Read a brand",
+    "icon": "globe",
+    "group": "Ideas",
+    "about": "Reads a website for its name, logo and colours."
+   }
   },
   {
    "id": "reference-style",
@@ -1169,7 +1195,13 @@
     "--out"
    ],
    "status": "ready",
-   "whenToUse": "Captions for footage or a voice-over in English or Kurdish. Prefer --script whenever the user has the script. Burn in with the editor captions operation."
+   "whenToUse": "Captions for footage or a voice-over in English or Kurdish. Prefer --script whenever the user has the script. Burn in with the editor captions operation.",
+   "page": {
+    "name": "Make captions",
+    "icon": "captions",
+    "group": "Words",
+    "about": "Readable captions from speech, right-to-left aware."
+   }
   },
   {
    "id": "edit-silence-removal",
@@ -1324,7 +1356,13 @@
     "--name"
    ],
    "status": "ready",
-   "whenToUse": "Only when the user wants to keep working in their own editor."
+   "whenToUse": "Only when the user wants to keep working in their own editor.",
+   "page": {
+    "name": "Export a timeline",
+    "icon": "export",
+    "group": "Export",
+    "about": "A timeline for Premiere, Resolve, Final Cut or CapCut."
+   }
   },
   {
    "id": "recreate-study",
@@ -1436,7 +1474,14 @@
     "OTHER-ID"
    ],
    "status": "ready",
-   "whenToUse": "When the user asks to tidy up. Show the groups and keep only what they choose."
+   "whenToUse": "When the user asks to tidy up. Show the groups and keep only what they choose.",
+   "page": {
+    "name": "Find and tidy",
+    "icon": "search",
+    "group": "Export",
+    "about": "Finds anything kept twice and space you can clear.",
+    "open": "#/library/tidy"
+   }
   },
   {
    "id": "tidy-storage",
@@ -1823,7 +1868,13 @@
     "--out"
    ],
    "status": "ready",
-   "whenToUse": "The user wants their own photo as a painting or a drawing."
+   "whenToUse": "The user wants their own photo as a painting or a drawing.",
+   "page": {
+    "name": "Paint a photo",
+    "icon": "brush",
+    "group": "Art",
+    "about": "Paints or draws your photo in oil, watercolour, pencil or ink."
+   }
   },
   {
    "id": "paint-check",
@@ -1838,7 +1889,13 @@
     "--job"
    ],
    "status": "ready",
-   "whenToUse": "After each pass of a painting, and before a painting job's paint step is finished."
+   "whenToUse": "After each pass of a painting, and before a painting job's paint step is finished.",
+   "page": {
+    "name": "Check a painting",
+    "icon": "check",
+    "group": "Art",
+    "about": "A painter's critique: values, colour, edges and paper."
+   }
   },
   {
    "id": "media-voice",
@@ -1857,7 +1914,13 @@
     "--out"
    ],
    "status": "ready",
-   "whenToUse": "A recorded voice with noise, hum, echo or uneven loudness; always measured in a footage edit's analysis."
+   "whenToUse": "A recorded voice with noise, hum, echo or uneven loudness; always measured in a footage edit's analysis.",
+   "page": {
+    "name": "Clean up audio",
+    "icon": "wave",
+    "group": "Sound",
+    "about": "Takes out background noise, hum and room echo from a recorded voice."
+   }
   },
   {
    "id": "media-match",
@@ -1872,7 +1935,13 @@
     "--out-dir"
    ],
    "status": "ready",
-   "whenToUse": "An edit joins clips shot on different cameras, settings or days."
+   "whenToUse": "An edit joins clips shot on different cameras, settings or days.",
+   "page": {
+    "name": "Match colours",
+    "icon": "palette",
+    "group": "Picture",
+    "about": "Brings clips from different cameras or days to one look."
+   }
   },
   {
    "id": "media-speakers",
@@ -1889,7 +1958,13 @@
     "--out"
    ],
    "status": "ready",
-   "whenToUse": "An interview, podcast or panel with more than one person speaking."
+   "whenToUse": "An interview, podcast or panel with more than one person speaking.",
+   "page": {
+    "name": "Label speakers",
+    "icon": "users",
+    "group": "Sound",
+    "about": "Finds who speaks when in an interview and names each voice."
+   }
   },
   {
    "id": "make-chart",
@@ -1905,7 +1980,13 @@
     "--highlight"
    ],
    "status": "ready",
-   "whenToUse": "The user gives numbers, a table or data to show."
+   "whenToUse": "The user gives numbers, a table or data to show.",
+   "page": {
+    "name": "Chart from data",
+    "icon": "chart",
+    "group": "Make",
+    "about": "Turns pasted numbers into an animated chart scene."
+   }
   },
   {
    "id": "media-story",
@@ -1950,7 +2031,13 @@
     "--name"
    ],
    "status": "ready",
-   "whenToUse": "The user wants a video between two styles they taught."
+   "whenToUse": "The user wants a video between two styles they taught.",
+   "page": {
+    "name": "Mix two styles",
+    "icon": "mix",
+    "group": "Style",
+    "about": "Blends two styles you taught by a share you choose."
+   }
   },
   {
    "id": "library",
@@ -1983,7 +2070,13 @@
     "--confirm"
    ],
    "status": "ready",
-   "whenToUse": "The user names a creator or channel whose style they want."
+   "whenToUse": "The user names a creator or channel whose style they want.",
+   "page": {
+    "name": "Learn a channel",
+    "icon": "channel",
+    "group": "Style",
+    "about": "Studies a creator's latest videos and saves their style as a look."
+   }
   }
  ]
 }

@@ -8,7 +8,7 @@ const PRESETS=[
  {name:'Explainer, 60 s',mode:'motion',seconds:'60',shape:'horizontal',notes:'An explainer: what it is, how it works in three steps, who it is for.'},
  {name:'Talking-head short',mode:'edit',seconds:'45',shape:'vertical',captions:true,visuals:true,notes:'Keep the strongest part. Cut pauses and filler words. Big readable captions.'},
  {name:'Clean up a recording',mode:'edit',seconds:'',shape:'',captions:false,visuals:false,notes:'Keep everything said. Only remove long pauses and mistakes, fix the sound and the colour.'}];
-const blankBrief=()=>({id:null,mode:'motion',text:'',script:false,link:'',seconds:'30',shape:'vertical',language:'',voice:false,captions:true,visuals:true,pick:true,second:true,secondProfile:'',useColors:false,primary:'#0B3B3C',accent:'#FF6B4A',background:'#FFF1D6',like:'',notes:'',profile:'',files:[]});
+const blankBrief=()=>({id:null,mode:'motion',text:'',script:false,link:'',seconds:'30',shape:'vertical',language:'',voice:false,captions:true,visuals:true,pick:true,second:true,secondProfile:'',useColors:false,primary:'#0B1F4A',accent:'#4C8DFF',background:'#EAF1FF',like:'',notes:'',profile:'',files:[]});
 const Studio={N:{...blankBrief(),...store.get('studio-brief',{})},busy:null,sending:false,F:{},showArchived:false,
  /** Scenes of shown videos, comments being written, where a paused video was, the versions dialog. */
  TL:{},TLctx:{},CM:{},VT:{},VS:null,
@@ -186,9 +186,9 @@ window.deleteQueued=async id=>{
 };
 window.deleteStudioJob=async job=>{
  if(await ask('Delete this studio job?','This removes its plan from the studio and closes future steps. Any render already running can finish. Saved project files, exports and lessons are kept.','Delete job',true))
-  await act(async()=>{await api('/api/studio/jobs/'+job,{method:'DELETE'});App.go('studio/videos');},'Job deleted');
+  await act(async()=>{await api('/api/studio/jobs/'+job,{method:'DELETE'});if(App.arg===job)App.go('studio/videos');},'Job deleted');
 };
-window.archiveJob=(job,on)=>act(async()=>{await api(`/api/studio/jobs/${job}/archive`,{method:'POST',body:JSON.stringify({on})});if(on)App.go('studio/videos');},on?'Archived. Nothing was deleted.':'Brought back');
+window.archiveJob=(job,on)=>act(async()=>{await api(`/api/studio/jobs/${job}/archive`,{method:'POST',body:JSON.stringify({on})});if(on&&App.arg===job)App.go('studio/videos');},on?'Moved to the trash. Nothing was deleted.':'Restored');
 window.tellStudio=job=>{
  dialog(`<h2>Tell the studio something</h2><p class="muted">In your own words. It is saved as a rule, sent to the roles it concerns, and their steps are redone.</p>
   <textarea id="ts" dir="auto" maxlength="800" placeholder="For example: the music is too loud under the voice, and the captions should be bigger."></textarea>
@@ -230,7 +230,7 @@ const shortStep=t=>({intake:'Intake',brief:'Brief',research:'Research',facts:'Fa
 function gateHtml(j,t){
  if(t.status==='later')return '';
  if(t.status==='approved')return `<div class="step muted small">✓ ${esc(gateTitle(t))}: approved</div>`;
- return `<div class="card step" style="border-color:var(--coral)"><div class="row"><h3>${esc(gateTitle(t))}</h3>
+ return `<div class="card step" style="border-color:var(--accent)"><div class="row"><h3>${esc(gateTitle(t))}</h3>
   <button class="btn primary" style="margin-left:auto" ${t.blockedBy.length?'disabled':''} onclick="act(()=>api('/api/studio/jobs/${j.job}/approve/${t.id}',{method:'POST',body:'{}'}),'Approved')">Approve and continue</button></div>
   <div class="muted small" style="margin-top:6px">${t.blockedBy.length?'Pick a version above first.':'Rate the steps above first if you like. A step you rate bad is redone before this comes back.'}</div></div>`;
 }

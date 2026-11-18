@@ -1,8 +1,8 @@
 {
   "palette": {
-    "teal": "#0B3B3C",
-    "cream": "#FFF1D6",
-    "coral": "#FF6B4A"
+    "teal": "#0B1F4A",
+    "cream": "#EAF1FF",
+    "coral": "#4C8DFF"
   },
   "states": {
     "idle": {

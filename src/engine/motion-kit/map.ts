@@ -46,7 +46,7 @@ export async function mapMotion(names:string[],o:MapOptions){
  const places:Place[]=[];for(const n of names)places.push(await findPlace(n,{...(o.fetcher?{fetcher:o.fetcher}:{})}));
  const shape=o.shape??'9:16',[W,H]=SHAPES[shape],seconds=Math.max(3,Math.min(30,o.seconds??(4+2*places.length))),dark=o.theme==='dark';
  const view=viewFor(places,W,H),land=landPaths(view,W,H),pts=places.map(p=>view.project(p.lon,p.lat));
- const accent=o.accent??(await brandProfile().then(b=>b.colors?.accent).catch(()=>undefined))??'#FF6B4A';
+ const accent=o.accent??(await brandProfile().then(b=>b.colors?.accent).catch(()=>undefined))??'#4C8DFF';
  const f=await fontFaces(places.map(p=>p.name).join(' '));
  const route=o.route!==false&&places.length>1;
  // Each leg bends a little to one side, the next to the other, like a flight path.

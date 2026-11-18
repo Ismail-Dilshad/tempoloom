@@ -19,7 +19,7 @@ import {change} from './history.js';
 import {versionCounts} from './studio-versions.js';
 import {docs as textEdits} from '../editor/text-edit.js';
 
-const hex=z.string().regex(/^#[0-9a-fA-F]{6}$/,'Colours are written like #FF6B4A');
+const hex=z.string().regex(/^#[0-9a-fA-F]{6}$/,'Colours are written like #4C8DFF');
 export const requestInput=z.object({
  mode:z.enum(['motion','edit','art']),
  /** For a painting or drawing: the medium; empty means the studio chooses. */

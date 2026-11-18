@@ -14,7 +14,7 @@ pnpm tempoloom teach next          # what the agent runs
 
 `teach open` prints a link like `http://127.0.0.1:4747/?k=…` and opens it. The page listens on
 this computer only and needs the key in the link. The same server has the
-[Studio page](studio.md#the-studio-page) (the Teach / Studio switch at the top). On it you:
+[Studio page](studio.md#the-studio-page): Teach a video is in Brain. On it you:
 
 - **Add a video**: drop a file (up to 2 GB; `TEACH_MAX_MB` changes it) or paste a link. A link
   shows its title, length and size first and is downloaded, for study only, when you confirm
@@ -29,14 +29,14 @@ this computer only and needs the key in the link. The same server has the
 - Optionally study the sound (tempo, cuts on the beat) and read the speech (ElevenLabs, only
   when you tick it).
 
-Teach and the [Studio](studio.md#the-studio-page) are one app: a sidebar with every section, a
-Home screen (what the brain holds, what is waiting, what happened lately), a card that always
-shows what to tell your agent, and a light or dark theme.
+Teach and the [Studio](studio.md#the-studio-page) are one app ([its design](studio-page.md)): a rail
+with seven places, Create as the home page, a bell that always shows what to tell your agent, and a
+dark, light or system theme. What you teach lives in two places:
 
 - **Teach a video**: drop several videos at once; each waits in a queue to be set up.
-- **Library**: search and filter (good or bad, state, topic), sort, open a video for its
+- **Library, Taught videos**: search and filter (good or bad, state, topic), sort, open a video for its
   measurements (cut strip, colours, motion, sound) and lessons, and compare any two side by side.
-- **Lessons**: status chips (on trial, kept, removed), search, one card per topic with a
+- **Brain, Lessons**: status chips (on trial, kept, removed), search, one card per topic with a
   confidence bar on every lesson, keep all on trial at once, write a lesson yourself (kept at
   once), and export everything as Markdown. Every lesson has Keep, Reword and Remove; a lesson
   that contradicts something known waits in a "To decide" card.

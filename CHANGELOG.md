@@ -1,5 +1,27 @@
 # Changelog
 
+## 10.0.0: The Studio page, redesigned in blue
+
+- **Seven places instead of seventeen screens**, in Google Flow's layout: Create, Projects, Looks,
+  Scenes, Library, Tools and Brain on the rail, Trash and Collapse at its foot, and one panel on
+  the right for rules, settings, tools and help. Every older address opens its new place.
+- **Create is the home page**: your newest projects and ideas in the middle, and the prompt box
+  pinned at the bottom. + adds files for this video or from your library, the pill picks the kind
+  of video and its presets, Rules and Settings open beside it, Enter sends. Drop files anywhere.
+- **Projects** as a grid with Making, Waiting for you and Done; inside a project the prompt box
+  says what to change. Move to trash hides a project; the Trash restores it or deletes it.
+- **New places**: Looks (learned looks and taught videos, ready to use), Scenes (every scene of every
+  project, locked ones marked), your Library on the page (add, find, download, remove) and Tools,
+  drawn from the tool registry (`page` on a tool's entry).
+- **Find anything** with Ctrl+K: places, tabs, tools and a search of everything you made; the bell
+  shows what waits for you and what to tell your agent.
+- **One design system**: tokens for colour, type, spacing, radius, shadow and motion in dark, light
+  or the system's theme; one set of components; text at 4.5:1 or more in both themes; Inter with
+  Noto Sans Arabic. See [the page's design](docs/guides/studio-page.md).
+- **A blue brand**: the logo, mascot, expressions, icons, social images, favicon, brand kit and the
+  default brand profile go from teal and coral to navy and blue (`scripts/recolour_brand.py`, which
+  recolours SVGs by value and PNGs pixel by pixel, keeping every edge).
+
 ## 9.23.0: Library and learning (group 12 of 12)
 
 - **Your library** (`library add | find | describe | use | list | remove`): logos, music, sounds,

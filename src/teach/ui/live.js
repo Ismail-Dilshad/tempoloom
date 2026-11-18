@@ -19,7 +19,7 @@ const Live={es:null,esJob:null,lastSeq:0,showAll:false,
 };
 window.addEventListener('hashchange',()=>{if(!location.hash.startsWith('#/studio/videos/'))Live.close();});
 
-const roleHue=(L,id)=>id==='you'?'var(--coral)':`hsl(${Math.round(((L?.colors?.[id]??0)*360/15)+12)} 55% 55%)`;
+const roleHue=(L,id)=>id==='you'?'var(--accent)':`hsl(${Math.round(196+(L?.colors?.[id]??0)*84/15)} 48% 60%)`;
 const roleName=(L,id)=>id==='you'?'You':L?.team.find(m=>m.id===id)?.title||(id==='director'?'Director':id||'Studio');
 const clock=iso=>new Date(iso).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false});
 const since=iso=>{if(!iso)return '';const s=(Date.now()-new Date(iso))/1000;return s<60?'just started':s<3600?Math.floor(s/60)+' min':Math.floor(s/3600)+' h '+Math.floor(s%3600/60)+' min';};
@@ -38,7 +38,7 @@ function liveHtml(L){
    <div><b>${esc(m.title)}</b><small class="member-face">${esc(FACE_LABEL[m.face]||m.face)}${m.since?', '+since(m.since):''}</small><p dir="auto">${esc(m.state)}</p></div></div>`;
  const shown=Live.showAll?rest:rest.slice(0,busy.length?3:6);
  return `<section class="card live-card" aria-label="The team at work"><div class="teach-section-head"><h3>The team</h3><span class="muted small">${L.asleep?'Quiet for a day':esc(L.driver.label)}</span></div>
-  <div class="live-split"><div class="live-team">${L.you?`<div class="member you busy" style="--hue:var(--coral)">${mascot('needs-approval','Needs you',64)}<div><b>You</b><small class="member-face">Needs you</small><p dir="auto">${esc([...L.you.picks.map(p=>`Pick a version of ${p.step}`),...L.you.gates.map(g=>g.title)].join('; '))}</p></div></div>`:''}
+  <div class="live-split"><div class="live-team">${L.you?`<div class="member you busy" style="--hue:var(--accent)">${mascot('needs-approval','Needs you',64)}<div><b>You</b><small class="member-face">Needs you</small><p dir="auto">${esc([...L.you.picks.map(p=>`Pick a version of ${p.step}`),...L.you.gates.map(g=>g.title)].join('; '))}</p></div></div>`:''}
    ${busy.map(member).join('')}${shown.map(member).join('')}
    ${rest.length>shown.length||Live.showAll?`<button class="btn small ghost" onclick="Live.showAll=!Live.showAll;App.show(false)">${Live.showAll?'Fewer':`All ${L.team.length} roles`}</button>`:''}</div>
   <div class="live-feed-wrap"><div class="row" style="justify-content:space-between"><b class="small">What is happening</b><span class="muted small">${L.driver.state==='working'?'<span class="live-pulse"></span> live':'updates as it happens'}</span></div>

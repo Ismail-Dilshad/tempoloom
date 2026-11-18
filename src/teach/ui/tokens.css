@@ -1,0 +1,61 @@
+/* Tempoloom design tokens: every colour, size, radius, shadow and timing the page uses.
+   Components read only these names. Dark is the default; light uses the same names. */
+@font-face{font-family:'Tempoloom UI';src:url(/font-ui.ttf) format('truetype');font-weight:100 900;font-display:swap}
+@font-face{font-family:'Tempoloom UI';src:url(/font-ui-ar.ttf) format('truetype');font-weight:100 900;font-display:swap;unicode-range:U+0600-06FF,U+0750-077F,U+08A0-08FF,U+FB50-FDFF,U+FE70-FEFF}
+@font-face{font-family:Fredoka;src:url(/font.ttf) format('truetype');font-weight:300 700;font-display:swap}
+
+:root{
+ color-scheme:dark;
+ /* colour */
+ --bg:#0B0D12;--surface-1:#12151C;--surface-2:#1A1E27;--surface-3:#232836;
+ --line:#2A3040;--line-strong:#3A4256;
+ --text:#EEF2FA;--text-2:#A3ADC2;--text-3:#8590A8;
+ --accent:#4C8DFF;--accent-hover:#6FA3FF;--accent-press:#3A78E8;--accent-soft:rgb(76 141 255/.16);--on-accent:#FFFFFF;
+ --accent-fill:#2F6BE0;--accent-fill-hover:#2B66DA;--accent-fill-press:#2558C4;
+ --good:#4FD1A5;--warn:#F2C14E;--bad:#FF7A7A;
+ --good-soft:rgb(79 209 165/.14);--warn-soft:rgb(242 193 78/.14);--bad-soft:rgb(255 122 122/.14);
+ --on-good:#06281C;--on-warn:#2E2203;--on-bad:#2E0A0A;
+ --scrim:rgb(5 7 12/.6);
+ --shadow-pop:0 8px 24px rgb(0 0 0/.4);--shadow-float:0 16px 48px rgb(0 0 0/.5);
+ /* type */
+ --font-ui:'Tempoloom UI',system-ui,-apple-system,'Segoe UI',sans-serif;
+ --font-brand:Fredoka,var(--font-ui);
+ --font-mono:ui-monospace,'SF Mono',Consolas,monospace;
+ --type-display:500 28px/36px var(--font-ui);
+ --type-title-1:600 22px/28px var(--font-ui);
+ --type-title-2:600 18px/24px var(--font-ui);
+ --type-title-3:600 15px/22px var(--font-ui);
+ --type-body:400 14px/20px var(--font-ui);
+ --type-body-strong:500 14px/20px var(--font-ui);
+ --type-small:400 13px/18px var(--font-ui);
+ --type-caption:500 12px/16px var(--font-ui);
+ /* spacing (4-point scale) */
+ --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;--space-10:40px;--space-12:48px;--space-16:64px;
+ /* radius */
+ --radius-xs:6px;--radius-sm:8px;--radius-md:12px;--radius-lg:16px;--radius-xl:24px;--radius-full:999px;
+ /* motion */
+ --dur-fast:120ms;--dur-base:180ms;--dur-slow:260ms;--ease:cubic-bezier(.2,0,0,1);
+ /* layout */
+ --topbar-h:64px;--rail-w:232px;--rail-w-collapsed:72px;--panel-w:480px;--dock-w:600px;--content-max:1280px;
+ /* layers */
+ --z-dock:20;--z-chrome:30;--z-panel:40;--z-menu:50;--z-dialog:60;--z-toast:70;--z-tooltip:80;
+
+ /* Older names the screens still use, mapped onto the tokens. */
+ --side:var(--surface-1);--panel:var(--surface-2);--raise:var(--surface-3);--cream:var(--text);--dim:var(--text-2);
+ 
+ --bad-bg:var(--bad-soft);--bad-ink:var(--bad);--shadow:var(--shadow-pop);--r:var(--radius-md);
+ --surface-shadow:none;
+}
+:root[data-theme=light]{
+ color-scheme:light;
+ --bg:#F6F8FC;--surface-1:#FFFFFF;--surface-2:#FFFFFF;--surface-3:#EEF2FA;
+ --line:#DCE3F0;--line-strong:#C3CDE0;
+ --text:#111827;--text-2:#4B5468;--text-3:#636C80;
+ --accent:#1F5FD6;--accent-hover:#2E6BE6;--accent-press:#184DB0;--accent-soft:rgb(31 95 214/.10);--on-accent:#FFFFFF;
+ --accent-fill:#1F5FD6;--accent-fill-hover:#1C56C2;--accent-fill-press:#184DB0;
+ --good:#0E7650;--warn:#855C00;--bad:#C2353F;
+ --good-soft:rgb(20 133 92/.10);--warn-soft:rgb(154 106 0/.10);--bad-soft:rgb(194 53 63/.08);
+ --on-good:#FFFFFF;--on-warn:#FFFFFF;--on-bad:#FFFFFF;
+ --scrim:rgb(17 24 39/.32);
+ --shadow-pop:0 8px 24px rgb(17 24 39/.12);--shadow-float:0 16px 48px rgb(17 24 39/.16);
+}

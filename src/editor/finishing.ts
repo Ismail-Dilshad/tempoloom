@@ -93,7 +93,7 @@ export async function composeThumbnail(browser:Browser,frame:string,o:{title?:st
  const language=title?detectLanguage(title):'en',rtl=title?isRtl(language,title):false;
  const fontFile=title?path.resolve(ROOT,await defaultFontPath(language,title)):null;
  const logoPath=o.logo!==false&&(brand.logo.onDark??brand.logo.primary)?path.resolve(ROOT,(brand.logo.onDark??brand.logo.primary)!):null;
- const accent=brand.colors.accent??'#FF6B4A';
+ const accent=brand.colors.accent??'#4C8DFF';
  const files:Record<string,string>={'frame.png':frame,...(fontFile?{'font':fontFile}:{}),...(logoPath?{['logo'+path.extname(logoPath)]:logoPath}:{})};
  const words=title?title.split(/\s+/):[];
  const base=o.size==='16:9'?84:o.size==='1:1'?96:120;

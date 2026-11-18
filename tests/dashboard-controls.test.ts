@@ -16,6 +16,8 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
  try{
   await page.route('http://dashboard.test/**',async route=>{
    const url=new URL(route.request().url());
+   if(url.pathname==='/api/studio/jobs/waiting-demo/archive'){Object.assign(studio.jobs[0]!,{archived:route.request().postDataJSON().on});return route.fulfill({json:{ok:true}});}
+   if(url.pathname==='/api/studio/live')return route.fulfill({json:{jobs:[]}});
    if(url.pathname==='/api/studio/jobs/waiting-demo'&&route.request().method()==='DELETE'){studio.jobs.splice(0);return route.fulfill({json:{deleted:'waiting-demo'}});}
    if(url.pathname==='/api/link'){
     const input=route.request().postDataJSON();
@@ -33,36 +35,65 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
    if(url.pathname==='/api/state')return route.fulfill({json:{videos:[],topics:[],can:{maxMB:2048,speech:false}}});
    if(url.pathname==='/logo-light.svg'||url.pathname==='/logo.svg')return route.fulfill({body:await fs.readFile('assets/brand/logo/svg/tempoloom-wordmark-for-'+(url.pathname.includes('light')?'light':'dark')+'.svg'),contentType:'image/svg+xml'});
    const name=url.pathname==='/'?'index.html':path.basename(url.pathname);
-   if(!['index.html','app.css','core.js','home.js','teach.js','studio.js','settings.js'].includes(name))return route.fulfill({status:204});
+   if(!['index.html','tokens.css','app.css','shell.css','core.js','shell.js','create.js','places.js','teach.js','studio.js','settings.js'].includes(name))return route.fulfill({status:204});
    return route.fulfill({body:await fs.readFile(path.resolve('src/teach/ui',name)),contentType:name.endsWith('.js')?'text/javascript':name.endsWith('.css')?'text/css':'text/html'});
   });
   await page.goto('http://dashboard.test/#/studio/new');
   await page.locator('.logo-mark').waitFor();
+  expect(new URL(page.url()).hash).toBe('#/create'); // old addresses open their new place
   await page.waitForFunction(()=>{const img=document.querySelector<HTMLImageElement>('.logo-mark');return img?.complete&&img.naturalWidth>0;});
   expect(await page.locator('.logo-mark').getAttribute('src')).toContain('/logo-light.svg');
   const logoSize=await page.locator('.logo-mark').boundingBox();
-  await page.locator('.side-footer').getByRole('button',{name:/^(Dark|Light) theme$/}).click();
+  await page.locator('#tb-me').click();await page.getByRole('menuitemradio',{name:'Dark'}).click();
+  expect(await page.evaluate(()=>document.documentElement.dataset.theme)).toBe('dark');
   const otherLogoSize=await page.locator('.logo-mark').boundingBox();
   expect(otherLogoSize!.width).toBe(logoSize!.width);
   expect(otherLogoSize!.height).toBe(logoSize!.height);
   await page.waitForFunction(()=>{const img=document.querySelector<HTMLImageElement>('.logo-mark');return img?.complete&&img.naturalWidth>0;});
   expect(await page.locator('.logo-mark').getAttribute('src')).toContain('/logo.svg');
-  await page.locator('.side-footer').getByRole('button',{name:/^(Dark|Light) theme$/}).click();
-  const header=await page.locator('.side-header').boundingBox(),navigation=await page.locator('.side-body').boundingBox(),footer=await page.locator('.side-footer').boundingBox();
+  await page.locator('#tb-me').click();await page.getByRole('menuitemradio',{name:'Light'}).click();
+  const header=await page.locator('.rail-head').boundingBox(),navigation=await page.locator('.rail-body').boundingBox(),footer=await page.locator('.rail-foot').boundingBox();
   expect(navigation!.y).toBeGreaterThanOrEqual(header!.y+header!.height);
   expect(footer!.y+footer!.height).toBeCloseTo(1000,0);
-  const length=page.getByRole('combobox',{name:/^Length:/});await length.waitFor();
-  await length.click();await page.getByRole('option',{name:'30 seconds',exact:true}).click();
-  expect(await page.locator('#seconds').inputValue()).toBe('30');
-  expect(await length.getAttribute('aria-expanded')).toBe('false');
-  await length.focus();await page.keyboard.press('ArrowDown');await page.keyboard.press('End');await page.keyboard.press('Enter');
-  expect(await page.locator('#seconds').inputValue()).toBe('120');
-  await length.click();await page.keyboard.press('Escape');expect(await length.getAttribute('aria-expanded')).toBe('false');
-  expect(await length.evaluate(el=>el===document.activeElement)).toBe(true);
-  await page.getByRole('checkbox',{name:/finished script/}).check();
-  await page.locator('#text').fill('A complete original script.');
-  await page.reload();await length.waitFor();expect(await page.locator('#seconds').inputValue()).toBe('120');expect(await page.locator('#script').isChecked()).toBe(true);
-  await page.getByRole('button',{name:'Start over'}).click();await page.keyboard.press('Escape');expect(await page.getByRole('dialog').count()).toBe(0);
+  // The rail: seven places in order, Trash and Collapse at its foot.
+  expect(await page.locator('.rail-body .navlink .lbl').allInnerTexts()).toEqual(['Create','Projects','Looks','Scenes','Library','Tools','Brain']);
+  await page.getByRole('button',{name:'Collapse',exact:true}).click();
+  expect(await page.locator('#app').getAttribute('data-rail')).toBe('collapsed');
+  await page.keyboard.press('[');
+  expect(await page.locator('#app').getAttribute('data-rail')).toBe('');
+  // The prompt box keeps what you wrote; its settings open in the right panel.
+  await page.locator('#dock-text').fill('A complete original script.');
+  await page.getByRole('button',{name:'Settings for this video'}).click();
+  await page.getByRole('heading',{name:'Settings for this video'}).waitFor();
+  await page.getByRole('button',{name:'16:9'}).click();
+  expect(await page.getByRole('button',{name:'16:9'}).getAttribute('aria-pressed')).toBe('true');
+  const length=page.getByRole('button',{name:'2 min'});await length.click();
+  const language=page.getByRole('combobox',{name:/^Language:/});
+  await language.click();await page.getByRole('option',{name:'Arabic',exact:true}).click();
+  expect(await page.locator('#language').inputValue()).toBe('ar');
+  expect(await language.getAttribute('aria-expanded')).toBe('false');
+  await language.focus();await page.keyboard.press('ArrowDown');await page.keyboard.press('End');await page.keyboard.press('Enter');
+  expect(await page.locator('#language').inputValue()).toBe('fa');
+  await language.click();await page.keyboard.press('Escape');expect(await language.getAttribute('aria-expanded')).toBe('false');
+  expect(await language.evaluate(el=>el===document.activeElement)).toBe(true);
+  await page.getByRole('button',{name:'Done',exact:true}).click();
+  expect(await page.locator('#panel').isHidden()).toBe(true);
+  await page.getByRole('button',{name:'Rules for this video'}).click();
+  await page.getByRole('checkbox',{name:/word for word/}).check();
+  await page.keyboard.press('Escape');
+  await page.locator('#dock-text').click();await page.keyboard.press('Escape');
+  await page.reload();await page.locator('#dock-text').waitFor();
+  expect(await page.locator('#dock-text').inputValue()).toBe('A complete original script.');
+  await page.getByRole('button',{name:'Settings for this video'}).click();
+  expect(await page.getByRole('button',{name:'2 min'}).getAttribute('aria-pressed')).toBe('true');
+  expect(await page.locator('#language').inputValue()).toBe('fa');
+  await page.getByRole('button',{name:'Close the panel'}).click();
+  // The kind pill and the command menu.
+  await page.locator('#dock-kind').click();await page.getByRole('menuitemradio',{name:/Edit my footage/}).click();
+  expect(await page.locator('#dock-kind').innerText()).toContain('Edit my footage');
+  await page.keyboard.press('Control+k');await page.getByRole('textbox',{name:/Search places, tools/}).fill('trash');
+  await page.keyboard.press('Enter');await expect.poll(()=>new URL(page.url()).hash).toBe('#/trash');
+  await page.evaluate(()=>{location.hash='/create';});await page.locator('#dock-text').waitFor();
   // A select created inside a dialog is enhanced too; Escape closes the list first.
   await page.evaluate(()=>{(window as any).dialog('<h2>Options</h2><label for="test-select">Test choice</label><select id="test-select"><option>A</option><option disabled>B</option><option>C</option></select>');});
   const choice=page.getByRole('combobox',{name:/Test choice/});await choice.waitFor();await choice.click();await page.keyboard.press('ArrowDown');await page.keyboard.press('Enter');expect(await page.locator('#test-select').inputValue()).toBe('C');
@@ -88,18 +119,18 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
   if(process.env.DASHBOARD_SCREENSHOTS){await fs.mkdir('workspace/cache/dashboard-review',{recursive:true});await page.screenshot({path:'workspace/cache/dashboard-review/studio-desktop.png',fullPage:true});await length.click();await page.screenshot({path:'workspace/cache/dashboard-review/studio-dropdown.png'});await page.keyboard.press('Escape');await page.evaluate(()=>{document.documentElement.dataset.theme='dark';});await page.screenshot({path:'workspace/cache/dashboard-review/studio-dark.png',fullPage:true});await page.evaluate(()=>{document.documentElement.dataset.theme='light';});}
   await page.setViewportSize({width:390,height:844});
   expect(await page.evaluate(()=>getComputedStyle(document.documentElement).scrollbarWidth)).toBe('none');
-  await page.mouse.move(180,420);await page.mouse.wheel(0,350);
-  await page.waitForFunction(()=>window.scrollY>0);
-  await length.scrollIntoViewIfNeeded();
-  await page.waitForTimeout(250);
-  await length.click();
+  await page.getByRole('button',{name:'Settings for this video'}).click();
+  const phoneLanguage=page.getByRole('combobox',{name:/^Language:/});
+  await phoneLanguage.scrollIntoViewIfNeeded();await page.waitForTimeout(250);
+  await phoneLanguage.click();
   const menu=page.getByRole('listbox');
   expect(await menu.evaluate(el=>getComputedStyle(el).scrollbarWidth)).toBe('none');
   expect(await menu.evaluate(el=>{el.style.maxHeight='64px';el.scrollTop=80;return el.scrollTop;})).toBeGreaterThan(0);
   await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:'Close the panel'}).click();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.getByRole('button',{name:'Open the menu'}).click();expect(await page.locator('#app').getAttribute('class')).toContain('open');
-  await page.locator('.navlink[href="#/home"]').click();await page.getByText('Your creative workspace.').waitFor();
+  await page.locator('.navlink[href="#/projects"]').click();await page.locator('.teach-workspace-head h2',{hasText:'Projects'}).waitFor();
   expect(await page.locator('#app').getAttribute('class')).not.toContain('open');
   if(process.env.DASHBOARD_SCREENSHOTS)await page.screenshot({path:'workspace/cache/dashboard-review/home-mobile.png',fullPage:true});
   await page.evaluate(()=>{(window as any).dialog('<h2>Tooltip check</h2><button id="tip-check" title="Save your changes" aria-describedby="tip-help">Save</button><span id="tip-help">Settings</span>');});
@@ -117,14 +148,20 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
   expect(await tipButton.getAttribute('aria-describedby')).toBe('tip-help');
   await page.evaluate(()=>{(window as any).closeDialog();});
   await page.evaluate(()=>{location.hash='/studio/videos';});
-  const remove=page.getByRole('button',{name:'Delete Waiting example',exact:true});
-  await remove.click();
+  await expect.poll(()=>new URL(page.url()).hash).toBe('#/projects');
+  // A project goes to the trash first; only the trash deletes it, after asking.
+  await page.getByRole('button',{name:'More for Waiting example',exact:true}).click();
+  await page.getByRole('menuitem',{name:'Move to trash'}).or(page.getByRole('button',{name:'Move to trash'})).click();
+  await page.getByRole('heading',{name:'No projects yet'}).waitFor();
+  await page.evaluate(()=>{location.hash='/trash';});
+  const more=page.getByRole('button',{name:'More for Waiting example',exact:true});
+  await more.click();await page.getByRole('button',{name:'Delete forever'}).click();
   await page.getByRole('button',{name:'Cancel',exact:true}).click();
-  expect(await remove.count()).toBe(1);
-  expect(new URL(page.url()).hash).toBe('#/studio/videos');
-  await remove.click();
+  expect(await more.count()).toBe(1);
+  expect(new URL(page.url()).hash).toBe('#/trash');
+  await more.click();await page.getByRole('button',{name:'Delete forever'}).click();
   await page.getByRole('button',{name:'Delete job',exact:true}).click();
-  await page.getByRole('heading',{name:'No videos yet'}).waitFor();
+  await page.getByRole('heading',{name:'The trash is empty'}).waitFor();
   expect(await page.locator('#view').evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('none');
   if(process.env.DASHBOARD_SCREENSHOTS)await page.screenshot({path:'workspace/cache/dashboard-review/empty-videos-mobile.png'});
   expect(studio.jobs).toHaveLength(0);

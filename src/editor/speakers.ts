@@ -276,7 +276,7 @@ export async function nameSpeakers(file: string, o: {count?: number; names?: str
   const dir = path.join(path.dirname(json), path.basename(stem) + '-name-bars');
   fs.mkdirSync(dir, {recursive: true});
   const width = Math.round(info.width * (info.height > info.width ? 0.62 : 0.36));
-  const colors = {primary: brand.colors.primary ?? '#0B3B3C', accent: brand.colors.accent ?? '#FF6B4A', text: '#FFFFFF'};
+  const colors = {primary: brand.colors.primary ?? '#0B1F4A', accent: brand.colors.accent ?? '#4C8DFF', text: '#FFFFFF'};
   const png: Record<string, string> = {};
   for (const [i, s] of r.speakers.entries()) {
    o.onStep?.(`Name bar for ${s.name}`);

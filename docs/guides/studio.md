@@ -147,7 +147,7 @@ progress" with nothing heard for half an hour shows as stopped on the video's pa
 
 ## History and Undo
 
-**History** (in the sidebar, and `pnpm tempoloom history`) lists every change to what the studio
+**History** (Settings, then History, and `pnpm tempoloom history`) lists every change to what the studio
 learned (lessons added, kept, removed or scored; rules from your feedback; taught videos), to your
 taste profiles, and to your ratings (ratings, picks, comments, verdicts, gallery ratings), newest
 first, each with **Undo**. Undo puts what one change touched back the way it was, field by field: a
@@ -169,6 +169,24 @@ pnpm tempoloom studio open      # the user: brief, watch, rate, approve
 pnpm tempoloom studio inbox     # the agent: new requests, tasks ready, what waits for the user
 pnpm tempoloom studio take r-1a2b3c4d
 ```
+
+**The page.** Seven places on the rail, in this order, with everything else opening in one panel on
+the right (see [the page's design](studio-page.md)):
+
+| Place | What it holds |
+| --- | --- |
+| Create | The home page: the prompt box at the bottom, your newest projects, ideas to start from |
+| Projects | Every video (All, Making, Waiting for you, Done) and each one's workspace; Finished videos |
+| Looks | Looks learned from a video or a channel, and videos you taught, to use in a new video |
+| Scenes | Every scene of every project; locked ones stay as they are |
+| Library | Your media (logos, pictures, music, sounds, clips), taught videos, Find and tidy |
+| Tools | Every tool the studio has beyond making a video, from `agent/tools/registry.json` |
+| Brain | Taste, Lessons, Patterns, What worked (scores), Teach a video |
+
+Trash and Collapse sit at the foot of the rail; Settings (models and keys, appearance, history,
+backup) and the bell (what waits for you, what to tell your agent) are in the top bar. Ctrl+K
+searches places, tools and everything you made. Old addresses (`#/studio/new`, `#/teach/lessons`
+and the rest) open their new place.
 
 **The brief.** Two modes. *Motion graphics video*: a finished script (used word for word), a
 prompt, a topic, or only a link. *Edit my footage*: up to eight files, with instructions or
@@ -199,20 +217,23 @@ pick scored is not scored again by the job's verdict, so one job never counts a 
 (`studio pick JOB style "B"`): the lessons only the picked look used win, the ones only the
 other used lose, and the pick is passed to the next roles.
 
-**More on the page.** Start a brief from a preset or reuse an earlier one (it is saved as you
-type); follow a job with the step list on the left, with approved steps folded away; open a
-picture large; download any shown file; copy the script; "Tell the studio something" sends
-feedback in your own words to the roles it concerns; Archive hides a finished job (nothing is
-deleted). Scores shows, video by video, how many steps were good the first time, and which
-lessons are working or failing.
+**More on the page.** The prompt box keeps what you write (it is saved as you type); its pill picks
+the kind of video and offers presets; + adds files for this video or from your library; Rules
+holds notes and shows the rules the studio follows; Settings holds the shape, length, language,
+voice, captions, colours, style and second opinion. Inside a project the same box tells the studio
+what to change ("Tell the studio something": it becomes a rule for the roles it concerns). Follow a
+job with the step list on the left, open a picture large, download any shown file, copy the
+script. Move to trash hides a job (nothing is deleted); the Trash restores it or deletes it for
+good. Brain, What worked shows, video by video, how many steps were good the first time, and
+which lessons are working or failing.
 
 **The end.** The finished video takes Good (the job is approved and the remaining lessons are
 scored), Not bad (accepted, lessons unchanged) or Bad (the reason goes back and the final is
-redone). The Scores tab counts good and bad ratings by step and lists the rules they created.
+redone). Brain, What worked counts good and bad ratings by step and lists the rules they created.
 
 ## The team at work
 
-Each video's page (Videos, then a video) shows the job as a team at work, above its steps:
+Each video's page (Projects, then a video) shows the job as a team at work, above its steps:
 
 - **The team**: the roles working now come first, each wearing the Tempoloom mascot in its own
   colour with the face of what it is doing (reading, thinking, planning, making, rendering,
@@ -224,8 +245,8 @@ Each video's page (Videos, then a video) shows the job as a team at work, above 
 - The step list on the left pulses on the steps being worked on; the steps below keep
   everything they always had (output, pictures and videos, rating, picks, approvals).
 
-The Videos list shows the face and the last line of any video being worked on right now, and the
-sidebar shows your agent's face and what it is doing, whatever page you are on.
+Project cards show the face of any video being worked on right now, and the foot of the rail
+shows your agent's face and what it is doing, whatever page you are on.
 
 Every studio action writes one line to the job's `events.jsonl`. While they work, agents say
 what they are doing: `pnpm tempoloom studio say JOB TASK "Searching your music for a calm bed
