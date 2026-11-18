@@ -23,3 +23,6 @@ __pycache__/
 /docs/brand-kit-backup/
 # Backups of what the studio learned (pnpm tempoloom backup); they hold your lessons and settings
 /backups/
+
+# graphify knowledge graph (generated)
+graphify-out/
