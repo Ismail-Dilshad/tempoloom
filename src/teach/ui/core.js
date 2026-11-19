@@ -1,5 +1,5 @@
 'use strict';
-// The app's shell: sections, the agent's status, messages, dialogs, the theme, and one poll that
+// The app's shell: sections, the agent's status, messages, dialogs, and one poll that
 // keeps every screen fresh without re-drawing under the user's hands.
 const KEY=new URLSearchParams(location.search).get('k')||'';
 const $=(s,r=document)=>r.querySelector(s);
@@ -104,6 +104,17 @@ const Controls={
  open:null,serial:0,numberSyncs:new WeakMap(),numberHold:null,
  mount(root=document){
   this.mountNumbers(root);
+  root.querySelectorAll('input[type=range]:not(.studio-slider)').forEach(slider=>{
+   slider.classList.add('studio-slider');
+   const update=()=>{
+    const min=Number(slider.min||0),max=Number(slider.max||100);
+    const percent=(slider.valueAsNumber-min)/Math.max(max-min,Number.EPSILON)*100;
+    slider.style.setProperty('--slider-fill',Math.min(100,Math.max(0,percent))+'%');
+   };
+   slider.addEventListener('input',update);
+   slider.addEventListener('change',update);
+   update();
+  });
   root.querySelectorAll('select:not([multiple])').forEach(select=>{
    if(select.dataset.enhanced)return;
    select.dataset.enhanced='true';select.hidden=true;
@@ -248,7 +259,7 @@ const Controls={
   this.close();if(select.disabled)return;
   const options=[...select.options],enabled=options.map((o,i)=>!o.disabled&&!o.parentElement.disabled?i:-1).filter(i=>i>=0);
   if(!enabled.length)return;
-  const menu=document.createElement('div');menu.className='select-menu';menu.id=trigger.id+'-list';menu.setAttribute('role','listbox');menu.setAttribute('aria-label',trigger.getAttribute('aria-label'));
+  const menu=document.createElement('div');menu.className='select-menu';if(trigger.closest('.video-settings'))menu.classList.add('video-select-menu');menu.id=trigger.id+'-list';menu.setAttribute('role','listbox');menu.setAttribute('aria-label',trigger.getAttribute('aria-label'));
   menu.innerHTML=options.map((o,i)=>`<div id="${menu.id}-${i}" class="select-option" role="option" aria-label="${esc(o.textContent)}" aria-selected="${o.selected}" aria-disabled="${!enabled.includes(i)}" data-index="${i}">${esc(o.textContent)}</div>`).join('');
   document.body.append(menu);const r=trigger.getBoundingClientRect();const height=Math.min(280,menu.scrollHeight,innerHeight-24),below=innerHeight-r.bottom-8;
   menu.style.width=Math.min(Math.max(r.width,180),innerWidth-16)+'px';menu.style.left=Math.max(8,Math.min(r.left,innerWidth-menu.offsetWidth-8))+'px';
@@ -306,9 +317,16 @@ const Tooltips={
    this.tip.textContent=target.dataset.tooltip;
    this.tip.dir='auto';
    const rect=target.getBoundingClientRect(),width=this.tip.offsetWidth,height=this.tip.offsetHeight;
+   if(target.closest('#side') && $('#app').dataset.rail==='collapsed' && matchMedia('(min-width:768px)').matches){
+    const rail=$('#side').getBoundingClientRect();
+    const left=rail.right+width+9<=innerWidth?rail.right+9:rail.left-width-9;
+    this.tip.style.left=Math.max(8,left)+'px';
+    this.tip.style.top=Math.max(8,Math.min(innerHeight-height-8,rect.top+(rect.height-height)/2))+'px';
+   }else{
    const below=rect.top<height+18;
    this.tip.style.left=Math.max(8,Math.min(innerWidth-width-8,rect.left+(rect.width-width)/2))+'px';
    this.tip.style.top=Math.max(8,Math.min(innerHeight-height-8,below?rect.bottom+9:rect.top-height-9))+'px';
+   }
    const ids=new Set((target.getAttribute('aria-describedby')||'').split(/\s+/).filter(Boolean));
    ids.add(this.tip.id);target.setAttribute('aria-describedby',[...ids].join(' '));
    this.tip.classList.add('visible');
@@ -318,20 +336,16 @@ const Tooltips={
   this.tip=document.createElement('div');this.tip.id='dashboard-tooltip';this.tip.className='soft-tooltip';this.tip.setAttribute('role','tooltip');document.body.append(this.tip);
   this.mount();
   new MutationObserver(()=>this.mount()).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['title']});
-  document.addEventListener('pointerover',e=>{
-   if(e.pointerType==='touch')return;
-   if(this.tip.contains(e.target)){clearTimeout(this.timer);return;}
+  document.addEventListener('pointermove',e=>{
+   if(e.pointerType==='touch'||e.buttons)return;
    const target=e.target.closest('[data-tooltip]');
    if(target)this.show(target,300);
+   else if(this.target)this.hide();
   });
   document.addEventListener('pointerout',e=>{
-   if(!this.target)return;
-   if(this.target.contains(e.relatedTarget)||this.tip.contains(e.relatedTarget))return;
-   if(this.target.contains(document.activeElement))return;
-   clearTimeout(this.timer);this.timer=setTimeout(()=>this.hide(),100);
+   if(this.target&&!this.target.contains(e.relatedTarget))this.hide();
   });
-  document.addEventListener('focusin',e=>{const target=e.target.closest('[data-tooltip]');if(target)this.show(target,100);});
-  document.addEventListener('focusout',e=>{if(this.target?.contains(e.target))this.hide();});
+  document.addEventListener('panel',()=>this.hide());
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&this.target){e.preventDefault();e.stopImmediatePropagation();this.hide();}},true);
   document.addEventListener('pointerdown',()=>this.hide());
   document.addEventListener('scroll',()=>this.hide(),true);
@@ -383,7 +397,7 @@ const TABS={projects:[['projects','All projects'],['projects/finished','Finished
  library:[['library','Your media'],['library/looks','Looks'],['library/scenes','Scenes'],['library/references','Taught videos'],['library/tidy','Find and tidy']],
  tools:[['tools','All tools'],['tools/text','Edit by text'],['tools/trends','Trend watch']],
  brain:[['brain/taste','Taste'],['brain/lessons','Lessons'],['brain/worked','What worked']],
- settings:[['settings','Models and keys'],['settings/appearance','Appearance'],['settings/history','History'],['settings/backup','Backup and move']]};
+ settings:[['settings','Models and keys'],['settings/appearance','Sidebar'],['settings/history','History'],['settings/backup','Backup and move']]};
 const longest=list=>[...list].sort((a,b)=>b[0].length-a[0].length);
 function resolveRoute(h){
  for(const [old,now] of longest(REDIRECTS))if(h===old||h.startsWith(old+'/'))return {redirect:now+h.slice(old.length)};
@@ -394,7 +408,7 @@ function resolveRoute(h){
 const publicOf=view=>ROUTES.filter(r=>r[1]===view).sort((a,b)=>a[0].length-b[0].length)[0]?.[0]??view;
 
 const App={
- home:null,route:'create',arg:null,path:'create',screens:{},nav:[],
+ refreshId:0,appliedRefresh:0,home:null,route:'create',arg:null,path:'create',screens:{},nav:[],
  register(route,screen){this.screens[route]=screen;},
  go(route,arg){location.hash='#/'+(this.screens[route]?publicOf(route):route)+(arg?'/'+encodeURIComponent(arg):'');},
  get place(){return this.path.split('/')[0];},
@@ -409,24 +423,28 @@ const App={
  async start(){
   Controls.start();Tooltips.start();Shell.start();
   $('#app').dataset.rail=store.get('rail','');
-  $('#menu').innerHTML=I.menu;$('#menu').onclick=()=>$('#app').classList.toggle('open');$('#scrim').onclick=()=>$('#app').classList.remove('open');
-  $('#search-icon').outerHTML=I.search;
-  window.addEventListener('hashchange',()=>{const before=this.route;this.parse();$('#app').classList.remove('open');if(before!==this.route)Panel.close(true);Overlay.close(true);Pop.close();this.changed=true;const s=this.screens[this.route];if(!s.load||s.data)this.show();this.refresh(!!s.load&&!s.data);window.scrollTo(0,0);$('#view').focus({preventScroll:true});});
+  $('#menu').innerHTML=I.menu;$('#menu').onclick=()=>{if(matchMedia('(max-width:767px)').matches)$('#app').classList.toggle('open');else this.collapse();this.side();};$('#scrim').onclick=()=>{$('#app').classList.remove('open');this.side();$('#menu').focus();};
+  matchMedia('(max-width:767px)').addEventListener('change',()=>this.side());
+  window.addEventListener('hashchange',()=>{const before=this.path,previousArg=this.arg;this.parse();$('#app').classList.remove('open');if(before!==this.path||previousArg!==this.arg)Panel.close(true);Overlay.close(true);Pop.close();this.changed=true;const s=this.screens[this.route];if(s.load&&s.loadedArg!==this.arg)s.data=null;if(!s.load||s.data)this.show();else $('#view').replaceChildren();this.refresh(!!s.load&&!s.data);window.scrollTo(0,0);$('#view').focus({preventScroll:true});});
   this.parse();await this.refresh(true);
   setInterval(()=>{if(!document.hidden)this.refresh(false);},2500);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)this.refresh(false);});
  },
  /** Loads the home summary and the current screen's data; re-draws only when something changed and the user is not typing or watching. */
  async refresh(force){
-  const s=this.screens[this.route];
+  const s=this.screens[this.route],path=this.path,arg=this.arg,id=++this.refreshId;
+  const stale=()=>path!==this.path||arg!==this.arg||id<this.appliedRefresh;
   try{
    const [h,d]=await Promise.all([api('/api/home'),s.load?s.load():null]);
+   if(stale())return;
+   this.appliedRefresh=id;
+   s.loadedArg=arg;
    const changed=JSON.stringify(h)!==JSON.stringify(this.home)||(s.load&&JSON.stringify(d)!==JSON.stringify(s.data));
    this.home=h;if(s.load)s.data=d;this.offline=false;
    const typing=/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName||''),playing=[...document.querySelectorAll('video,audio')].some(m=>!m.paused),busy=$('#modal').innerHTML||Controls.open||Shell.busy();
    this.side();
    if(force||(changed&&!typing&&!playing&&!busy&&!(s.hold&&s.hold())))this.show(false);
-  }catch(e){if(!this.offline){this.offline=true;toast(e.message==='Failed to fetch'?'The page lost the server. Is the terminal still open? Start it again with: pnpm tempoloom studio open':e.message,true);}}
+  }catch(e){if(!stale()&&!this.offline){this.offline=true;toast(e.message==='Failed to fetch'?'The page lost the server. Is the terminal still open? Start it again with: pnpm tempoloom studio open':e.message,true);}}
  },
  show(routeChanged){
   const s=this.screens[this.route];if(!s||!this.home)return;
@@ -458,26 +476,28 @@ const App={
  /** The rail and the top bar's icons, from the home summary. */
  side(){
   const h=this.home;if(!h)return;
-  const light=document.documentElement.dataset.theme==='light';
+  const mobile=matchMedia('(max-width:767px)').matches;
+  const collapsed=$('#app').dataset.rail==='collapsed';
+  const railTip=label=>collapsed&&!mobile?`data-tooltip="${esc(label)}"`:'';
   const links=PLACES.map(p=>{if(p==='-')return '<hr>';const c=p.count?p.count(h):null,here=this.place===p.id;
-   return `<a class="navlink" href="#/${p.id}" ${here?'aria-current="page"':''} data-tooltip-rail="${esc(p.label)}">${I[p.icon]}<span class="lbl">${p.label}</span>${c&&c[1]?`<span class="n hot" title="${c[1]} waiting for you">${c[1]}</span>`:''}${p.plus?`<span class="plus" role="button" tabindex="0" aria-label="${esc(p.plus.label)}" onclick="event.preventDefault();event.stopPropagation();${p.plus.run}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();${p.plus.run}}">${I.add}</span>`:''}</a>`;}).join('');
-  const navScroll=$('.rail-body')?.scrollTop||0,m=h.mascot,collapsed=$('#app').dataset.rail==='collapsed';
-  $('#side').innerHTML=`<header class="rail-head side-header"><a class="logo" href="#/create" aria-label="Tempoloom, Create"><img class="logo-mark" src="/logo${light?'-light':''}.svg?v=10" alt="Tempoloom" width="146" height="31"><img class="logo-small" src="/mark.svg?v=10" alt="" width="32" height="32"></a></header>
+   return `<a class="navlink" href="#/${p.id}" ${here?'aria-current="page"':''} aria-label="${esc(p.label)}" ${railTip(p.label)}>${I[p.icon]}<span class="lbl">${p.label}</span>${c&&c[1]?`<span class="n hot" title="${c[1]} waiting for you">${c[1]}</span>`:''}${p.plus?`<span class="plus" role="button" tabindex="0" aria-label="${esc(p.plus.label)}" data-tooltip="${esc(p.plus.label)}" onclick="event.preventDefault();event.stopPropagation();${p.plus.run}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();${p.plus.run}}">${I.add}</span>`:''}</a>`;}).join('');
+  const navScroll=$('.rail-body')?.scrollTop||0,m=h.mascot;
+  const markup=`<header class="rail-head side-header"><a class="logo" href="#/create" aria-label="Tempoloom, Create" ${railTip('Create')}><img class="business-mark" src="/mark.svg?v=10" alt="" width="48" height="48"><span class="brand-copy"><img class="logo-mark" src="/logo.svg?v=10" alt="Tempoloom" width="106" height="21"></span></a></header>
    <nav class="rail-body side-body" aria-label="Places">${links}</nav>
    <footer class="rail-foot side-footer">
     ${m?`<a class="agent-chip" href="${m.job?'#/projects/'+encodeURIComponent(m.job):'#/projects'}" title="${esc((m.who||'Your agent')+': '+(m.detail||FACE_LABEL[m.face]||''))}"><img src="/mascot/${esc(m.face)}.svg" alt="${esc(FACE_LABEL[m.face]||'')}" width="36" height="28"><span><b>${esc(m.who||'Your agent')}</b><small dir="auto">${esc(m.detail||FACE_LABEL[m.face]||'')}</small></span></a>`:''}
-    <a class="navlink" href="#/trash" ${this.place==='trash'?'aria-current="page"':''}>${I.trash}<span class="lbl">Trash</span></a>
-    <button class="navlink collapse-btn" onclick="App.collapse()" aria-pressed="${collapsed}">${I.collapse}<span class="lbl">${collapsed?'Expand':'Collapse'}</span></button></footer>`;
+    <a class="navlink" href="#/trash" aria-label="Trash" ${railTip('Trash')} ${this.place==='trash'?'aria-current="page"':''}>${I.trash}<span class="lbl">Trash</span></a>
+    </footer>`;
+  if(markup!==this.railMarkup){
+   $('#side').innerHTML=markup;
+   this.railMarkup=markup;
+   $('.rail-head').insertAdjacentHTML('beforeend',`<button class="iconbtn rail-close" aria-label="Close the menu" onclick="document.querySelector('#app').classList.remove('open');App.side();document.querySelector('#menu').focus()">${I.x}</button>`);
+  }
+  $('#menu').setAttribute('aria-label',mobile?'Open the menu':collapsed?'Expand':'Collapse');
+  $('#menu').setAttribute('aria-controls','side');
+  $('#menu').setAttribute('aria-expanded',String(mobile?$('#app').classList.contains('open'):!collapsed));
   $('.rail-body').scrollTop=navScroll;
   Shell.icons(h);
  },
  collapse(){const on=$('#app').dataset.rail!=='collapsed';$('#app').dataset.rail=on?'collapsed':'';store.set('rail',on?'collapsed':'');this.side();},
- /** Dark, light or the system's choice; remembered. */
- theme(choice){
-  if(!choice)choice=document.documentElement.dataset.theme==='light'?'dark':'light';
-  const t=choice==='system'?(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'):choice;
-  document.documentElement.dataset.theme=t;document.documentElement.dataset.themeChoice=choice;
-  try{localStorage.setItem('tl-theme',choice);}catch{/* private window */}this.side();
- },
 };
-matchMedia('(prefers-color-scheme: light)').addEventListener?.('change',()=>{if(document.documentElement.dataset.themeChoice==='system')App.theme('system');});

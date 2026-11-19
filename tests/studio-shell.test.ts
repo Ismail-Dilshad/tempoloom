@@ -1,5 +1,5 @@
 // The redesigned Studio page: its places and old addresses, one registry for its tools, your library and
-// scenes over the server, design tokens that read well in both themes, and a blue brand everywhere.
+// scenes over the server, dark design tokens, and a blue brand everywhere.
 import {describe,it,expect,beforeAll,afterAll} from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -13,21 +13,21 @@ beforeAll(async()=>{Object.assign(process.env,env);fs.mkdirSync(env.TEMPOLOOM_KN
 afterAll(()=>{closeDb();for(const k of Object.keys(env))before[k]===undefined?delete process.env[k]:process.env[k]=before[k];fs.rmSync(tmp,{recursive:true,force:true});});
 
 const UI='src/teach/ui';
-/** The tokens of one theme, read from tokens.css. */
-function tokens(theme:'dark'|'light'){
- const css=fs.readFileSync(path.join(UI,'tokens.css'),'utf8'),block=(sel:string)=>css.slice(css.indexOf(sel)+sel.length,css.indexOf('}',css.indexOf(sel)));
- const read=(b:string)=>Object.fromEntries([...b.matchAll(/--([a-z0-9-]+):(#[0-9A-Fa-f]{6})/g)].map(m=>[m[1]!,m[2]!]));
- return {...read(block(':root{')),...(theme==='light'?read(block(':root[data-theme=light]{')):{})} as Record<string,string>;
+function tokens(){
+ const css=fs.readFileSync(path.join(UI,'tokens.css'),'utf8');
+ const start=css.indexOf(':root{');
+ const block=css.slice(start,css.indexOf('}',start));
+ return Object.fromEntries([...block.matchAll(/--([a-z0-9-]+):(#[0-9A-Fa-f]{6})/g)].map(m=>[m[1]!,m[2]!]));
 }
 const lum=(h:string)=>{const [r,g,b]=[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255).map(c=>c<=.03928?c/12.92:((c+.055)/1.055)**2.4);return .2126*r!+.7152*g!+.0722*b!;};
 const contrast=(a:string,b:string)=>{const [x,y]=[lum(a),lum(b)].sort((p,q)=>q-p);return (x!+.05)/(y!+.05);};
 
 describe('design tokens',()=>{
- for(const theme of ['dark','light'] as const)it(`read well in the ${theme} theme`,()=>{
-  const t=tokens(theme);
+ it('read well on dark surfaces',()=>{
+  const t=tokens();
   for(const bg of ['bg','surface-1','surface-2','surface-3']){
    for(const fg of ['text','text-2','text-3','accent','bad'])expect(contrast(t[fg]!,t[bg]!),`${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
-   for(const fg of ['good','warn'])expect(contrast(t[fg]!,t[bg]!),`${fg} on ${bg}`).toBeGreaterThanOrEqual(theme==='light'?4.5:3);
+   for(const fg of ['good','warn'])expect(contrast(t[fg]!,t[bg]!),`${fg} on ${bg}`).toBeGreaterThanOrEqual(3);
   }
   expect(contrast(t['on-accent']!,t['accent-fill']!),'white on a filled blue button').toBeGreaterThanOrEqual(4.5);
  });
@@ -38,12 +38,13 @@ describe('design tokens',()=>{
 });
 
 describe('the icons',()=>{
- it('are Material Symbols, with their source and licence recorded',()=>{
-  const js=fs.readFileSync(path.join(UI,'icons.js'),'utf8'),names=[...js.matchAll(/^ ([a-z]+):\['([a-z_0-9]+)'/gm)];
-  expect(names.length).toBeGreaterThan(60);
-  for(const k of ['home','spark','film','palette','scenes','folder','tools','brain','trash','bell','send','sliders','rules'])expect(js).toMatch(new RegExp(`^ ${k}:\\[`,'m'));
-  expect(fs.readFileSync('assets/icons/material-symbols/LICENSE.txt','utf8')).toMatch(/Apache License/);
-  const readme=fs.readFileSync('assets/icons/material-symbols/README.md','utf8');for(const [,,n] of names)expect(readme).toContain(`| ${n} |`);
+ it('uses licensed Lucide icons for shared controls',()=>{
+  const js=fs.readFileSync(path.join(UI,'icons.js'),'utf8');
+  const icons=new Map([...js.matchAll(/^ (\w+):\["([^"]+)"/gm)].map(m=>[m[1],m[2]]));
+  expect(icons.size).toBeGreaterThan(60);
+  expect(icons.get('menu')).toBe('menu');
+  expect(icons.get('refresh')).toBe('refresh-cw');
+  expect(fs.readFileSync('assets/icons/lucide/LICENSE','utf8')).toContain('ISC');
  });
 });
 

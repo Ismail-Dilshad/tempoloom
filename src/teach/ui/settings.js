@@ -79,7 +79,7 @@ window.setConnect=id=>{const s=App.screens.settings.data.services.find(x=>x.id==
   catch(err){toast(err.message,true);b.disabled=false;b.textContent='Save and check';return;}
   App.refresh(true);};};
 window.setAddLocal=(name,baseURL)=>{
- dialog(`<h2>Add a model server</h2><p class="muted">Any server that speaks the OpenAI API: Ollama, LM Studio, llama.cpp, vLLM. Start it first.</p>
+ dialog(`<h2>Add a model server</h2><p class="muted">Start an OpenAI-compatible server before connecting.</p>
   <form id="localform"><label class="f" for="ln">Name</label><input id="ln" type="text" value="${esc(name||'')}" required maxlength="60"><label class="f" for="lu" style="margin-top:10px">Address</label><input id="lu" type="url" value="${esc(baseURL||'http://localhost:11434/v1')}" required>
   <div class="row" style="justify-content:flex-end;margin-top:16px"><button type="button" class="btn ghost" data-no>Cancel</button><button class="btn primary" type="submit">Add and check</button></div></form>`);
  $('#modal [data-no]').onclick=()=>closeDialog();

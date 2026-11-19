@@ -51,7 +51,7 @@ window.exportLessons=()=>{
 };
 window.writeLesson=()=>{
  const S=Teach.S;
- dialog(`<h2>Write a lesson</h2><p class="muted">Something you already know should always be done, or never. It is kept at once and sorted by its topic.</p>
+ dialog(`<h2>Write a lesson</h2><p class="muted">New lessons apply immediately.</p>
   <label class="f" for="wl">The lesson</label><textarea id="wl" dir="auto" maxlength="1500" placeholder="For example: end every ad on the logo for at least 2 seconds, with the website address under it."></textarea>
   <fieldset class="teach-example" style="margin-top:14px"><legend>How should the studio use it?</legend><div class="example-choices"><label><input type="radio" name="wk" value="do" checked><span><b>Do this</b><small>Apply it whenever it fits.</small></span></label><label><input type="radio" name="wk" value="avoid"><span><b>Avoid this</b><small>Never do it.</small></span></label></div></fieldset>
   <label class="f">About</label><div class="focus-chips" id="wt">${S.topics.map(t=>`<button type="button" aria-pressed="false" data-t="${t.id}">${esc(t.label)}</button>`).join('')}</div>

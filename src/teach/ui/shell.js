@@ -48,23 +48,70 @@ const Panel={
  id:null,onclose:null,stack:[],
  /** Opens a panel: {id, title, sub, body (html), foot (html), back (a function that reopens the previous one), onclose}. */
  open(o){
-  const el=$('#panel'),wasOpen=!el.hidden;
+  const el=$('#panel'),wasOpen=!!this.id;
+  this.exit?.cancel();
+  this.exit=null;
+  el.inert=false;
+  if(!wasOpen)this.opener=document.activeElement;
   if(this.id&&this.id!==o.id&&this.onclose)this.onclose();
+  Dock.restore();
   this.id=o.id;this.onclose=o.onclose||null;
   el.innerHTML=`<header class="panel-head">${o.back?`<button class="iconbtn sm" aria-label="Back" onclick="Panel.back()">${I.back}</button>`:''}<h2 id="panel-title" dir="auto">${esc(o.title)}</h2>${o.headActions||''}<button class="iconbtn sm" aria-label="Close the panel" onclick="Panel.close()">${I.x}</button></header>
    ${o.sub?`<p class="panel-sub">${esc(o.sub)}</p>`:''}${o.tabs||''}<div class="panel-body" id="panel-body">${o.body||''}</div>${o.dock?`<div class="panel-dock">${o.dock}</div>`:''}${o.foot?`<footer class="panel-foot">${o.foot}</footer>`:''}`;
   this.backFn=o.back||null;
-  el.hidden=false;$('#app').style.setProperty('--panel-open',matchMedia('(min-width:1280px)').matches?'var(--panel-w)':'0px');
-  if(!wasOpen&&!matchMedia('(prefers-reduced-motion: reduce)').matches)el.animate([{opacity:0,transform:'translateX(16px)'},{opacity:1,transform:'none'}],{duration:260,easing:'cubic-bezier(.2,0,0,1)'});
-  if(o.focus!==false)requestAnimationFrame(()=>(el.querySelector('[autofocus],textarea,input,button.primary')||el.querySelector('.panel-head h2'))?.focus?.({preventScroll:true}));
+  if(!$('.drawer-shade')){
+   const shade=document.createElement('div');
+   shade.className='drawer-shade';
+   shade.onclick=()=>Panel.close();
+   el.before(shade);
+  }
+  $('.drawer-shade').classList.toggle('prompt-drawer-shade',o.id==='prompt-editor');
+  if(o.dockNode){
+   $('.prompt-drawer-host',el).append(o.dockNode);
+   $('#dock-expand',o.dockNode)?.setAttribute('aria-expanded','true');
+  }
+  el.hidden=false;
+  if(!wasOpen)this.motion(el,false);
+  if(o.focus!==false)requestAnimationFrame(()=>(el.querySelector('[autofocus],textarea,input,button.primary')||el.querySelector('.panel-head button'))?.focus?.({preventScroll:true}));
   document.dispatchEvent(new CustomEvent('panel',{detail:this.id}));
   return el;
  },
  back(){const f=this.backFn;if(f)f();},
+ motion(el,closing){
+  el.getAnimations().forEach(animation=>animation.cancel());
+  const shade=$('.drawer-shade');
+  shade?.getAnimations().forEach(animation=>animation.cancel());
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches)return null;
+  const offset=getComputedStyle(el).direction==='rtl'?-24:24;
+  const frames=[{opacity:0,transform:`translateX(${offset}px)`},{opacity:1,transform:'none'}];
+  const backdrop=[{opacity:0},{opacity:1}];
+  const timing={duration:closing?180:260,easing:'cubic-bezier(.22,1,.36,1)',fill:'both'};
+  shade?.animate(closing?backdrop.reverse():backdrop,timing);
+  return el.animate(closing?frames.reverse():frames,timing);
+ },
  close(silent){
-  const el=$('#panel');if(el.hidden)return;
-  const f=this.onclose;this.onclose=null;const was=this.id;this.id=null;el.hidden=true;el.innerHTML='';$('#app').style.setProperty('--panel-open','0px');
-  if(!silent&&f)f();document.dispatchEvent(new CustomEvent('panel',{detail:null,was}));
+  const el=$('#panel');
+  if(el.hidden||(!this.id&&!silent))return;
+  const f=this.onclose,was=this.id,opener=this.opener;
+  this.onclose=null;this.id=null;this.opener=null;
+  el.inert=true;
+  const finish=()=>{
+   Dock.restore(!silent&&was==='prompt-editor');
+   el.hidden=true;el.innerHTML='';
+   $('.drawer-shade')?.remove();
+   el.getAnimations().forEach(animation=>animation.cancel());
+   this.exit=null;
+   if(!silent&&was==='prompt-editor'&&opener?.isConnected)opener.focus({preventScroll:true});
+  };
+  if(silent)finish();
+  else{
+   const exit=this.exit=this.motion(el,true);
+   if(exit)exit.finished.then(()=>{if(this.exit===exit)finish();},()=>{});
+   else finish();
+   if(was!=='prompt-editor'&&opener?.isConnected)opener.focus({preventScroll:true});
+   f?.();
+  }
+  document.dispatchEvent(new CustomEvent('panel',{detail:null,was}));
  },
  body(){return $('#panel-body');},
 };
@@ -131,9 +178,7 @@ const Cmd={
   for(const [place,tabs] of Object.entries(TABS))for(const [path,l] of tabs)if(path.includes('/'))out.push(go(l,'#/'+path,PLACES.find(p=>p.id===place)?.icon||'gear','Go to',PLACES.find(p=>p.id===place)?.label||'Settings'));
   out.push(go('Trash','#/trash','trash','Go to'));
   for(const t of this.tools||[])out.push({label:t.name,icon:t.icon,group:'Tools',about:t.about,run:()=>openTool(t.id)});
-  const choice=document.documentElement.dataset.themeChoice;
-  for(const [k,l] of [['dark','Dark theme'],['light','Light theme'],['system','Use the system theme']])if(k!==choice)out.push({label:l,icon:k==='light'?'sun':k==='dark'?'moon':'monitor',group:'Appearance',run:()=>App.theme(k)});
-  out.push({label:$('#app').dataset.rail==='collapsed'?'Expand the rail':'Collapse the rail',icon:'collapse',group:'Appearance',run:()=>App.collapse()});
+  out.push({label:$('#app').dataset.rail==='collapsed'?'Expand the rail':'Collapse the rail',icon:'collapse',group:'Navigation',run:()=>App.collapse()});
   return out;
  },
  async open(q=''){
@@ -159,16 +204,68 @@ const Cmd={
  run(i){const x=this.list[i];if(!x)return;Overlay.close(true);x.run();},
 };
 
+// One continuous fill per tab group, including when navigation rebuilds its markup.
+function startTabFills(){
+ const reduced=matchMedia('(prefers-reduced-motion: reduce)');
+ let previous=new Map();
+ function sync(){
+  const current=new Map();
+  document.querySelectorAll('.tabs,.seg-tiles').forEach(group=>{
+   const options=[...group.children].filter(el=>el.matches('a,button'));
+   const index=options.findIndex(el=>el.matches('[aria-current="page"],[aria-selected="true"],[aria-pressed="true"]'));
+   let fill=group.querySelector(':scope > .tab-fill');
+   if(index<0){fill?.remove();return;}
+   const label=group.closest('#panel')?'drawer':'page';
+   const signature=JSON.stringify([label,group.className,options.map(el=>el.getAttribute('href')||el.textContent)]);
+   const key=signature+'-'+current.size;
+   const rect=options[index].getBoundingClientRect(),frame=group.getBoundingClientRect();
+   if(!rect.width||!rect.height)return;
+   const x=rect.left-frame.left+group.scrollLeft-group.clientLeft;
+   const y=rect.top-frame.top+group.scrollTop-group.clientTop;
+   const width=rect.width,height=rect.height;
+   const transform=`translate(${x}px,${y}px)`;
+   const old=previous.get(key);
+   if(!fill){
+    fill=document.createElement('span');
+    fill.className='tab-fill';
+    fill.setAttribute('aria-hidden','true');
+    group.prepend(fill);
+   }
+   const start=old?.fill===fill?getComputedStyle(fill):null;
+   const from=start?{transform:start.transform,width:start.width,height:start.height}:old?.geometry;
+   const geometry={transform,width:width+'px',height:height+'px'};
+   Object.assign(fill.style,geometry,{borderRadius:getComputedStyle(options[index]).borderRadius});
+   if(old&&old.index!==index&&!reduced.matches&&from){
+    fill.getAnimations().forEach(animation=>animation.cancel());
+    fill.animate([from,geometry],{duration:240,easing:'cubic-bezier(.22,1,.36,1)'});
+   }
+   current.set(key,{index,geometry,fill});
+  });
+  previous=current;
+ }
+ new MutationObserver(sync).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['aria-current','aria-selected','aria-pressed']});
+ window.addEventListener('resize',sync);
+ document.fonts.ready.then(sync);
+ sync();
+}
+
 // ---------- the shell: top bar icons, the bell, help, keyboard ----------
 const Shell={
  busy(){return !!(Pop.el||Overlay.el||$('#panel').contains(document.activeElement)&&/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName));},
  icons(h){
-  const waiting=h.you.length+(h.agent.length?1:0),choice=document.documentElement.dataset.themeChoice||'system';
-  const box=$('#tb-icons');if(!box)return;const open=Pop.anchor?.id;
-  box.innerHTML=`<button class="iconbtn bell" id="tb-bell" aria-label="Waiting for you${waiting?': '+waiting:''}" aria-haspopup="menu" aria-expanded="false" onclick="Shell.bell(this)">${I.bell}${waiting?`<span class="dot">${waiting}</span>`:''}</button>
-   <button class="avatar" id="tb-me" aria-label="Your menu" aria-haspopup="menu" aria-expanded="false" onclick="Shell.me(this)">${I.user}</button>`;
-  if(open==='tb-bell'||open==='tb-me'){Pop.el?.remove();Pop.el=null;Pop.anchor=null;}
-  void choice;
+  const waiting=h.you.length+(h.agent.length?1:0);
+  const box=$('#tb-icons');
+  if(!box)return;
+  if(!box.firstElementChild){
+   box.innerHTML=`<button class="iconbtn bell" id="tb-bell" aria-haspopup="menu" aria-expanded="false" onclick="Shell.bell(this)">${I.bell}<span class="dot" hidden></span></button>
+    <button class="avatar" id="tb-me" data-tooltip="Your menu" aria-label="Your menu" aria-haspopup="menu" aria-expanded="false" onclick="Shell.me(this)">${I.user}</button>`;
+  }
+  const bell=$('#tb-bell'),dot=bell.querySelector('.dot');
+  const label=waiting?`Waiting for you: ${waiting}`:'Waiting for you';
+  bell.setAttribute('aria-label',label);
+  bell.dataset.tooltip=label;
+  dot.hidden=!waiting;
+  if(dot.textContent!==String(waiting))dot.textContent=String(waiting);
  },
  bell(btn){
   const h=App.home,you=h.you,agent=h.agent;
@@ -177,35 +274,46 @@ const Shell={
    ${agent.length?`<hr><div class="pop-head">Your agent has work</div>${agent.map(x=>`<div style="padding:4px 12px 8px"><div class="small muted">${esc(x.why)}. Tell it:</div><div class="say-line"><span dir="auto">“${esc(x.say)}”</span><button class="iconbtn sm" aria-label="Copy the command ${esc(x.command)}" onclick="copyText('${esc(x.command)}')">${I.copy}</button></div></div>`).join('')}`:''}`,{align:'end',label:'Waiting for you'});
  },
  me(btn){
-  const c=document.documentElement.dataset.themeChoice||'system';
-  Pop.open(btn,`<div class="pop-head">Theme</div>
-   ${[['dark','Dark',I.moon],['light','Light',I.sun],['system','System',I.monitor]].map(([k,l,ic])=>`<button class="pop-item" role="menuitemradio" aria-checked="${c===k}" data-close onclick="App.theme('${k}')">${ic}<span>${l}</span></button>`).join('')}
-   <hr><a class="pop-item" role="menuitem" href="#/settings">${I.gear}<span>Models and keys</span></a>
+  Pop.open(btn,`<a class="pop-item" role="menuitem" href="#/settings">${I.gear}<span>Models and keys</span></a>
    <a class="pop-item" role="menuitem" href="#/settings/history">${I.history||I.restore}<span>History</span></a>
-   <a class="pop-item" role="menuitem" href="#/settings/backup">${I.box||I.export}<span>Backup and move</span></a>
-   <button class="pop-item" role="menuitem" data-close onclick="Shell.help()">${I.keyboard}<span>Help and shortcuts</span></button>`,{align:'end',label:'Your menu'});
- },
- help(){
-  const keys=[['Ctrl K','Search places, tools and everything you made'],['/','Write in the prompt box'],['Enter','Send; Shift+Enter for a new line'],['Esc','Close the top menu, picker or panel'],['[','Collapse or expand the rail'],['G then C, P, L, T, B','Go to Create, Projects, Library, Tools, Brain']];
-  Panel.open({id:'help',title:'Help',sub:'Everything starts in the prompt box. The rail takes you to what you made and what you keep.',
-   body:`<h3 class="field-label">Keyboard</h3>${keys.map(([k,l])=>`<div class="list-row"><div><b>${esc(l)}</b></div><kbd>${esc(k)}</kbd></div>`).join('')}
-    <h3 class="field-label">Where things are</h3>
-    ${[['Create','Start a video from words, a link or your footage.'],['Projects','Every video you made or are making.'],['Library','Your media, looks, scenes and taught videos.'],['Tools','Clean audio, match colours, captions, timelines and more.'],['Brain','What the studio learned: your taste, lessons and what worked.']].map(([a,b])=>`<div class="list-row"><div><b>${a}</b><small>${b}</small></div></div>`).join('')}`});
+   <a class="pop-item" role="menuitem" href="#/settings/backup">${I.box||I.export}<span>Backup and move</span></a>`,{align:'end',label:'Your menu'});
  },
  start(){
+  startTabFills();
   let g=0;
   document.addEventListener('keydown',e=>{
+   if(e.defaultPrevented||e.isComposing)return;
    const typing=/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)||e.target.isContentEditable;
-   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();Cmd.open();return;}
+   if((e.ctrlKey||e.metaKey)&&!e.altKey&&e.key.toLowerCase()==='k'){e.preventDefault();Cmd.open();return;}
    if(e.key==='Escape'){
     if(Controls.open||$('#modal').innerHTML)return;
     if(Pop.el){e.preventDefault();Pop.close(true);return;}
     if(Overlay.el){e.preventDefault();Overlay.close();return;}
-    if(!$('#panel').hidden&&!typing){e.preventDefault();Panel.close();return;}
+    if(!$('#panel').hidden){e.preventDefault();Panel.close();return;}
     return;}
-   if(typing||e.ctrlKey||e.metaKey||e.altKey)return;
+   const altGraph=e.getModifierState('AltGraph');
+   if(typing||e.metaKey||(!altGraph&&(e.ctrlKey||e.altKey)))return;
+   if(Controls.open||Pop.el||Overlay.el||$('#modal').innerHTML||!$('#panel').hidden||$('#app').classList.contains('open'))return;
    if(e.key==='/'&&Dock.el){e.preventDefault();Dock.focus();return;}
    if(e.key==='['){e.preventDefault();App.collapse();return;}
+   const prompt=Dock.el?.querySelector('textarea');
+   if(prompt&&!prompt.disabled&&!prompt.readOnly&&!e.target.closest?.('button,a[href],[role=button],[role=slider],summary,[tabindex]:not(#view)')){
+    if(e.key==='Dead'||e.key==='Process'){
+     // Move focus before the browser begins composing the character.
+     prompt.focus({preventScroll:true});
+     return;
+    }
+    if([...e.key].length===1&&e.key!==' '){
+     e.preventDefault();
+     prompt.focus({preventScroll:true});
+     const end=prompt.value.length;
+     if(prompt.maxLength<0||end+e.key.length<=prompt.maxLength){
+      prompt.setRangeText(e.key,end,end,'end');
+      prompt.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:e.key}));
+     }
+     return;
+    }
+   }
    if(e.key==='g'){g=Date.now();return;}
    if(Date.now()-g<900){const to={c:'create',p:'projects',l:'library',t:'tools',b:'brain',s:'library/scenes'}[e.key];if(to){e.preventDefault();location.hash='#/'+to;}g=0;}
   });
@@ -217,6 +325,51 @@ const Dock={
  el:null,mode:null,
  /** Each screen that wants the dock says what it does; create.js and places.js fill these in. */
  kinds:{},
+ async expand(){
+  if(Panel.id==='prompt-editor'){Panel.close();return;}
+  const dock=this.el;
+  if(!dock||this.departure)return;
+  const panelBefore=Panel.id;
+  const departure=this.departure=this.compactMotion(dock,true);
+  if(departure){
+   await departure.finished.catch(()=>{});
+   this.departure=null;
+   if(this.el!==dock||!dock.isConnected||Panel.id!==panelBefore){
+    departure.cancel();
+    return;
+   }
+  }
+  const panel=Panel.open({
+   id:'prompt-editor',title:'Edit prompt',dockNode:this.el,
+   body:`<div class="prompt-drawer-start">
+    <h3>What would you like to create?</h3>
+    <div class="prompt-modes" role="group" aria-label="Video type">
+     ${VIDEO_KINDS.map(({id,icon,label})=>`<button type="button" class="prompt-mode" data-prompt-kind="${id}" aria-pressed="${Studio.N.mode===id}"><span class="prompt-mode-icon">${I[icon]}</span><span>${esc(label)}</span></button>`).join('')}
+    </div>
+   </div>`,
+   dock:'<div class="prompt-drawer-host"></div>'
+  });
+  departure?.cancel();
+  const input=this.el.querySelector('textarea');
+  autoGrow(input);
+  panel.querySelectorAll('[data-prompt-kind]').forEach(button=>button.onclick=()=>setKind(button.dataset.promptKind));
+ },
+ compactMotion(dock,leaving){
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches)return null;
+  dock.getAnimations().forEach(animation=>animation.cancel());
+  const frames=[{translate:'0px',opacity:1},{translate:'-24px',opacity:0}];
+  return dock.animate(leaving?frames:frames.reverse(),{
+   duration:leaving?160:220,easing:'cubic-bezier(.22,1,.36,1)',fill:leaving?'forwards':'none'
+  });
+ },
+ restore(animate=false){
+  if(!this.el?.closest('.prompt-drawer-host'))return;
+  $('#dock-slot').append(this.el);
+  $('#dock-expand',this.el)?.setAttribute('aria-expanded','false');
+  const input=this.el.querySelector('textarea');
+  if(input)autoGrow(input);
+  if(animate)this.compactMotion(this.el,false);
+ },
  mount(route,arg){
   const want=route==='create'?'create':route==='studio/videos'&&arg?'change':null;
   const slot=$('#dock-slot');

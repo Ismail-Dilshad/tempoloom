@@ -67,7 +67,7 @@ window.galleryCat=c=>{Gallery.f.cat=c;store.set('gallery-filter',Gallery.f);App.
 window.galleryRate=(id,rating,clear)=>{
  const send=note=>act(()=>api(`/api/gallery/${id}/rate`,{method:'POST',body:JSON.stringify(clear?{rating:null}:{rating,note})}),clear?'Rating removed':rating==='bad'?'Rated bad. The reason is remembered.':rating==='good'?'Rated good':'Rated not bad');
  if(clear||rating!=='bad')return send('');
- dialog(`<h2>What is wrong with it?</h2><p class="muted">Your reason is remembered, so the next video avoids it.</p><textarea id="gr-note" dir="auto" maxlength="600" placeholder="For example: the cuts are too slow and the text is hard to read."></textarea>
+ dialog(`<h2>What is wrong with it?</h2><p class="muted">Your feedback guides future videos.</p><textarea id="gr-note" dir="auto" maxlength="600" placeholder="For example: the cuts are too slow and the text is hard to read."></textarea>
   <div class="dialog-actions"><button class="btn" onclick="closeDialog()">Cancel</button><button class="btn primary" id="gr-go">Rate it bad</button></div>`);
  $('#gr-note').focus();$('#gr-go').onclick=()=>{const note=$('#gr-note').value.trim();if(note.length<4)return toast('Say what is wrong with it.',true);closeDialog(true);send(note);};
 };
@@ -95,7 +95,7 @@ window.galleryCompare=()=>{
 const PLAT=[['tiktok','TikTok'],['reels','Instagram Reels'],['shorts','YouTube Shorts'],['youtube','YouTube']];
 window.galleryPublish=id=>{const i=App.screens['studio/gallery'].data.items.find(x=>x.id===id);if(!i)return;
  const pf=(key,name,dl)=>withKey(`/publish-file/${key}/${encodeURIComponent(name)}`)+(dl?'&dl=1':'');
- dialog(`<h2>Publish ${esc(i.title)}</h2><p class="muted">Covers to choose from, and everything to post it: the video in each platform's shape, its cover, and your words, checked. Nothing is posted for you.</p>
+ dialog(`<h2>Publish ${esc(i.title)}</h2><p class="muted">Prepare files for posting. You publish them yourself.</p>
   <div class="pub-step"><h3>Covers</h3><label class="f" for="pb-titles">Titles to try, one a line (up to 4)</label><textarea id="pb-titles" dir="auto" rows="3" maxlength="400" placeholder="Five mistakes with a new camera"></textarea>
    <div class="row" style="margin-top:10px"><button class="btn" id="pb-covers">Make covers</button><span class="muted small" id="pb-cstate"></span></div><div id="pb-cout"></div></div>
   <div class="pub-step"><h3>Post package</h3><div class="row">${PLAT.map(([k,l])=>`<label class="check"><input type="checkbox" data-pl="${k}" ${k!=='youtube'?'checked':''}> ${l}</label>`).join('')}</div>

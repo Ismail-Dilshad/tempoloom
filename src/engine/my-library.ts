@@ -50,7 +50,7 @@ async function readAudio(file: string) {
 const guessKind = (file: string, img?: {transparent: number}): LibKind => VIDEO.test(file) ? 'clip' : AUDIO.test(file) ? 'music' : /\.svg$/i.test(file) || /logo|brand|mark|icon/i.test(path.basename(file)) || (img && img.transparent > 0.15) ? 'logo' : 'image';
 
 /** Adds files (or every file of a folder) to the library. Adding the same file again does nothing. */
-export async function addToLibrary(inputs: string[], o: {kind?: LibKind; tags?: string[]; about?: string; onStep?: (s: string) => void} = {}) {
+export async function addToLibrary(inputs: string[], o: {kind?: LibKind; tags?: string[]; about?: string; copyClips?: boolean; onStep?: (s: string) => void} = {}) {
  const files = inputs.flatMap(f => {const p = path.resolve(f); if (!fs.existsSync(p)) throw new Error('No such file or folder: ' + p); return fs.statSync(p).isDirectory() ? fs.readdirSync(p).filter(n => IMAGE.test(n) || AUDIO.test(n) || VIDEO.test(n)).sort().map(n => path.join(p, n)) : [p];});
  if (!files.length) throw new Error('No pictures, sounds or videos to add');
  const entries = libraryEntries(), added: LibEntry[] = [], skipped: string[] = [];
@@ -63,10 +63,16 @@ export async function addToLibrary(inputs: string[], o: {kind?: LibKind; tags?: 
   if (VIDEO.test(file)) {
    // Clips go to the b-roll library: shots, a sheet of each, descriptions an edit can match.
    const B = await import('../editor/broll.js');
-   await B.addClips([file]);
-   const c = B.library().find(x => x.file === file)!;
+   const source = o.copyClips ? path.join(libraryRoot(), 'files', hash, path.basename(file)) : file;
+   if (source !== file) {
+    await fs.promises.mkdir(path.dirname(source), {recursive: true});
+    await fs.promises.copyFile(file, source);
+   }
+   try {await B.addClips([source]);}
+   catch (error) {if (source !== file) await fs.promises.rm(source, {force: true}); throw error;}
+   const c = B.library().find(x => x.file === source)!;
    if (o.about) B.describe(c.id, 1, o.about, 'you');
-   added.push({...base, id: 'clip-' + hash, kind: 'clip', file, clip: c.id, width: c.width, height: c.height, seconds: Math.round(c.duration * 10) / 10, sheet: c.shots[0]?.sheet});
+   added.push({...base, id: 'clip-' + hash, kind: 'clip', file: source, clip: c.id, width: c.width, height: c.height, seconds: Math.round(c.duration * 10) / 10, sheet: c.shots[0]?.sheet});
    continue;
   }
   const dir = path.join(libraryRoot(), 'files'), sheets = path.join(libraryRoot(), 'sheets');
@@ -112,7 +118,10 @@ export function useEntry(id: string, job: string) {
 /** Takes an entry out of the library: its copy and sheet go; your own file stays where it was. */
 export async function removeEntry(id: string) {
  const entries = libraryEntries(), e = entries.find(x => x.id === id); if (!e) throw new Error(`No "${id}" in your library`);
- if (e.kind === 'clip' && e.clip) {try {(await import('../editor/broll.js')).removeClip(e.clip);} catch {/* already gone */}}
+ if (e.kind === 'clip' && e.clip) {
+  try {(await import('../editor/broll.js')).removeClip(e.clip);} catch {/* already gone */}
+  if (e.file !== e.original && e.file.startsWith(libraryRoot() + path.sep)) fs.rmSync(e.file, {force: true});
+ }
  else {if (e.file.startsWith(libraryRoot())) fs.rmSync(e.file, {force: true}); if (e.sheet?.startsWith(libraryRoot())) fs.rmSync(e.sheet, {force: true});}
  save(entries.filter(x => x !== e));
  return {removed: e.name, note: 'Your own file is where it was; only the library\'s copy was removed.'};

@@ -31,7 +31,7 @@ this computer only and needs the key in the link. The same server has the
 
 Teach and the [Studio](studio.md#the-studio-page) are one app ([its design](studio-page.md)): a rail
 with five places, Create as the home page, a bell that always shows what to tell your agent, and a
-dark, light or system theme. What you teach lives in two places:
+dark interface. What you teach lives in two places:
 
 - **Teach a video**: drop several videos at once; each waits in a queue to be set up.
 - **Library, Taught videos**: search and filter (good or bad, state, topic), sort, open a video for its

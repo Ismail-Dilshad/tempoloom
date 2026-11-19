@@ -8,6 +8,7 @@ const PRESETS=[
  {name:'Explainer, 60 s',mode:'motion',seconds:'60',shape:'horizontal',notes:'An explainer: what it is, how it works in three steps, who it is for.'},
  {name:'Talking-head short',mode:'edit',seconds:'45',shape:'vertical',captions:true,visuals:true,notes:'Keep the strongest part. Cut pauses and filler words. Big readable captions.'},
  {name:'Clean up a recording',mode:'edit',seconds:'',shape:'',captions:false,visuals:false,notes:'Keep everything said. Only remove long pauses and mistakes, fix the sound and the colour.'}];
+const VIDEO_SETTINGS_KEYS=['shape','medium','voice','captions','visuals','profile','second','same','like','useMix','mixA','mixB','mixWeight'];
 const blankBrief=()=>({id:null,mode:'motion',text:'',script:false,link:'',seconds:'30',shape:'vertical',language:'',voice:false,captions:true,visuals:true,pick:true,second:true,secondProfile:'',useColors:false,primary:'#0B1F4A',accent:'#4C8DFF',background:'#EAF1FF',like:'',notes:'',profile:'',files:[]});
 const Studio={N:{...blankBrief(),...store.get('studio-brief',{})},busy:null,sending:false,F:{},showArchived:false,
  /** Scenes of shown videos, comments being written, where a paused video was, the versions dialog. */
@@ -114,35 +115,67 @@ App.register('studio/new',{
 window.clearBrief=async()=>{if(!await ask('Start over?','The brief and its uploaded files are cleared.','Clear it'))return;
  act(async()=>{if(Studio.N.id)await api('/api/studio/requests/'+Studio.N.id,{method:'DELETE'}).catch(()=>0);Studio.N=blankBrief();Studio.save();},'Cleared');};
 async function ensureRequest(){const N=Studio.N;if(!N.id){N.id=(await api('/api/studio/requests',{method:'POST'})).id;Studio.save();}return N.id;}
-async function briefUpload(kind,files){
+async function briefUpload(kind,files,{replaceLogo=true}={}){
+ if(!files.length||Studio.busy||Studio.sending)return 0;
  const N=Studio.N,S=Studio.S;
+ let added=0;
+ Studio.busy={kind,text:'Uploading '+files[0].name};
  try{const id=await ensureRequest();
-  if(kind==='logo')for(const f of N.files.filter(x=>x.kind==='logo'))N.files=(await api(`/api/studio/requests/${id}/files?name=${encodeURIComponent(f.name)}`,{method:'DELETE'})).files;
+  if(kind==='logo'&&replaceLogo)for(const f of N.files.filter(x=>x.kind==='logo'))N.files=(await api(`/api/studio/requests/${id}/files?name=${encodeURIComponent(f.name)}`,{method:'DELETE'})).files;
   for(const f of files){
    if(f.size>S.can.maxMB*1048576)throw new Error(`${f.name} is over ${S.can.maxMB} MB.`);
    Studio.busy={kind,text:'Uploading '+f.name};App.show(false);
    const r=await new Promise((res,rej)=>{const x=new XMLHttpRequest();x.open('POST',`/api/studio/requests/${id}/files?kind=${kind}&name=${encodeURIComponent(f.name)}`);x.setRequestHeader('x-teach-key',KEY);
     x.upload.onprogress=e=>{if(e.lengthComputable&&Studio.busy){Studio.busy.text=`Uploading ${f.name} ${Math.round(e.loaded/e.total*100)}%`;const el=$('#upmsg span:last-child');if(el)el.textContent=Studio.busy.text;}};
     x.onload=()=>{let j={};try{j=JSON.parse(x.responseText);}catch{}x.status===200?res(j):rej(new Error(j.error||'The upload failed'));};x.onerror=()=>rej(new Error('The upload failed. Is the terminal still open?'));x.send(f);});
-   N.files=r.files;Studio.save();}
+   N.files=r.files;Studio.save();added++;}
  }catch(e){toast(e.message,true);}
- Studio.busy=null;App.show(false);
+ Studio.busy=null;App.show(false);return added;
 }
 async function sendBrief(){
- const N=Studio.N;if(Studio.sending)return;
- const body={mode:N.mode,text:N.text.trim(),script:N.mode==='motion'&&N.script,link:N.mode==='motion'?N.link.trim():'',voice:N.mode==='motion'&&N.voice,captions:N.captions,visuals:N.visuals,pick:N.mode==='motion'&&N.pick,same:!!N.same&&N.files.some(f=>f.kind==='reference'),
-  colors:N.useColors?{primary:N.primary,accent:N.accent,background:N.background}:{},notes:N.notes.trim(),
-  ...(N.mode==='art'&&N.medium?{medium:N.medium}:{}),...(N.seconds&&N.mode!=='art'?{seconds:Number(N.seconds)}:{}),...(N.shape?{shape:N.shape}:{}),...(N.language?{language:N.language}:{}),...(N.mode==='motion'&&N.like?{like:N.like}:{}),...(N.mode==='motion'&&N.useMix&&N.mixA&&N.mixB?{mix:{a:N.mixA,b:N.mixB,weight:(N.mixWeight??70)/100}}:{}),...(N.profile?{profile:N.profile}:{}),second:N.second!==false,...(N.second!==false&&N.secondProfile?{secondProfile:N.secondProfile}:{})};
+ const N=Studio.N;if(Studio.sending||Studio.busy)return;
+ const fromCreate=App.route==='create';
+ const attachments=N.files.filter(file=>!file.detached);
+ const same=N.mode!=='art'&&!!N.same&&attachments.some(f=>f.kind==='reference');
+ const blend=N.mode==='motion'&&!same&&N.useMix;
+ const body={mode:N.mode,text:N.text.trim(),script:N.mode==='motion'&&N.script,link:N.mode==='motion'?N.link.trim():'',voice:N.mode==='motion'&&N.voice,captions:N.captions,visuals:N.visuals,pick:!fromCreate&&N.mode==='motion'&&N.pick,same,
+  colors:!fromCreate&&N.useColors?{primary:N.primary,accent:N.accent,background:N.background}:{},notes:N.notes.trim(),
+  ...(N.mode==='art'&&N.medium?{medium:N.medium}:{}),...(!fromCreate&&N.seconds&&N.mode!=='art'?{seconds:Number(N.seconds)}:{}),...(N.shape?{shape:N.shape}:{}),...(!fromCreate&&N.language?{language:N.language}:{}),...(N.mode==='motion'&&!same&&!blend&&N.like?{like:N.like}:{}),...(blend&&N.mixA&&N.mixB?{mix:{a:N.mixA,b:N.mixB,weight:(N.mixWeight??70)/100}}:{}),...(N.profile?{profile:N.profile}:{}),second:N.second!==false,...(!fromCreate&&N.second!==false&&N.secondProfile?{secondProfile:N.secondProfile}:{})};
  if(N.mode==='motion'&&!body.text&&!body.link)return toast('Write a script, a prompt or a topic, or give a link.',true);
- if(N.mode==='edit'&&!N.files.some(f=>f.kind==='footage'))return toast('Choose the footage to edit.',true);
- if(N.mode==='motion'&&N.useMix&&(!N.mixA||!N.mixB||N.mixA===N.mixB))return toast('Choose two different styles to mix.',true);
- if(N.mode==='art'&&!body.text&&!N.files.some(f=>f.kind==='reference'))return toast('Say what to paint, or add a photo to paint from.',true);
+ if(N.mode==='edit'&&!attachments.some(f=>f.kind==='footage'))return toast('Choose the footage to edit.',true);
+ if(blend&&(!N.mixA||!N.mixB||N.mixA===N.mixB))return toast('Choose two different styles to mix.',true);
+ if(N.mode==='art'&&!body.text&&!attachments.some(f=>f.kind==='reference'))return toast('Say what to paint, or add a photo to paint from.',true);
  Studio.sending=true;
  try{const st=await api('/api/settings').catch(()=>null);
   if(st&&st.settings&&st.settings.driver==='ask'&&st.settings.model)body.drive=await ask('Who works on this video?',`This page can do it now with ${st.settings.model.model} (within your budgets), or your terminal agent does it when you tell it to.`,'This page')?'page':'terminal';
-  const id=await ensureRequest(),r=await api(`/api/studio/requests/${id}/submit`,{method:'POST',body:JSON.stringify(body)});Studio.N=blankBrief();Studio.save();Studio.sending=false;
+  const cards=fromCreate?await readInstructions():null;
+  if(cards)body.notes=instructionNotes(cards);
+  const id=await ensureRequest();
+  if(cards)await attachInstructionReferences(id,N,activeInstructions(cards));
+  const r=await api(`/api/studio/requests/${id}/submit`,{method:'POST',body:JSON.stringify(body)});const next=blankBrief();
+  for(const key of [...VIDEO_SETTINGS_KEYS,'notes','script'])next[key]=N[key];
+  Studio.N=next;Studio.save();Studio.sending=false;
   if(r.driving){toast('The studio is working on it');App.go('studio/videos',r.job);}else{toast('Sent to the studio');App.go('studio/videos');}}
  catch(e){Studio.sending=false;toast(e.message,true);App.show(false);}
+}
+async function attachInstructionReferences(id,draft,cards){
+ const url=`/api/studio/requests/${id}/files`;
+ const references=cards.filter(card=>card.reference);
+ const names=new Set(references.map(instructionFileName));
+ for(const name of draft.instructionFiles??[]){
+  if(names.has(name)||!draft.files.some(file=>file.name===name))continue;
+  draft.files=(await api(`${url}?name=${encodeURIComponent(name)}`,{method:'DELETE'})).files;
+ }
+ draft.instructionFiles=[...names];
+ Studio.save();
+ for(const card of references){
+  const name=instructionFileName(card);
+  if(draft.files.some(file=>file.kind==='asset'&&file.name===name))continue;
+  draft.files=(await api(`${url}?kind=asset&name=${encodeURIComponent(name)}`,{
+   method:'POST',headers:{'content-type':'application/octet-stream'},body:card.reference
+  })).files;
+  Studio.save();
+ }
 }
 
 // ---------- videos ----------
@@ -190,7 +223,7 @@ window.deleteStudioJob=async job=>{
 };
 window.archiveJob=(job,on)=>act(async()=>{await api(`/api/studio/jobs/${job}/archive`,{method:'POST',body:JSON.stringify({on})});if(on&&App.arg===job)App.go('studio/videos');},on?'Moved to the trash. Nothing was deleted.':'Restored');
 window.tellStudio=job=>{
- dialog(`<h2>Tell the studio something</h2><p class="muted">In your own words. It is saved as a rule, sent to the roles it concerns, and their steps are redone.</p>
+ dialog(`<h2>Tell the studio something</h2><p class="muted">Feedback becomes a rule and reopens affected steps.</p>
   <textarea id="ts" dir="auto" maxlength="800" placeholder="For example: the music is too loud under the voice, and the captions should be bigger."></textarea>
   <label class="check" style="margin-top:10px"><input type="checkbox" id="tp"> This is praise: keep doing it (nothing is redone)</label>
   <div class="row" style="justify-content:flex-end;margin-top:16px"><button class="btn ghost" onclick="closeDialog()">Cancel</button><button class="btn primary" id="tsend">Send</button></div>`);

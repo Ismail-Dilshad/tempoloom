@@ -93,7 +93,7 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('teaching modes compose editable 
   await page.locator('#play').click();
   await page.waitForFunction(()=>!(document.querySelector('#v') as HTMLVideoElement).paused);
   await page.evaluate(()=>{location.hash='/home';});
-  await page.getByRole('heading',{name:'Start creating or drop media'}).waitFor();
+  await page.locator('.create-page').getByRole('img',{name:'Tempoloom'}).waitFor();
   expect(new URL(page.url()).hash).toBe('#/create');
   await page.evaluate(()=>{location.hash='/teach/add';});
   await page.getByRole('heading',{name:'Shape what your studio learns'}).waitFor();
@@ -187,7 +187,7 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('teaching modes compose editable 
   await page.getByRole('button',{name:'Teach this video',exact:false}).click();
   await expect.poll(()=>sent).not.toBeNull();
   await page.evaluate(()=>{location.hash='/home';});
-  await page.getByRole('heading',{name:'Start creating or drop media'}).waitFor();
+  await page.locator('.create-page').getByRole('img',{name:'Tempoloom'}).waitFor();
   releaseSubmission();
   await page.getByText('Sent. It is being measured.',{exact:true}).waitFor();
   expect(new URL(page.url()).hash).toBe('#/create');

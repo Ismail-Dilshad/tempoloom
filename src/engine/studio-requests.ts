@@ -52,8 +52,9 @@ export const requestInput=z.object({
  notes:z.string().trim().max(2000).default('')}).strict();
 export type RequestInput=z.input<typeof requestInput>;
 export const FILE_KINDS=['logo','footage','reference','asset'] as const;export type FileKind=typeof FILE_KINDS[number];
-export type RequestFile={kind:FileKind;name:string;file:string;bytes:number};
-export type StudioRequest={id:string;status:'draft'|'waiting'|'taken';created:string;updated:string;files:RequestFile[];input:z.output<typeof requestInput>|null;job?:string};
+export type RequestFile={kind:FileKind;name:string;file:string;bytes:number;detached?:true};
+type TrashedFile=RequestFile&{trashId:string};
+export type StudioRequest={id:string;status:'draft'|'waiting'|'taken'|'discarded';created:string;updated:string;files:RequestFile[];trashedFiles?:TrashedFile[];input:z.output<typeof requestInput>|null;job?:string};
 
 const now=()=>new Date().toISOString();
 export const inboxRoot=()=>path.join(studioRoot(),'_inbox');
@@ -67,11 +68,12 @@ export function requests():StudioRequest[]{
 export function newRequest(){const id='r-'+randomBytes(4).toString('hex'),stamp=now();return save({id,status:'draft',created:stamp,updated:stamp,files:[],input:null});}
 const LIMITS:Record<FileKind,{ext:RegExp;max:number;what:string}>={logo:{ext:/^\.(png|svg|jpg|jpeg|webp)$/,max:1,what:'an image (PNG, SVG, JPG, WebP)'},footage:{ext:/^\.(mp4|mov|mkv|webm|avi|m4v|mp3|wav|m4a)$/,max:8,what:'a video or audio file'},
  reference:{ext:/^\.(mp4|mov|mkv|webm|m4v|png|jpg|jpeg|webp)$/,max:3,what:'a video or an image'},asset:{ext:/^\.(png|svg|jpg|jpeg|webp|mp4|mov|webm|mp3|wav|m4a|pdf|txt|md)$/,max:12,what:'an image, video, sound, PDF or text file'}};
+export const fileLimits=Object.fromEntries(FILE_KINDS.map(kind=>[kind,LIMITS[kind].max]));
 /** Where an uploaded file of a request goes (the caller writes it there, then calls `addFile`). */
 export function filePath(id:string,kind:FileKind,name:string){
  const r=request(id);if(r.status!=='draft')throw new Error('This request was already sent');
  if(!FILE_KINDS.includes(kind))throw new Error('Unknown kind of file');
- const base=path.basename(name).normalize('NFKC').replace(/[^\p{L}\p{N}._ -]+/gu,'-').slice(0,90)||'file',ext=path.extname(base).toLowerCase();
+ const base=path.basename(name).normalize('NFKC').replace(/[^\p{L}\p{N}\p{M}._ -]+/gu,'-').slice(0,90)||'file',ext=path.extname(base).toLowerCase();
  if(!LIMITS[kind].ext.test(ext))throw new Error(`The ${kind} must be ${LIMITS[kind].what}`);
  if(r.files.filter(f=>f.kind===kind).length>=LIMITS[kind].max)throw new Error(`At most ${LIMITS[kind].max} ${kind} file${LIMITS[kind].max>1?'s':''}`);
  const dir=path.join(dirOf(id),'files',kind);fs.mkdirSync(dir,{recursive:true});
@@ -79,6 +81,63 @@ export function filePath(id:string,kind:FileKind,name:string){
  return file;
 }
 export function addFile(id:string,kind:FileKind,file:string){const r=request(id);r.files.push({kind,name:path.basename(file),file,bytes:fs.statSync(file).size});return save(r);}
+function draftFile(r:StudioRequest,kind:FileKind,name:string){
+ if(r.status!=='draft')throw new Error('This request was already sent');
+ const f=r.files.find(x=>x.kind===kind&&x.name===name);if(!f)throw new Error('No such file in this request');return f;
+}
+export function setFileAttachment(id:string,kind:FileKind,name:string,attached:boolean){
+ const r=request(id),f=draftFile(r,kind,name);
+ if(attached)delete f.detached;else f.detached=true;
+ return save(r);
+}
+export function renameFile(id:string,kind:FileKind,name:string,label:string){
+ const r=request(id),f=draftFile(r,kind,name),ext=path.extname(f.name);
+ const base=label.normalize('NFKC').trim(),next=base+ext;
+ if(!/^[\p{L}\p{N}\p{M}._ -]+$/u.test(base)||!/[\p{L}\p{N}]/u.test(base)||next.length>90||/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(base))throw new Error('Enter a valid file name using letters, numbers, spaces, dots, dashes or underscores.');
+ if(next===f.name)return r;
+ const target=path.join(path.dirname(f.file),next);
+ if(fs.existsSync(target)){
+  const from=fs.statSync(f.file),to=fs.statSync(target);
+  if(from.dev!==to.dev||from.ino!==to.ino)throw new Error('A file with that name already exists.');
+ }
+ fs.renameSync(f.file,target);
+ const previous=f.file;f.file=target;f.name=next;
+ try{return save(r);}catch(e){fs.renameSync(target,previous);throw e;}
+}
+export function trashFile(id:string,kind:FileKind,name:string){
+ const r=request(id),f=draftFile(r,kind,name);
+ r.files=r.files.filter(x=>x!==f);
+ (r.trashedFiles??=[]).push({...f,trashId:randomBytes(12).toString('hex')});
+ return save(r);
+}
+function trashedFile(r:StudioRequest,trashId:string){
+ const f=r.trashedFiles?.find(x=>x.trashId===trashId);if(!f)throw new Error('No such file in Trash');return f;
+}
+export function purgeTrashedFile(id:string,trashId:string){
+ const r=request(id),f=r.trashedFiles?.find(file=>file.trashId===trashId);
+ if(!f)return false;
+ const file=path.resolve(f.file);
+ if(!FILE_KINDS.includes(f.kind)||path.basename(f.name)!==f.name||file!==path.join(dirOf(id),'files',f.kind,f.name)||r.files.some(active=>path.resolve(active.file)===file)){
+  throw new Error('The trashed file cannot be deleted safely.');
+ }
+ fs.rmSync(file,{force:true});
+ r.trashedFiles=r.trashedFiles!.filter(entry=>entry!==f);save(r);
+ return true;
+}
+export function restoreFile(source:string,trashId:string,destination:string){
+ const r=request(source),f=trashedFile(r,trashId),target=source===destination?r:request(destination);
+ if(target.status!=='draft')throw new Error('Open a new draft to restore this file.');
+ if(target.files.filter(x=>x.kind===f.kind).length>=LIMITS[f.kind].max)throw new Error(`This draft already has the maximum number of ${f.kind} files.`);
+ const file=target===r?f.file:filePath(destination,f.kind,f.name);
+ const restored={kind:f.kind,name:path.basename(file),file,bytes:f.bytes,...(f.detached?{detached:f.detached}:{})};
+ if(target!==r)fs.renameSync(f.file,file);
+ target.files.push(restored);
+ r.trashedFiles=r.trashedFiles!.filter(x=>x!==f);
+ if(target===r)return save(r);
+ try{save(target);}catch(e){fs.renameSync(file,f.file);throw e;}
+ try{save(r);}catch(e){fs.renameSync(file,f.file);target.files=target.files.filter(x=>x!==restored);save(target);throw e;}
+ return target;
+}
 export async function removeFile(id:string,name:string){const r=request(id);if(r.status!=='draft')throw new Error('This request was already sent');
  const f=r.files.find(x=>x.name===name);if(!f)throw new Error('No such file in this request');await fsp.rm(f.file,{force:true});r.files=r.files.filter(x=>x!==f);return save(r);}
 /** Sends a request to the studio: it now waits for the agent. */
@@ -92,22 +151,30 @@ export function editBrief(id:string,text:unknown){
  return saveBrief(r,{...r.input,text:z.string().parse(text)});
 }
 function saveBrief(r:StudioRequest,input:RequestInput){
- const i=requestInput.parse(input);
+ const i=requestInput.parse(input),files=r.files.filter(f=>!f.detached);
+ if(i.mode==='motion'){
+  if(i.like&&i.mix||i.same&&(i.like||i.mix)&&files.some(f=>f.kind==='reference')){
+   throw new Error('Choose one style approach: a reference style, a blend, or the same design');
+  }
+  if(i.mix&&i.mix.a===i.mix.b)throw new Error('Choose two different styles to blend');
+ }
  if(i.mode==='motion'&&!i.text&&!i.link)throw new Error('Give a script, a prompt, a topic or a link');
  if(i.mode==='motion'&&i.script&&i.text.length<20)throw new Error('The script is too short; untick "this is my finished script" to have one written');
- if(i.mode==='edit'&&!r.files.some(f=>f.kind==='footage'))throw new Error('Add the footage to edit');
- if(i.mode==='art'&&!i.text&&!r.files.some(f=>f.kind==='reference'))throw new Error('Say what to paint, or add a picture to paint from');
+ if(i.mode==='edit'&&!files.some(f=>f.kind==='footage'))throw new Error('Add the footage to edit');
+ if(i.mode==='art'&&!i.text&&!files.some(f=>f.kind==='reference'))throw new Error('Say what to paint, or add a picture to paint from');
  r.input=i;r.status='waiting';return save(r);
 }
 /** Removes a request that no job was planned from, with the copies of its files. */
 export async function discard(id:string){const r=request(id);if(r.status==='taken')throw new Error(`This request became the job "${r.job}"; its files are that job's material and are kept`);
+ if(r.trashedFiles?.length){const files=r.files;r.status='discarded';r.input=null;r.files=[];save(r);
+  for(const f of files)await fsp.rm(f.file,{force:true});return {removed:id};}
  await fsp.rm(dirOf(id),{recursive:true,force:true});return {removed:id};}
 
 const rel=(f:string)=>path.relative(ROOT,f).split(path.sep).join('/');
 const SHAPE={vertical:'vertical 9:16',horizontal:'horizontal 16:9',square:'square 1:1'} as const;
 /** The request in words, for the plan and for every role's lessons. */
 export function brief(r:StudioRequest){
- const i=r.input!,of=(k:FileKind)=>r.files.filter(f=>f.kind===k).map(f=>rel(f.file));
+ const i=r.input!,of=(k:FileKind)=>r.files.filter(f=>!f.detached&&f.kind===k).map(f=>rel(f.file));
  const lines:string[]=[];
  if(i.mode==='motion'){
   lines.push(`A motion graphics video${i.seconds?`, about ${i.seconds} seconds`:''}${i.shape?`, ${SHAPE[i.shape]}`:''}${i.language?`, language: ${i.language}`:''}, ${i.voice?'with a voice-over':'without a voice-over'}.`);
@@ -141,9 +208,9 @@ export function take(id:string,o:{job?:string}={}){
  const r=request(id);if(r.status==='taken')throw new Error(`Already taken: job "${r.job}" (pnpm tempoloom studio next ${r.job})`);
  if(r.status!=='waiting'||!r.input)throw new Error('This request was not sent yet');
  const i=r.input,text=brief(r);
- const same=!!i.same&&r.files.some(f=>f.kind==='reference');
+ const reference=r.files.some(f=>!f.detached&&f.kind==='reference'),same=!!i.same&&reference;
  // Same design: the two looks to pick from make no sense (the design is the reference's).
- const options=i.mode==='art'?[...(r.files.some(f=>f.kind==='reference')?['reference']:[]),...(i.second?['second']:[])]
+ const options=i.mode==='art'?[...(reference?['reference']:[]),...(i.second?['second']:[])]
   :[...(i.mode==='motion'?[...(i.script?[]:['write']),...(i.voice?['voice']:[]),...(i.pick&&!same?['pick']:[])]:[...(i.visuals&&!same?['visuals']:[])]),...(i.second?['second']:[]),...(same?['same']:[])];
  const name=o.job??((i.text||i.link||'video').toLowerCase().normalize('NFKD').replace(/^https?:\/\/(www\.)?/,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,32).replace(/-+$/,'')||'video')+'-'+id.slice(2,6);
  // The mixed style is made now, so the job can use it by name.
@@ -247,9 +314,13 @@ export function shownFile(job:string,index:number,slot:string){
  const f=m[1]==='show'?t.show?.[Number(m[2])]:t.choices?.[Number(m[2])]?.file;if(!f||!mediaOf(f))throw new Error('No such file');return f;
 }
 export function requestFile(id:string,name:string){const f=request(id).files.find(x=>x.name===name);if(!f)throw new Error('No such file');return f.file;}
+export function uploadFile(id:string,kind:FileKind,name:string){
+ const f=request(id).files.find(x=>x.kind===kind&&x.name===name);if(!f)throw new Error('No such file');return f.file;
+}
+export const trashedUpload=(id:string,trashId:string)=>trashedFile(request(id),trashId).file;
 /** Everything the Studio page shows. */
 export function overview(){
- const jobs=plans().map(jobView),rs=requests().filter(r=>r.status!=='taken');
+ const jobs=plans().map(jobView),allRequests=requests(),rs=allRequests.filter(r=>r.status==='draft'||r.status==='waiting');
  const all=plans().flatMap(p=>(p.ratings??[]).map(r=>({...r,step:r.task})));
  const steps=[...new Set(all.map(r=>r.step))].map(step=>{const x=all.filter(r=>r.step===step);return {step,good:x.filter(r=>r.rating==='good').length,ok:x.filter(r=>r.rating==='ok').length,bad:x.filter(r=>r.rating==='bad').length};}).sort((a,b)=>b.good+b.bad-a.good-a.bad);
  const judged=jobs.filter(j=>j.verdict).length;
@@ -257,7 +328,8 @@ export function overview(){
  const trend=plans().slice().reverse().map(p=>{const first=(p.ratings??[]).filter(r=>r.round===0);return {job:p.job,created:p.created,rated:first.length,good:first.filter(r=>r.rating==='good').length};}).filter(x=>x.rated);
  // The lessons ratings and picks have scored, best and worst.
  const scored=allKnowledge().filter(k=>k.evidence.some(e=>e.startsWith('rate:')||e.startsWith('pick:'))).map(k=>({id:k.id,title:k.title,status:k.status,wins:k.wins,losses:k.losses,confidence:Math.round(confidence(k)*100)}));
- return {requests:rs.map(r=>({id:r.id,status:r.status,created:r.created,files:r.files.map(f=>({kind:f.kind,name:f.name,bytes:f.bytes,type:mediaOf(f.file)})),input:r.input,summary:r.input?brief(r).split('\n')[0]:null})),
+ return {requests:rs.map(r=>({id:r.id,status:r.status,created:r.created,files:r.files.map(f=>({kind:f.kind,name:f.name,bytes:f.bytes,type:mediaOf(f.file),detached:f.detached})),input:r.input,summary:r.input?brief(r).split('\n')[0]:null})),
+  trashedUploads:allRequests.flatMap(r=>(r.trashedFiles??[]).map(f=>({request:r.id,trashId:f.trashId,kind:f.kind,name:f.name,bytes:f.bytes}))),
   jobs,scores:{steps,trend,guesses:predictionRecord(),best:scored.filter(k=>k.wins>k.losses).sort((a,b)=>b.confidence-a.confidence).slice(0,8),worst:scored.filter(k=>k.losses>=k.wins&&k.losses>0).sort((a,b)=>a.confidence-b.confidence).slice(0,8),ratings:all.length,good:all.filter(r=>r.rating==='good').length,bad:all.filter(r=>r.rating==='bad').length,jobs:jobs.length,finished:judged,
    rules:[...new Map(plans().flatMap(p=>p.feedback).map(f=>[f.rule,f])).values()].slice(-12).map(f=>f.rule)},
   reasons:Object.entries(RATE_REASONS).map(([id,r])=>({id,label:r.label})),

@@ -12,11 +12,14 @@ import {pipeline} from 'node:stream/promises';
 import {Transform} from 'node:stream';
 import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import {ffmpeg} from '../renderer/ffmpeg-encoder.js';
 import {ROOT} from '../engine/config.js';
 import * as T from '../engine/teach/teach.js';
 import {hasApiKey} from '../engine/transcribe.js';
 import * as R from '../engine/studio-requests.js';
-import {deleteJob,rate,pick,approve,archive,feedback as jobFeedback} from '../engine/studio.js';
+import {deleteJob,readPlan,rate,pick,approve,archive,feedback as jobFeedback} from '../engine/studio.js';
 import {carryOn} from '../engine/driver.js';
 import {home} from '../engine/home.js';
 import * as Taste from '../engine/taste.js';
@@ -37,6 +40,9 @@ const LANGS=languageSchema.options;
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const MAX_MB=Number(process.env.TEACH_MAX_MB||'2048');
+const runCover=promisify(execFile);
+const uploadKind=z.enum(R.FILE_KINDS);
+const uploadName=z.string().min(1).max(160);
 const UI=new Set(['tokens.css','shell.css','shell.js','create.js','places.js','icons.js','app.css','core.js','taste.js','teach.js','learned.js','studio.js','gallery.js','live.js','settings.js','backup.js','script.js','ideas.js','history.js','text.js','find.js']);
 const TYPES:Record<string,string>={'.js':'text/javascript; charset=utf-8','.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.mp4':'video/mp4','.jpg':'image/jpeg','.svg':'image/svg+xml','.ttf':'font/ttf','.json':'application/json; charset=utf-8',
  '.png':'image/png','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.webm':'video/webm','.mov':'video/quicktime','.m4v':'video/mp4','.mp3':'audio/mpeg','.wav':'audio/wav','.m4a':'audio/mp4'};
@@ -72,6 +78,12 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
   res.writeHead(200,{'content-type':type,'content-length':st.size,'accept-ranges':'bytes','cache-control':cache});
   await pipeline(fs.createReadStream(f),res).catch(()=>undefined);
  };
+ const videoCover=async(res:http.ServerResponse,source:string,cache='no-store')=>{
+  const {stdout}=await runCover(ffmpeg,['-v','error','-i',source,'-map','0:v:0','-frames:v','1','-vf',"scale='min(480,iw)':'min(480,ih)':force_original_aspect_ratio=decrease",'-f','image2pipe','-vcodec','mjpeg','pipe:1'],{encoding:'buffer',timeout:10000,windowsHide:true})
+   .catch(()=>{throw new HttpError(422,'Could not preview this video');});
+  if(!stdout.length)throw new HttpError(422,'Could not preview this video');
+  res.writeHead(200,{'content-type':'image/jpeg','cache-control':cache});res.end(stdout);
+ };
 
  const server=http.createServer(async(req,res)=>{
   try{
@@ -88,7 +100,6 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
    if(m==='GET'&&p==='/favicon.svg')return await file(req,res,path.join(ROOT,'assets/brand/web/favicon.svg'),'no-cache');
    if(m==='GET'&&p==='/mark.svg')return await file(req,res,path.join(ROOT,'assets/brand/logo/svg/tempoloom-mascot.svg'),'no-cache');
    if(m==='GET'&&p==='/font-ar.ttf')return await file(req,res,path.join(ROOT,'assets/fonts/open/Vazirmatn-Variable.ttf'),'max-age=86400');
-   if(m==='GET'&&p==='/logo-light.svg')return await file(req,res,path.join(ROOT,'assets/brand/logo/svg/tempoloom-wordmark-for-light.svg'),'no-cache');
    const face=/^\/mascot\/([a-z-]+)\.svg$/.exec(p);
    if(m==='GET'&&face&&(FACES as readonly string[]).includes(face[1]!))return await file(req,res,path.join(ROOT,'assets/brand/expressions/svg',`mascot-${face[1]}.svg`),'no-cache');
    if(m==='GET'&&p==='/logo.svg')return await file(req,res,path.join(ROOT,'assets/brand/logo/svg/tempoloom-wordmark-for-dark.svg'),'no-cache');
@@ -100,19 +111,27 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
    if(m==='GET'&&p==='/api/home')return json(res,home());
    // ---------- the page's places: tools from the registry, your library, scenes across projects ----------
    if(m==='GET'&&p==='/api/tools'){const {readRegistry}=await import('../cli/tools-registry.js');return json(res,{tools:(await readRegistry()).tools.filter(t=>t.page&&t.status==='ready').map(t=>({id:t.id,command:t.command,description:t.description,whenToUse:t.whenToUse,inputs:t.inputs,...t.page}))});}
-   if(m==='GET'&&p==='/api/library'){const L=await import('../engine/my-library.js');return json(res,{entries:L.libraryEntries().map(e=>({id:e.id,kind:e.kind,name:e.name,added:e.added,bytes:e.bytes,description:e.description,tags:e.tags,width:e.width,height:e.height,seconds:e.seconds,bpm:e.bpm??null,energy:e.energy,colours:e.colours??[],uses:e.uses.length})),kinds:L.LIB_KINDS});}
+   if(m==='GET'&&p==='/api/library'){const L=await import('../engine/my-library.js');return json(res,{entries:L.libraryEntries().map(e=>({id:e.id,kind:e.kind,name:e.name,added:e.added,bytes:e.bytes,description:e.description,tags:e.tags,width:e.width,height:e.height,seconds:e.seconds,bpm:e.bpm??null,energy:e.energy,colours:e.colours??[],uses:e.uses.length,available:fs.existsSync(e.file)})),kinds:L.LIB_KINDS});}
    if(m==='POST'&&p==='/api/library/upload'){
     const L=await import('../engine/my-library.js'),name=path.basename(url.searchParams.get('name')||'file').replace(/[^\p{L}\p{N}._ -]/gu,'_').slice(0,120)||'file';
     const length=Number(req.headers['content-length']??0);if(length>MAX_MB*1048576)throw new HttpError(413,`The file is over ${MAX_MB} MB`);
     const dir=await fsp.mkdtemp(path.join(os.tmpdir(),'tl-lib-'));let size=0;
     const limit=new Transform({transform(c:Buffer,_e,cb){size+=c.length;size>MAX_MB*1048576?cb(new HttpError(413,`The file is over ${MAX_MB} MB`)):cb(null,c);}});
-    try{await pipeline(req,limit,fs.createWriteStream(path.join(dir,name)));if(!size)throw new HttpError(400,'The upload was empty');const r=await L.addToLibrary([path.join(dir,name)]);if(!r.added.length)throw new HttpError(400,r.skipped[0]||'This file cannot go in the library');return json(res,{added:r.added.map(a=>a.id)});}
+    try{await pipeline(req,limit,fs.createWriteStream(path.join(dir,name)));if(!size)throw new HttpError(400,'The upload was empty');const r=await L.addToLibrary([path.join(dir,name)],{copyClips:true});if(!r.added.length)throw new HttpError(400,r.skipped[0]||'This file cannot go in the library');return json(res,{added:r.added.map(a=>a.id)});}
     catch(e){throw e instanceof HttpError?e:new HttpError(400,(e as Error).message);}
     finally{await fsp.rm(dir,{recursive:true,force:true});}
    }
    const libItem=/^\/api\/library\/([a-z0-9-]{1,120})(\/file)?$/.exec(p);
    if(libItem){const L=await import('../engine/my-library.js');let e;try{e=L.libraryEntry(libItem[1]!);}catch{throw new HttpError(404,'Not in your library');}
-    if(m==='GET'&&libItem[2])return await file(req,res,e.file,'max-age=3600');
+    if(m==='GET'&&libItem[2]){
+     if(url.searchParams.get('preview')==='1'&&e.kind==='clip'){
+      if(!fs.existsSync(e.file)&&e.sheet)return await file(req,res,e.sheet,'private, max-age=3600');
+      return await videoCover(res,e.file,'private, max-age=3600');
+     }
+     if(url.searchParams.get('preview')==='1'&&e.kind==='image'&&e.sheet&&/\.bmp$/i.test(e.file))return await file(req,res,e.sheet,'private, max-age=3600');
+     if(e.file.toLowerCase().endsWith('.svg'))res.setHeader('content-security-policy',"default-src 'none'; style-src 'unsafe-inline'; sandbox");
+     return await file(req,res,e.file,'max-age=3600');
+    }
     if(m==='DELETE'&&!libItem[2]){await L.removeEntry(e.id);return json(res,{removed:e.id});}}
    if(m==='GET'&&p==='/api/scenes'){
     const S=await import('../engine/studio.js'),V=await import('../engine/studio-versions.js'),out:{job:string;title:string;n:number;label:string;start:number;seconds:number;locked:boolean}[]=[];
@@ -237,8 +256,24 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
     return json(res,T.review(lesson[1]!,action as 'keep',{...(typeof b.title==='string'?{title:b.title}:{}),...(typeof b.body==='string'?{body:b.body}:{})}));}
    // ---------- the Studio page ----------
    if(m==='GET'&&p==='/studio'){res.setHeader('content-security-policy',"default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' blob: https:; frame-src https://www.youtube-nocookie.com https://www.instagram.com https://www.tiktok.com https://player.vimeo.com; frame-ancestors 'none'");return await file(req,res,path.join(here,'ui','index.html'));}
-   if(m==='GET'&&p==='/api/studio/state')return json(res,{...R.overview(),taught:T.videos().filter(v=>v.status==='learned').map(v=>({id:v.id,title:v.title})),looks:(await (await import('../engine/looks.js')).listLooks()).map(l=>({name:l.name,summary:l.summary.slice(0,2).join(', ')})),profiles:Taste.profiles(),can:{maxMB:MAX_MB}});
+   if(m==='GET'&&p==='/api/studio/state')return json(res,{...R.overview(),taught:T.videos().filter(v=>v.status==='learned').map(v=>({id:v.id,title:v.title})),looks:(await (await import('../engine/looks.js')).listLooks()).map(l=>({name:l.name,summary:l.summary.slice(0,2).join(', ')})),profiles:Taste.profiles(),can:{maxMB:MAX_MB,fileLimits:R.fileLimits}});
+   if(m==='POST'&&p==='/api/studio/trash/empty'){
+    const input=z.object({projects:z.array(z.string().regex(/^[a-z0-9-]+$/)),uploads:z.array(z.object({request:z.string().regex(/^r-[a-f0-9]{8}$/),trashId:z.string().regex(/^[a-f0-9]{24}$/)}))}).strict().parse(await body(req));
+    let removed=0,failed=0;
+    for(const job of new Set(input.projects)){
+     try{if(readPlan(job).archived){deleteJob(job);removed++;}}catch{failed++;}
+    }
+    for(const file of input.uploads){
+     try{if(R.purgeTrashedFile(file.request,file.trashId))removed++;}catch{failed++;}
+    }
+    return json(res,{removed,failed});
+   }
    if(m==='POST'&&p==='/api/studio/requests')return json(res,R.newRequest());
+   const trashed=/^\/api\/studio\/requests\/(r-[a-f0-9]{8})\/trashed-files\/([a-f0-9]{24})$/.exec(p);
+   if(trashed&&m==='POST'){
+    const input=z.object({destination:z.string().regex(/^r-[a-f0-9]{8}$/)}).parse(await body(req));
+    return json(res,R.restoreFile(trashed[1]!,trashed[2]!,input.destination));
+   }
    const rq=/^\/api\/studio\/requests\/(r-[a-f0-9]{8})(\/files|\/submit)?$/.exec(p);
    if(rq){const [,id,action]=rq;
     if(m==='POST'&&action==='/files'){
@@ -250,6 +285,15 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
      catch(e){await fsp.rm(target,{force:true});throw e instanceof HttpError?e:new HttpError(400,(e as Error).message);}
     }
     if(m==='DELETE'&&action==='/files')return json(res,await R.removeFile(id!,url.searchParams.get('name')??''));
+    if(m==='PATCH'&&action==='/files'){
+     const input=z.discriminatedUnion('action',[
+      z.object({action:z.literal('rename'),kind:uploadKind,name:uploadName,label:uploadName}),
+      z.object({action:z.literal('trash'),kind:uploadKind,name:uploadName}),
+      z.object({action:z.literal('attach'),kind:uploadKind,name:uploadName,attached:z.boolean()})
+     ]).parse(await body(req));
+     if(input.action==='attach')return json(res,R.setFileAttachment(id!,input.kind,input.name,input.attached));
+     return json(res,input.action==='rename'?R.renameFile(id!,input.kind,input.name,input.label):R.trashFile(id!,input.kind,input.name));
+    }
     if(m==='POST'&&action==='/submit'){const raw=await body(req),input=R.requestInput.safeParse(raw);if(!input.success)throw new HttpError(400,input.error.issues[0]?.message??'Check the form');
      const r=R.submit(id!,input.data),{readSettings}=await import('../engine/models/settings.js'),st=readSettings();
      // The page works on it at once when Settings say so (or the user chose it for this video).
@@ -335,6 +379,19 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
     return json(res,H.history({...(kind&&(H.KINDS as string[]).includes(kind)?{kind:kind as H.Kind}:{}),...(job?{job}:{}),limit:Number(url.searchParams.get('limit'))||200}));}
    const hu=/^\/api\/history\/(h-[a-z0-9]+)\/undo$/.exec(p);
    if(m==='POST'&&hu)return json(res,await H.undo(hu[1]!));
+   const uploadPreview=/^\/studio-file\/upload\/(r-[a-f0-9]{8})\/(logo|footage|reference|asset|trash)\/([^/]+)$/.exec(p);
+   if(m==='GET'&&uploadPreview){
+    const [,id,kind,name]=uploadPreview;
+    let source:string;
+    try{source=kind==='trash'?R.trashedUpload(id!,name!):R.uploadFile(id!,uploadKind.parse(kind),decodeURIComponent(name!));}
+    catch{throw new HttpError(404,'No such upload');}
+    if(/\.(png|jpe?g|webp|svg)$/i.test(source)){
+     res.setHeader('content-security-policy',"default-src 'none'; style-src 'unsafe-inline'; sandbox");
+     return await file(req,res,source);
+    }
+    if(!/\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(source))throw new HttpError(404,'No preview');
+    return await videoCover(res,source);
+   }
    const sf=/^\/studio-file\/(?:request\/(r-[a-f0-9]{8})\/([^/]+)|job\/([a-z0-9-]+)\/(\d+)\/((?:show|choice)-\d+))$/.exec(p);
    if(m==='GET'&&sf){let f:string;try{f=sf[1]?R.requestFile(sf[1],decodeURIComponent(sf[2]!)):R.shownFile(sf[3]!,Number(sf[4]),sf[5]!);}catch{throw new HttpError(404,'Not found');}
     // An SVG is shown as a picture only (never as a page that could run scripts).

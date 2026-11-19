@@ -100,6 +100,7 @@ App.register('library',{
    <div class="card-grid">${list.map(e=>`<div class="pcard-wrap" style="position:relative"><div class="pcard"><span class="thumb" style="aspect-ratio:1">${libThumb(e)}</span><b dir="auto">${esc(e.name)}</b>
     <span class="meta"><span>${LIB_LABEL[e.kind]||e.kind}</span>${e.width?`<span>${e.width}×${e.height}</span>`:''}${e.seconds?`<span>${fmtS(e.seconds)}</span>`:''}${e.bpm?`<span>${e.bpm} bpm</span>`:''}<span>used ${e.uses}×</span></span>${e.description&&e.description!==e.name?`<span class="meta" dir="auto">${esc(e.description.slice(0,90))}</span>`:''}</div>
     <button class="iconbtn sm more" aria-label="More for ${esc(e.name)}" aria-haspopup="menu" aria-expanded="false" onclick="libraryMenu(this,'${esc(e.id)}')">${I.more}</button></div>`).join('')}</div>`;
+  wireUploadPreviews(el);
  }});
 window.libraryMenu=(btn,id)=>Pop.open(btn,`<a class="pop-item" href="${withKey('/api/library/'+id+'/file')}&dl=1" download>${I.down}<span>Download</span></a><button class="pop-item danger" data-close onclick="libraryRemove('${esc(id)}')">${I.trash}<span>Remove from the library</span></button>`,{align:'end'});
 window.libraryRemove=async id=>{if(await ask('Remove from your library?','The library copy is removed. Your own file, wherever you added it from, stays.','Remove',true))act(()=>api('/api/library/'+encodeURIComponent(id),{method:'DELETE'}));};
@@ -108,18 +109,18 @@ window.libraryRemove=async id=>{if(await ask('Remove from your library?','The li
 const Tools={
  async panel(job){
   const tools=await Cmd.loadTools();
-  Panel.open({id:'tools',title:job?'Tools for this video':'Tools',sub:job?'Ask your agent to run one on this video, or open the ones that have a page.':'',
+  Panel.open({id:'tools',title:job?'Tools for this video':'Tools',
    body:tools.map(t=>`<button class="pop-item" onclick="openTool('${esc(t.id)}',${job?`'${esc(job)}'`:'null'})">${I[t.icon]||I.tools}<span>${esc(t.name)}<small>${esc(t.about)}</small></span></button>`).join('')});
  }};
 window.openTool=async(id,job)=>{
  const t=(await Cmd.loadTools()).find(x=>x.id===id);if(!t)return toast('That tool is not available',true);
  const say=`${job?`For the studio job ${job}: `:''}${t.name.toLowerCase()}`;
- Panel.open({id:'tool-'+id,title:t.name,sub:t.about,back:job?()=>Tools.panel(job):null,
+ Panel.open({id:'tool-'+id,title:t.name,back:job?()=>Tools.panel(job):null,
   body:`<p dir="auto">${esc(t.description)}</p><h3 class="field-label">When to use it</h3><p class="muted" dir="auto" style="margin:0">${esc(t.whenToUse)}</p>
-   ${t.inputs.length?`<h3 class="field-label">It needs</h3><ul class="small" style="margin:0;padding-inline-start:18px">${t.inputs.map(x=>`<li dir="auto">${esc(x)}</li>`).join('')}</ul>`:''}
-   <h3 class="field-label">${t.open?'Or ask your agent':'Ask your agent'}</h3><p class="muted small" style="margin:0 0 8px">Tell it in your own words, for example “${esc(say)}”. It runs:</p>
+   ${t.inputs.length?`<h3 class="field-label">Inputs</h3><ul class="small" style="margin:0;padding-inline-start:18px">${t.inputs.map(x=>`<li dir="auto">${esc(x)}</li>`).join('')}</ul>`:''}
+   <h3 class="field-label">${t.open?'Or ask your agent':'Ask your agent'}</h3><p class="muted small" style="margin:0 0 8px">${esc(say)}</p>
    <div class="cmdline"><code>${esc(t.command)}</code><button class="iconbtn sm" aria-label="Copy the command" onclick="copyText(${esc(JSON.stringify(t.command))})">${I.copy}</button></div>`,
-  foot:t.open?`<a class="btn primary" href="${esc(t.open)}" onclick="Panel.close(true)">Open ${esc(t.name)}</a>`:`<button class="btn primary" onclick="copyText(${esc(JSON.stringify(say))});toast('Copied. Paste it to your agent.')">Copy what to tell your agent</button>`});
+  foot:t.open?`<a class="btn primary" href="${esc(t.open)}" onclick="Panel.close(true)">Open ${esc(t.name)}</a>`:`<button class="btn primary" onclick="copyText(${esc(JSON.stringify(say))});toast('Copied. Paste it to your agent.')">Copy request</button>`});
 };
 App.register('tools',{
  title:()=>'Tools',load:()=>Cmd.loadTools().then(tools=>({tools})),
@@ -130,24 +131,41 @@ App.register('tools',{
  }});
 
 // ---------- Trash: projects moved out of the way; nothing is deleted until you say so ----------
+let emptyingTrash=false;
+async function emptyTrash(){
+ if(emptyingTrash)return;
+ const data=App.screens.trash.data;
+ const projects=data.jobs.filter(job=>job.archived).map(job=>job.job);
+ const uploads=(data.trashedUploads??[]).map(({request,trashId})=>({request,trashId}));
+ const count=projects.length+uploads.length;
+ if(!count||!await ask('Empty Trash?',`Delete ${count} ${count===1?'item':'items'} from Trash? Uploaded files are permanently deleted. Saved project files, exports and lessons are kept.`,'Empty Trash',true))return;
+ emptyingTrash=true;App.show(false);
+ try{
+  const result=await api('/api/studio/trash/empty',{method:'POST',body:JSON.stringify({projects,uploads})});
+  if(result.failed)toast(`${result.failed} ${result.failed===1?'item':'items'} could not be removed.`,true);
+ }catch(error){toast(error.message,true);}
+ finally{emptyingTrash=false;await App.refresh(true);}
+}
 App.register('trash',{
  title:()=>'Trash',load:()=>Studio.load(),
- head:()=>({title:'Trash',text:'Projects you moved to the trash. Restore one to bring it back, or delete it for good.'}),
+ head:()=>({title:'Trash',text:'Restore projects and uploaded files from here.'}),
+ actions(){return this.data.jobs.some(job=>job.archived)||this.data.trashedUploads?.length?`<button type="button" class="btn danger-text" onclick="emptyTrash()" ${emptyingTrash?'disabled':''}>${I.trash} ${emptyingTrash?'Emptying Trash…':'Empty Trash'}</button>`:'';},
+ hold:()=>emptyingTrash,
  render(el){
-  const gone=this.data.jobs.filter(j=>j.archived);
-  el.innerHTML=gone.length?`<div class="card-grid">${gone.map(j=>projectCard(j)).join('')}</div>`
-   :`<div class="empty"><h2>The trash is empty</h2><p>Projects you move to the trash wait here. Their files, exports and lessons are kept.</p></div>`;
+  const gone=this.data.jobs.filter(j=>j.archived),uploads=this.data.trashedUploads??[];
+  el.innerHTML=gone.length||uploads.length?`${gone.length?`<section><div class="section-head"><h3>Projects</h3></div><div class="card-grid">${gone.map(j=>projectCard(j)).join('')}</div></section>`:''}
+   ${uploads.length?`<section class="trash-uploads"><div class="section-head"><h3>Uploaded files</h3></div><div class="card-grid upload-grid">${uploads.map(f=>uploadCard(f,f.request,true)).join('')}</div></section>`:''}`
+   :`<div class="empty"><h2>The trash is empty</h2><p>Projects and uploaded files you move to Trash appear here.</p></div>`;
+  wireUploadCards(el);
  }});
 
 // ---------- Appearance ----------
 App.register('appearance',{
  title:()=>'Settings',
- head:()=>({title:'Appearance',text:'How the Studio looks on this computer.'}),
+ head:()=>({title:'Sidebar'}),
  render(el){
-  const c=document.documentElement.dataset.themeChoice||'system',rail=$('#app').dataset.rail==='collapsed';
-  el.innerHTML=`<section class="card" style="max-width:640px"><h2>Theme</h2><div role="radiogroup" aria-label="Theme" style="margin-top:8px">
-   ${[['dark','Dark','Near-black, easy on the eyes and on video.'],['light','Light','Bright surfaces for daylight rooms.'],['system','System','Follows your computer\'s setting.']].map(([k,l,a])=>`<label class="radio-card"><input type="radio" name="theme" value="${k}" ${c===k?'checked':''} onchange="App.theme('${k}');App.show(false)"><span><b>${l}</b><small>${a}</small></span></label>`).join('')}</div>
-   <h2 style="margin-top:24px">Rail</h2><label class="radio-card" style="margin-top:8px"><input type="checkbox" ${rail?'checked':''} onchange="App.collapse();App.show(false)"><span><b>Show the rail as icons</b><small>Press [ anywhere to switch.</small></span></label></section>`;
+  const collapsed=$('#app').dataset.rail==='collapsed';
+  el.innerHTML=`<section class="card" style="max-width:640px"><label class="radio-card"><input type="checkbox" ${collapsed?'checked':''} onchange="App.collapse();App.show(false)"><span><b>Show the sidebar as icons</b><small>Press [ anywhere to switch.</small></span></label></section>`;
  }});
 
 // ---------- Brain, Lessons: lessons and the patterns your good examples share, on one page ----------

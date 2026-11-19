@@ -118,7 +118,7 @@ window.txShape=async a=>{const id=App.arg;TX.busy='Finding the speaker';App.show
  try{const d=await txApi(id,{action:'shape',aspect:a||null});App.screens['studio/text'].data=d;}catch(e){toast(e.message,true);}TX.busy=null;App.show(false);};
 window.txRender=id=>act(async()=>{await txApi(id,{action:'render'});toast('Making the edit. It shows here, and in the gallery, when it is ready.');});
 window.txSaveStyle=id=>{
- dialog(`<h2>Save as your caption style</h2><p class="muted">This style with your colour, under your own name. Use it in any edit; make it the one new edits start with.</p>
+ dialog(`<h2>Save as your caption style</h2>
   <label class="f" for="cs-name">Name</label><input type="text" id="cs-name" maxlength="40" placeholder="For example: My bold captions">
   <label class="f" for="cs-hl">Highlight colour</label><input type="color" id="cs-hl" value="#FFD400">
   <label class="check" style="margin-top:10px"><input type="checkbox" id="cs-def" checked> Use it for new edits</label>

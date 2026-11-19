@@ -29,6 +29,8 @@
    `docs/guides/short-form-editing.md`.
 6. **Assets and sound.** Search the asset library and local sounds first
    (`agent/policies.md`). Report state `creating`.
+   For a beat that calls for an illustration, painting, or drawing reveal, create it
+   as a scene asset using the painting and drawing workflow in step 4 of the skill.
 7. **Produce.** Prepare the request internally and run
    `pnpm video:create --manifest REQUEST` (`skills/tempoloom/SKILL.md` step 5).
    Report `planning`, then `rendering`.

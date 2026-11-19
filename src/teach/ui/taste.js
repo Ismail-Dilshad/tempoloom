@@ -46,14 +46,14 @@ window.tasteExport=async()=>{const b=Taste.b,on=l=>l.on;
  const md=`# Taste profile: ${b.name}\n\n${b.notes?b.notes+'\n\n':''}`+b.topics.map(t=>`## ${t.label}\n\n${t.lines.filter(on).map(l=>`- ${l.avoid&&!/^(avoid|never|no |do not|don't)/i.test(l.text)?'Avoid: ':''}${l.text}`).join('\n')}\n`).join('\n')+(b.targets.length?`\n## Targets\n\n${b.targets.map(t=>`- ${t.label}: ${t.lo} to ${t.hi}${t.unit?' '+t.unit:''}`).join('\n')}\n`:'');
  download(`taste-${b.id}.md`,md);};
 window.tasteNew=()=>{const b=Taste.b;
- dialog(`<h2>New taste profile</h2><p class="muted">For a client or a brand with its own style. It can use all your taught videos, or only some.</p>
+ dialog(`<h2>New taste profile</h2>
   <label class="f" for="tp-name">Name</label><input type="text" id="tp-name" maxlength="60" placeholder="For example: Hawler Roasters">
   ${b.allVideos.length?`<label class="f">Based on <span class="muted">(leave all unticked to use every video)</span></label><div class="topics" id="tp-v" style="grid-template-columns:1fr">${b.allVideos.map(v=>`<label><input type="checkbox" value="${esc(v.id)}"> <span dir="auto">${esc(v.title)}</span> <span class="muted small">${v.verdict}</span></label>`).join('')}</div>`:''}
   <div class="row" style="justify-content:flex-end;margin-top:16px"><button class="btn ghost" onclick="closeDialog()">Cancel</button><button class="btn primary" id="tp-go">Create it</button></div>`);
  $('#tp-name').focus();
  $('#tp-go').onclick=async()=>{try{const r=await api('/api/taste',{method:'POST',body:JSON.stringify({action:'create',name:$('#tp-name').value.trim(),videos:[...document.querySelectorAll('#tp-v input:checked')].map(i=>i.value)})});closeDialog(true);toast('Profile created');tasteGo(r.id);}catch(e){toast(e.message,true);}};};
 window.tasteVideos=()=>{const b=Taste.b,cur=new Set(b.videos||[]);
- dialog(`<h2>Videos this profile is based on</h2><p class="muted">Its patterns and lessons come from these only. Untick all to use every video.</p>
+ dialog(`<h2>Videos this profile is based on</h2><p class="muted">Leave all unchecked to use every video.</p>
   <div class="topics" id="tv" style="grid-template-columns:1fr">${b.allVideos.map(v=>`<label><input type="checkbox" value="${esc(v.id)}" ${cur.has(v.id)?'checked':''}> <span dir="auto">${esc(v.title)}</span> <span class="muted small">${v.verdict}</span></label>`).join('')}</div>
   <div class="row" style="justify-content:flex-end;margin-top:16px"><button class="btn ghost" onclick="closeDialog()">Cancel</button><button class="btn primary" id="tv-go">Save</button></div>`);
  $('#tv-go').onclick=()=>{const videos=[...document.querySelectorAll('#tv input:checked')].map(i=>i.value);closeDialog(true);Taste.post('videos',{videos},'Saved');};};

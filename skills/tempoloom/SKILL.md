@@ -94,7 +94,7 @@ over footage). It plans the eight stages as tasks, each owned by the role that i
   `recreate plan BLUEPRINT --script FILE`, build each scene as planned, and `recreate check` until
   it passes. For an edited video and their own footage: `recreate edit REF FOOTAGE`. Take only the
   design or the editing style: never the reference's artwork, logo, footage or words.
-- Paintings and drawings (docs/guides/artist.md): for a painting, drawing, sketch or illustration,
+- Standalone artwork (docs/guides/artist.md): when the artwork itself is the main deliverable,
   plan a `painting` job (`studio plan "REQUEST" --type painting`, `--reference` when the user gave
   photos) and give its art stage to the `tempoloom-artist` sub-agent. The artist works the way
   painters do: value studies to choose from (`paint render PLAN --study`), then pass by pass (`paint
@@ -192,6 +192,18 @@ the choice. Use functional captions. For a named style card use the
 badge motion use [Pendulum Reveal](../../docs/guides/pendulum-reveal.md).
 
 ## 4. Assets and sound
+
+**Painting and drawing are available in both motion and footage jobs.** When a beat needs a
+sketch, illustration, painted texture, or a drawing reveal, plan it as an asset in the current
+job. Specify what it shows, the medium, where it appears, and whether the build-up is visible.
+Use [the artist workflow](../../docs/guides/artist.md): render and review an original
+`painting.png` with `pnpm tempoloom paint render PLAN.json`, or use `paint from PHOTO` with
+the chosen `--style` for a user-supplied photo. Add `--timelapse` when the scene should show the
+artwork being made. Keep the artwork, its source, and its render evidence with the job.
+For motion, pin the artwork and place it in the scene as image or video media, timing it to
+the beat. For footage, use a timed `overlay` or `overlays` operation in the edit decision
+list, and check that the artwork leaves the speaker and captions legible. Include it only
+where it serves the scene or the approved edit.
 
 Follow the [layered asset workflow](../../docs/guides/layered-assets.md) for code-rendered
 scenes: image tools make isolated objects and moving parts; code makes the scene. Use

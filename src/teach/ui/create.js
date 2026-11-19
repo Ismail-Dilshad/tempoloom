@@ -1,18 +1,17 @@
 'use strict';
-// Create: the home page. Your newest projects in the middle, ideas to start from, and the prompt box
-// pinned at the bottom: + adds files, the pill picks the kind of video, Rules and Settings open in the
-// right panel, Send starts the job. It writes the same brief the studio has always taken (Studio.N).
+// The Create page offers visual entry points into the Studio brief.
 const KINDS=[
  {id:'motion',label:'Motion graphics',icon:'spark',about:'From a script, a prompt, a topic or only a link',placeholder:'Describe your video, paste a script or a link…'},
  {id:'edit',label:'Edit my footage',icon:'film',about:'Your talking-head or any video, cut and finished',placeholder:'Say what the edit should do, or leave it to the studio…'},
  {id:'art',label:'Painting or drawing',icon:'brush',about:'Pencil, ink, watercolour or oil, with a timelapse',placeholder:'Describe the subject, the mood and the light…'}];
 const kindOf=id=>KINDS.find(k=>k.id===id)||KINDS[0];
+const VIDEO_KINDS=KINDS.filter(kind=>kind.id!=='art');
 /** What a brief file is, for its chip and the picker. */
 const FILE_KINDS=[
- {id:'footage',label:'Footage to edit',icon:'film',accept:'video/*,audio/*,.mkv,.mov',multiple:true,modes:['edit']},
- {id:'reference',label:'Reference',icon:'eye',accept:'video/*,image/*',multiple:true,modes:['motion','edit','art'],about:'A video or picture to study, never copied'},
- {id:'logo',label:'Logo',icon:'logo',accept:'image/*,.svg',multiple:false,modes:['motion','edit']},
- {id:'asset',label:'Other files',icon:'folder',accept:'image/*,video/*,audio/*,.pdf,.txt,.md',multiple:true,modes:['motion','edit']}];
+ {id:'footage',label:'Footage',icon:'film',accept:'.mp4,.mov,.mkv,.webm,.avi,.m4v,.mp3,.wav,.m4a',multiple:true,modes:['edit']},
+ {id:'reference',label:'Reference',icon:'eye',accept:'.mp4,.mov,.mkv,.webm,.m4v,.png,.jpg,.jpeg,.webp',multiple:true,modes:['motion','edit','art']},
+ {id:'logo',label:'Logo',icon:'logo',accept:'.png,.svg,.jpg,.jpeg,.webp',multiple:false,modes:['motion','edit']},
+ {id:'asset',label:'Other files',icon:'folder',accept:'.png,.svg,.jpg,.jpeg,.webp,.mp4,.mov,.webm,.mp3,.wav,.m4a,.pdf,.txt,.md',multiple:true,modes:['motion','edit']}];
 
 // ---------- project cards, shared with Projects and Trash ----------
 const jobThumb=j=>{
@@ -44,60 +43,182 @@ window.projectMenu=(btn,job)=>{
 // ---------- the Create screen ----------
 App.register('create',{
  title:()=>'Create',
- load:async()=>{const [S,live]=await Promise.all([Studio.load(),api('/api/studio/live').catch(()=>({jobs:[]}))]);S.liveList=live.jobs||[];return S;},
- hold:()=>!!Studio.busy||Studio.sending,
+ load:Studio.load,
+ hold:()=>!!Studio.busy||Studio.sending||!!$('#view [data-upload-editing]'),
  render(el){
-  const S=this.data,jobs=S.jobs.filter(j=>!j.archived),queued=S.requests.filter(r=>r.status==='waiting');
-  const live=j=>(S.liveList||[]).find(x=>x.job===j.job&&x.active);
-  const ideas=[...PRESETS.map((p,i)=>({label:p.name,about:p.notes.split(':')[0],icon:p.mode==='edit'?'film':'spark',run:`usePreset(${i})`})),
-   {label:'Recreate a style',about:'Same design, your content: add a reference',icon:'eye',run:"Picker.open('reference')"},
-   {label:'Trend watch',about:'Formats getting popular for your topics',icon:'trend',href:'#/tools/trends'},
-   {label:'Learn a channel',about:'Save a creator\'s style as a look',icon:'channel',run:"openTool('look-channel')"}];
-  const ideaHtml=ideas.map(x=>x.href?`<a class="idea" href="${x.href}"><span class="art">${I[x.icon]}</span><span>${esc(x.label)}<small>${esc(x.about)}</small></span></a>`
-   :`<button type="button" class="idea" onclick="${x.run}"><span class="art">${I[x.icon]}</span><span>${esc(x.label)}<small>${esc(x.about)}</small></span></button>`).join('');
-  const strip=`<section class="idea-strip" aria-label="Start from an idea"><h3>Start from an idea</h3><div class="idea-row">${ideaHtml}</div></section>`;
-  if(!jobs.length&&!queued.length){
-   el.innerHTML=`<div class="no-head create-page"><div class="hero-empty"><img src="/mark.svg?v=10" alt="Tempoloom" width="112" height="112"><h2>Start creating or drop media</h2><p>Describe a video below, paste a script or a link, or drop your footage anywhere on this page.</p></div>${strip}</div>`;return;}
-  el.innerHTML=`<div class="no-head create-page">
-   ${App.home.you.length?`<div class="banner you" style="margin-bottom:24px"><b>Waiting for you:</b> ${App.home.you.map(j=>`<a href="#/projects/${encodeURIComponent(j.job)}">${esc(j.title)}</a>`).join(', ')}</div>`:''}
-   <div class="create-projects"><div class="section-head"><h3>Your projects</h3><a href="#/projects">See all ${jobs.length+queued.length}</a></div>
-   <div class="card-grid">${queued.map(r=>queuedCard(r)).join('')}${jobs.slice(0,8-Math.min(queued.length,4)).map(j=>{const now=live(j);return projectCard(j,{working:!!now,face:now?.face});}).join('')}</div></div>
-   ${strip}</div>`;
+  const draft=Studio.N,uploads=draft.files.filter(f=>!draft.instructionFiles?.includes(f.name));
+  el.innerHTML=uploads.length?`<section class="no-head create-uploads card-grid upload-grid" aria-label="Uploaded files">
+   ${uploads.map(f=>uploadCard(f,draft.id)).join('')}
+  </section>`:`<div class="no-head create-page"><div class="create-welcome">
+   <div class="create-emblem"><img src="/mark.svg?v=10" alt="Tempoloom" width="84" height="84"></div>
+   <h2>Start creating or drop media</h2>
+   <div class="create-paths" role="group" aria-label="Ways to start">
+    <button type="button" class="create-path" data-create-path="motion">
+     <span class="create-preview create-preview-motion" aria-hidden="true"><b>Make it<br><em>move.</em></b><i class="create-preview-art"></i></span>
+     <span class="create-path-label">Animate an idea ${I.chevron}</span>
+    </button>
+    <button type="button" class="create-path" data-create-path="edit">
+     <span class="create-preview create-preview-edit" aria-hidden="true"><span class="create-timeline"><i></i><i></i><i></i></span><i class="create-preview-art"></i></span>
+     <span class="create-path-label">Edit footage ${I.chevron}</span>
+    </button>
+    <button type="button" class="create-path" data-create-path="reference">
+     <span class="create-preview create-preview-reference" aria-hidden="true"><span class="create-reference-stack">${I.image}</span><i class="create-preview-art"></i></span>
+     <span class="create-path-label">Use a reference ${I.chevron}</span>
+    </button>
+   </div>
+  </div></div>`;
+  wireUploadCards(el);
+  el.querySelectorAll('[data-create-path]').forEach(button=>button.onclick=()=>{
+   const path=button.dataset.createPath;
+   setKind(path==='edit'?'edit':'motion');
+   if(path==='reference'){Picker.open('reference');return;}
+   Dock.focus();
+  });
  }});
+function uploadPreview(file,request,trashed=false){
+ const kind=FILE_KINDS.find(k=>k.id===file.kind);
+ const image=/\.(png|jpe?g|webp|svg)$/i.test(file.name),video=/\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(file.name);
+ const url=withKey(`/studio-file/upload/${encodeURIComponent(request)}/${trashed?'trash':file.kind}/${encodeURIComponent(trashed?file.trashId:file.name)}`);
+ return `${I[image?'image':video?'film':kind?.icon||'folder']}${image||video?`<img class="upload-preview" loading="lazy" alt="" src="${esc(url)}">`:''}`;
+}
+function uploadCard(file,request,trashed=false){
+ return `<article class="upload-card" data-request="${esc(request)}" data-kind="${esc(file.kind)}" data-name="${esc(file.name)}" data-trash-id="${esc(file.trashId||'')}">
+  ${uploadPreview(file,request,trashed)}
+  ${trashed?'':`<button type="button" class="upload-select" aria-pressed="${!file.detached}" aria-label="Use ${esc(file.name)} in prompt"><span aria-hidden="true">${file.detached?I.add:I.check}</span></button>`}
+  <span class="upload-name" dir="auto">${esc(file.name)}</span>
+  <button type="button" class="iconbtn sm upload-action" ${trashed?'data-upload-restore':'data-upload-menu aria-haspopup="menu" aria-expanded="false"'} aria-label="${trashed?'Restore':'More options for'} ${esc(file.name)}">${trashed?I.restore:I.more}</button></article>`;
+}
+function wireUploadPreviews(root){
+ root.querySelectorAll('.upload-preview').forEach(img=>{
+  img.onerror=()=>img.remove();
+  if(img.complete&&!img.naturalWidth)img.remove();
+ });
+}
+function wireUploadCards(root){
+ wireUploadPreviews(root);
+ root.querySelectorAll('.upload-card').forEach(card=>{
+  const button=$('[data-upload-menu]',card);
+  if(button){
+   const name=$('.upload-name',card);
+   const fitName=()=>name.toggleAttribute('data-overflow',name.scrollWidth>name.clientWidth);
+   fitName();card.onpointerenter=fitName;card.onfocusin=fitName;
+   button.onclick=()=>uploadMenu(button,card.dataset);
+   const select=$('.upload-select',card);
+   select.onclick=async()=>{
+    const attached=select.getAttribute('aria-pressed')!=='true';
+    if(await selectPromptFile(card.dataset,attached)){
+     findUploadTile(card.dataset)?.querySelector('.upload-select')?.focus();
+    }
+   };
+  }
+  const restore=$('[data-upload-restore]',card);
+  if(restore)restore.onclick=()=>restoreUpload(restore,card.dataset);
+ });
+}
+function findUploadTile(file){
+ return [...document.querySelectorAll('.create-uploads .upload-card')].find(tile=>tile.dataset.kind===file.kind&&tile.dataset.name===file.name);
+}
+function uploadMenu(button,file){
+ if(Pop.anchor===button){Pop.close(true);return;}
+ const menu=Pop.open(button,`<button type="button" class="pop-item" role="menuitem" data-rename>${I.rules}<span>Rename</span></button>
+ <button type="button" class="pop-item danger" role="menuitem" data-trash>${I.trash}<span>Move to Trash</span></button>`,{align:'end',label:'File options'});
+ $('[data-rename]',menu).onclick=()=>{Pop.close(true);renameUpload(button,file);};
+ $('[data-trash]',menu).onclick=()=>{Pop.close(true);changeUpload(file,'trash').catch(e=>toast(e.message,true));};
+}
+function renameUpload(button,file){
+ const card=button.closest('.upload-card'),ext=file.name.slice(file.name.lastIndexOf('.'));
+ if(card.hasAttribute('data-upload-editing'))return;
+ card.setAttribute('data-upload-editing','');
+ card.insertAdjacentHTML('beforeend',`<form class="upload-rename">
+  <input type="text" dir="auto" aria-label="File name" value="${esc(file.name)}" maxlength="90" required>
+  <button class="iconbtn sm" type="submit" aria-label="Save file name">${I.check}</button>
+  <button class="iconbtn sm" type="button" aria-label="Cancel rename">${I.x}</button></form>`);
+ const form=$('.upload-rename',card),input=$('input',form),save=$('[type=submit]',form),cancel=$('[type=button]',form);
+ const close=()=>{form.remove();card.removeAttribute('data-upload-editing');button.focus();};
+ input.focus();input.setSelectionRange(0,file.name.length-ext.length);
+ cancel.onclick=close;
+ form.onkeydown=e=>{if(e.key==='Escape'&&!save.disabled){e.preventDefault();e.stopPropagation();close();}};
+ form.onsubmit=async e=>{
+  e.preventDefault();
+  const value=input.value.trim(),label=value.toLowerCase().endsWith(ext.toLowerCase())?value.slice(0,-ext.length):value;
+  save.disabled=cancel.disabled=input.readOnly=true;
+  try{
+   await changeUpload(file,'rename',{label});
+   findUploadTile({...file,name:label.normalize('NFKC').trim()+ext})?.querySelector('[data-upload-menu]')?.focus();
+  }catch(error){toast(error.message,true);save.disabled=cancel.disabled=input.readOnly=false;input.focus();}
+ };
+}
+async function changeUpload(file,action,details={}){
+ const draft=Studio.N;
+ if(Studio.busy||Studio.sending||draft.id!==file.request)throw new Error('Wait for the current file operation to finish.');
+ Studio.busy={kind:file.kind,text:{trash:'Moving to Trash',rename:'Renaming file',attach:'Updating prompt'}[action]};
+ try{
+  const r=await api(`/api/studio/requests/${draft.id}/files`,{method:'PATCH',body:JSON.stringify({action,kind:file.kind,name:file.name,...details})});
+  if(draft===Studio.N){draft.files=r.files;Studio.save();}
+  if(action==='trash')toast('Moved to Trash');
+ }finally{Studio.busy=null;}
+ if(App.route==='create')App.show(false);
+}
+async function selectPromptFile(file,attached){
+ try{await changeUpload(file,'attach',{attached});return true;}
+ catch(error){toast(error.message,true);return false;}
+}
+async function restoreUpload(button,file){
+ if(Studio.busy||Studio.sending)return;
+ button.disabled=true;
+ Studio.busy={kind:file.kind,text:'Restoring file'};
+ try{
+  const draft=Studio.N,destination=await ensureRequest();
+  const r=await api(`/api/studio/requests/${file.request}/trashed-files/${file.trashId}`,{method:'POST',body:JSON.stringify({destination})});
+  if(draft===Studio.N){draft.files=r.files;Studio.save();}
+  toast('Restored to Create');
+ }catch(e){toast(e.message,true);}
+ finally{Studio.busy=null;button.disabled=false;await App.refresh(true);}
+}
 function queuedCard(r){
  return `<div class="pcard-wrap" style="position:relative"><div class="pcard"><span class="thumb">${I[r.input?.mode==='edit'?'film':r.input?.mode==='art'?'brush':'spark']}<span class="badge">Sent, not started</span></span>
   <b dir="auto">${esc((r.input?.text||r.summary||'New video').split('\n')[0].slice(0,90))}</b><span class="meta"><span>${esc(kindOf(r.input?.mode).label)}</span><span>${ago(r.created)}</span></span></div>
   <button class="iconbtn sm more" aria-label="More for this queued video" aria-haspopup="menu" aria-expanded="false" onclick="queuedMenu(this,'${r.id}')">${I.more}</button></div>`;
 }
 window.queuedMenu=(btn,id)=>Pop.open(btn,`<button class="pop-item" data-close onclick="editQueued('${id}')">${I.rules}<span>Edit brief</span></button><button class="pop-item danger" data-close onclick="deleteQueued('${id}')">${I.trash}<span>Delete</span></button>`,{align:'end',label:'Queued video'});
-window.usePreset=i=>{const {name,...p}=PRESETS[i];Object.assign(Studio.N,p);Studio.save();dockRefresh();toast(`Starting from “${name}”. Describe your video and send it.`);Dock.focus();};
 
 // ---------- the dock on Create ----------
-const fileChip=f=>`<span class="file-chip" title="${esc(f.name)}">${I[(FILE_KINDS.find(k=>k.id===f.kind)||FILE_KINDS[3]).icon]}<span dir="auto">${esc(f.name)}</span><small>${esc((FILE_KINDS.find(k=>k.id===f.kind)||{}).label||f.kind)}</small><button type="button" class="iconbtn" aria-label="Remove ${esc(f.name)}" onclick="briefRemove('${esc(f.name)}')">${I.x}</button></span>`;
+const dockAttachment=(file,id)=>`<span class="dock-attachment">${uploadPreview(file,id)}<button type="button" class="iconbtn sm" aria-label="Remove ${esc(file.name)} from prompt" data-request="${esc(id)}" data-kind="${esc(file.kind)}" data-name="${esc(file.name)}" onclick="detachPromptFile(this)">${I.x}</button></span>`;
+window.detachPromptFile=async button=>{if(await selectPromptFile(button.dataset,false))$('#dock-text')?.focus();};
 Dock.kinds.create={
  html(){
   const N=Studio.N,k=kindOf(N.mode);
   return `<div class="dock" id="dock" aria-label="Prompt">
-   <div class="dock-files" id="dock-files" ${N.files.length?'':'hidden'}>${N.files.map(fileChip).join('')}</div>
-   <div class="dock-text"><textarea id="dock-text" rows="1" dir="auto" maxlength="12000" aria-label="What do you want to make?" placeholder="${esc(k.placeholder)}">${esc(N.text)}</textarea>
-    <button type="button" class="iconbtn sm" id="dock-expand" aria-label="Make the box bigger" aria-pressed="false">${I.expand}</button></div>
+   <div class="dock-content">
+    <div class="dock-files" id="dock-files" hidden></div>
+    <div class="dock-text"><textarea id="dock-text" rows="1" dir="auto" maxlength="12000" aria-label="What do you want to make?" placeholder="${esc(k.placeholder)}">${esc(N.text)}</textarea></div>
+    <div class="dock-prompt-actions">
+     <button type="button" class="iconbtn sm" id="dock-clear" aria-label="Clear prompt" ${N.text?'':'hidden'}>${I.x}</button>
+     <button type="button" class="iconbtn sm" id="dock-expand" aria-label="Expand prompt" aria-expanded="false" aria-controls="panel">${I.expand}</button>
+    </div>
+   </div>
    <div class="dock-busy" id="dock-busy" ${Studio.busy?'':'hidden'}><span class="spin"></span><span>${esc(Studio.busy?.text||'')}</span></div>
    <div class="dock-tools">
     <button type="button" class="iconbtn" id="dock-add" aria-label="Add files" onclick="Picker.open()">${I.add}</button>
     <button type="button" class="kind-pill" id="dock-kind" aria-haspopup="menu" aria-expanded="false" onclick="kindMenu(this)">${I[k.icon]}<span>${esc(k.label)}</span>${I.chevron}</button>
     <span class="grow"></span>
-    <button type="button" class="iconbtn" aria-label="Rules for this video" aria-pressed="${Panel.id==='rules'}" onclick="rulesPanel()">${I.rules}</button>
+    <button type="button" class="iconbtn" id="dock-instructions" aria-label="Rules for this video" aria-expanded="${Panel.id==='rules'}" aria-controls="panel" onclick="rulesPanel()">${I.rules}</button>
     <button type="button" class="iconbtn" aria-label="Settings for this video" aria-pressed="${Panel.id==='brief-settings'}" onclick="settingsPanel()">${I.sliders}</button>
     <button type="button" class="iconbtn primary" id="dock-send" aria-label="Send to the studio" ${Studio.sending||Studio.busy?'disabled':''}>${I.send}</button>
    </div></div>`;
  },
  wire(el){
-  const t=$('#dock-text',el),N=Studio.N;autoGrow(t);
-  t.oninput=()=>{N.text=t.value;Studio.save();autoGrow(t);};
+  const t=$('#dock-text',el),clear=$('#dock-clear',el);
+  this.refresh(el);autoGrow(t);
+  t.oninput=()=>{const N=Studio.N;N.text=t.value;clear.hidden=!N.text;Studio.save();autoGrow(t);};
+  clear.onclick=()=>{Studio.N.link='';t.value='';t.oninput();t.focus();};
   t.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();createSend();}
    else if(e.key==='/'&&!t.value){e.preventDefault();Cmd.open();}};
   $('#dock-send',el).onclick=createSend;
-  $('#dock-expand',el).onclick=e=>{const on=$('#dock',el).classList.toggle('expanded');e.currentTarget.setAttribute('aria-pressed',on);autoGrow(t);t.focus();};
+  $('#dock-expand',el).onclick=()=>Dock.expand();
+  readInstructions().then(cards=>{
+   setInstructionIndicator(el,cards?activeInstructions(cards).length>0:!!Studio.N.notes.trim());
+  }).catch(()=>setInstructionIndicator(el,!!Studio.N.notes.trim()));
   const dock=$('#dock',el);
   for(const ev of ['dragenter','dragover'])dock.addEventListener(ev,e=>{if(e.dataTransfer?.types.includes('Files')){e.preventDefault();dock.classList.add('drop-over');}});
   dock.addEventListener('dragleave',()=>dock.classList.remove('drop-over'));
@@ -105,17 +226,28 @@ Dock.kinds.create={
  },
  refresh(el){
   const N=Studio.N,files=$('#dock-files',el);if(!files)return;
-  files.innerHTML=N.files.map(fileChip).join('');files.hidden=!N.files.length;
+  if(files.uploads!==N.files){
+   files.uploads=N.files;
+   const attached=N.files.filter(file=>!file.detached);
+   files.innerHTML=attached.map(file=>dockAttachment(file,N.id)).join('');files.hidden=!attached.length;
+   wireUploadPreviews(files);
+  }
+  $('#dock-clear',el).hidden=!N.text;
   const b=$('#dock-busy',el);b.hidden=!Studio.busy;b.lastElementChild.textContent=Studio.busy?.text||'';
   $('#dock-send',el).disabled=!!(Studio.sending||Studio.busy);
   const k=kindOf(N.mode),pill=$('#dock-kind',el);pill.innerHTML=`${I[k.icon]}<span>${esc(k.label)}</span>${I.chevron}`;$('#dock-text',el).placeholder=k.placeholder;
+  el.closest('#panel')?.querySelectorAll('[data-prompt-kind]').forEach(button=>{
+   button.setAttribute('aria-pressed',String(button.dataset.promptKind===N.mode));
+  });
   const t=$('#dock-text',el);if(document.activeElement!==t&&t.value!==N.text){t.value=N.text;autoGrow(t);}
  }};
 const dockRefresh=()=>{if(Dock.mode==='create'&&Dock.el)Dock.kinds.create.refresh(Dock.el);};
+document.addEventListener('panel',e=>{
+ Dock.el?.querySelector('#dock-instructions')?.setAttribute('aria-expanded',String(e.detail==='rules'));
+});
 window.kindMenu=btn=>{
  const N=Studio.N;
- Pop.open(btn,`<div class="pop-head">What are you making?</div>${KINDS.map(k=>`<button class="pop-item" role="menuitemradio" aria-checked="${N.mode===k.id}" data-close onclick="setKind('${k.id}')">${I[k.icon]}<span>${esc(k.label)}<small>${esc(k.about)}</small></span></button>`).join('')}
-  ${PRESETS.some(p=>p.mode===N.mode)?`<hr><div class="pop-head">Start from</div>${PRESETS.map((p,i)=>p.mode===N.mode?`<button class="pop-item" data-close onclick="usePreset(${i})">${I.spark}<span>${esc(p.name)}</span></button>`:'').join('')}`:''}`,{up:true,label:'Kind of video'});
+ Pop.open(btn,`<div class="pop-head">What are you making?</div>${VIDEO_KINDS.map(k=>`<button class="pop-item" role="menuitemradio" aria-checked="${N.mode===k.id}" data-close onclick="setKind('${k.id}')">${I[k.icon]}<span>${esc(k.label)}<small>${esc(k.about)}</small></span></button>`).join('')}`,{up:true,label:'Kind of video'});
 };
 window.setKind=id=>{Studio.N.mode=id;Studio.save();dockRefresh();if(Panel.id==='brief-settings')settingsPanel();};
 /** Adds dropped or picked files to the brief, each as the kind its type suggests. */
@@ -129,7 +261,7 @@ async function dropFiles(files){
  if(others.length&&N.mode!=='art')await briefUpload('asset',others);
  dockRefresh();
 }
-window.briefRemove=name=>act(async()=>{const N=Studio.N;const r=await api(`/api/studio/requests/${N.id}/files?name=${encodeURIComponent(name)}`,{method:'DELETE'});N.files=r.files;Studio.save();dockRefresh();});
+window.briefRemove=button=>changeUpload({...button.dataset,request:Studio.N.id},'trash').catch(e=>toast(e.message,true));
 document.addEventListener('dragover',e=>{if(App.route==='create'&&e.dataTransfer?.types.includes('Files'))e.preventDefault();});
 document.addEventListener('drop',e=>{if(App.route==='create'&&e.dataTransfer?.files.length&&!e.target.closest('.dock,.overlay')){e.preventDefault();dropFiles([...e.dataTransfer.files]);}});
 /** A link written alone or inside the text becomes the brief's link (read for facts and brand). */
@@ -140,95 +272,254 @@ function createSend(){
 }
 
 // ---------- Rules and Settings panels ----------
-window.rulesPanel=()=>{
+// Keep reference files with the saved cards without putting media into localStorage.
+function instructionStore(mode,write){
+ return new Promise((resolve,reject)=>{
+  const open=indexedDB.open('tempoloom-instructions',1);
+  open.onupgradeneeded=()=>open.result.createObjectStore('draft');
+  open.onerror=()=>reject(open.error);
+  open.onsuccess=()=>{
+   const db=open.result,tx=db.transaction('draft',mode);
+   const req=write(tx.objectStore('draft'));
+   tx.oncomplete=()=>{db.close();resolve(req.result);};
+   tx.onabort=()=>{db.close();reject(tx.error||new Error('Instruction storage is unavailable'));};
+  };
+ });
+}
+const readInstructions=()=>instructionStore('readonly',store=>store.get('cards'));
+const instructionId=()=>Array.from(crypto.getRandomValues(new Uint8Array(12)),byte=>byte.toString(16).padStart(2,'0')).join('');
+const blankInstruction=(text='')=>({id:instructionId(),enabled:true,title:'',text,reference:null});
+const hasInstructionContent=card=>card.title.trim()||card.text.trim()||card.reference;
+const activeInstructions=cards=>cards.filter(card=>card.enabled&&hasInstructionContent(card));
+function setInstructionIndicator(dock,active){
+ const button=dock?.querySelector('#dock-instructions');
+ if(!button)return;
+ button.toggleAttribute('data-instructions-active',active);
+ button.setAttribute('aria-description',active?'Instructions are active':'No active instructions');
+}
+function instructionNotes(cards){
+ return activeInstructions(cards).map(card=>[
+  card.title.trim(),card.text.trim(),card.reference?`Reference: ${instructionFileName(card)}`:''
+ ].filter(Boolean).join('\n')).join('\n\n');
+}
+function instructionFileName(card){
+ const ext=card.reference.name.slice(card.reference.name.lastIndexOf('.')).toLowerCase();
+ return `instruction-${card.id}${ext}`;
+}
+window.rulesPanel=async()=>{
  if(Panel.id==='rules'){Panel.close();dockRefresh();return;}
- const N=Studio.N,S=Studio.S,rules=S?.scores?.rules||[];
- Panel.open({id:'rules',title:'Rules for this video',sub:'Anything the studio should keep to. Your taste and the rules it learned apply to every video.',
-  body:`<label class="field-label" for="rule-notes">For this video</label>
-   <textarea id="rule-notes" dir="auto" maxlength="2000" style="min-height:140px" placeholder="Audience, mood, must-haves. For example: for busy parents, warm and calm, always show the price.">${esc(N.notes)}</textarea>
-   ${N.mode==='motion'?`<label class="radio-card" style="margin-top:12px"><input type="checkbox" id="rule-script" ${N.script?'checked':''}><span><b>Use my text word for word</b><small>It is my finished script: the studio keeps every word.</small></span></label><div id="sd-live"></div>`:''}
-   <h3 class="field-label">Rules the studio already follows</h3>
-   ${rules.length?rules.map(r=>`<div class="list-row"><div><span dir="auto">${esc(r)}</span></div></div>`).join(''):'<p class="muted small">None yet. When you tell the studio something about a video, it becomes a rule here.</p>'}
-   <p class="small"><a href="#/brain/taste">Your taste</a> · <a href="#/brain/lessons">Lessons</a></p>`,
-  foot:`<button class="btn primary" onclick="Panel.close();dockRefresh()">Done</button>`});
- $('#rule-notes').oninput=e=>{N.notes=e.target.value;Studio.save();};
- if($('#rule-script'))$('#rule-script').onchange=e=>{N.script=e.target.checked;Studio.save();if(typeof sdLive==='function'){SD.last='';sdLive();}};
- if(typeof sdLive==='function'){SD.last='';sdLive();}
+ const draft=Studio.N,route=App.route,otherPanel=Panel.id;
+ let cards;
+ try{cards=(await readInstructions()??[blankInstruction(draft.notes)]).filter(hasInstructionContent);}
+ catch{toast('Could not open saved instructions.',true);return;}
+ if(draft!==Studio.N||route!==App.route||otherPanel!==Panel.id)return;
+ Panel.open({id:'rules',title:'Instructions',
+  body:`<div class="instruction-list"></div><button type="button" class="btn instruction-add">${I.add} Add instruction</button>`,
+  foot:`<button class="btn primary" id="save-video-instructions">Save</button>`});
+ const list=$('.instruction-list',Panel.body()),save=$('#save-video-instructions');
+ const draw=()=>{
+  list.innerHTML=cards.map((card,n)=>`<section class="instruction-card video-setting" aria-label="Instruction ${n+1}">
+   <div class="instruction-head">
+    <input data-enabled type="checkbox" role="switch" aria-label="Enable instruction ${n+1}" ${card.enabled?'checked':''}>
+    <input data-title type="text" aria-label="Instruction title" maxlength="100" placeholder="Instruction title" value="${esc(card.title)}" dir="auto">
+    <button type="button" class="iconbtn sm" data-remove aria-label="Remove instruction ${n+1}">${I.trash}</button>
+   </div>
+   <div class="instruction-body">
+    <div class="instruction-reference">
+     <button type="button" data-reference class="btn" aria-label="${card.reference?'Replace':'Add'} reference for instruction ${n+1}">
+      ${card.reference?'':I.add}<span>${esc(card.reference?.name||'Reference')}</span>
+     </button>
+     <input data-file type="file" hidden accept=".png,.jpg,.jpeg,.webp,.mp4,.mov,.webm">
+     ${card.reference?`<button type="button" class="iconbtn sm" data-detach aria-label="Remove reference from instruction ${n+1}">${I.x}</button>`:''}
+    </div>
+    <textarea data-guideline dir="auto" maxlength="2000" aria-label="Guideline" placeholder="Create a guideline for your agent">${esc(card.text)}</textarea>
+   </div>
+  </section>`).join('');
+  [...list.children].forEach((el,index)=>{
+   const card=cards[index],file=$('[data-file]',el);
+   $('[data-title]',el).oninput=e=>{card.title=e.target.value;};
+   $('[data-guideline]',el).oninput=e=>{card.text=e.target.value;};
+   $('[data-enabled]',el).onchange=e=>{card.enabled=e.target.checked;};
+   $('[data-remove]',el).onclick=()=>{cards.splice(index,1);draw();$('.instruction-add',Panel.body()).focus();};
+   $('[data-reference]',el).onclick=()=>file.click();
+   file.onchange=()=>{
+    const reference=file.files[0];if(!reference)return;
+    if(!/\.(png|jpe?g|webp|mp4|mov|webm)$/i.test(reference.name))return toast('Choose an image or video reference.',true);
+    if(reference.size>(Studio.S?.can?.maxMB??100)*1048576)return toast('This reference is too large.',true);
+    card.id=instructionId();card.reference=reference;draw();
+   };
+   const detach=$('[data-detach]',el);
+   if(detach)detach.onclick=()=>{card.reference=null;draw();$('[data-reference]',list.children[index]).focus();};
+  });
+ };
+ $('.instruction-add',Panel.body()).onclick=()=>{cards.push(blankInstruction());draw();$('[data-title]',list.lastElementChild).focus();};
+ save.onclick=async()=>{
+  if(instructionNotes(cards).length>2000)return toast('Keep enabled instructions under 2,000 characters.',true);
+  save.disabled=true;
+  try{
+   await instructionStore('readwrite',store=>store.put(cards.filter(hasInstructionContent),'cards'));
+   draft.notes='';
+   Studio.save();
+   setInstructionIndicator(Dock.el,activeInstructions(cards).length>0);
+   if(save.isConnected)Panel.close();
+   dockRefresh();
+  }catch{toast('Could not save the instructions on this device.',true);}
+  finally{save.disabled=false;}
+ };
+ draw();
  dockRefresh();
 };
 const SHAPES=[['','Auto',''],['horizontal','16:9','width:18px;height:10px'],['vertical','9:16','width:10px;height:18px'],['square','1:1','width:14px;height:14px']];
-const LENGTHS=[['','Auto'],['15','15 s'],['30','30 s'],['45','45 s'],['60','1 min'],['90','1.5 min'],['120','2 min']];
 window.settingsPanel=()=>{
- const N=Studio.N,S=Studio.S||{profiles:[],taught:[],looks:[]},m=N.mode==='motion',art=N.mode==='art';
- const sel=(id,opts,val,label)=>`<label class="field-label" for="${id}">${label}</label><select id="${id}">${opts.map(([v,l])=>`<option value="${esc(v)}"${String(val)===String(v)?' selected':''}>${esc(l)}</option>`).join('')}</select>`;
- const seg=(name,opts,val)=>`<div class="seg-tiles ${name==='seconds'?'compact':''}" role="group" aria-label="${name==='shape'?'Shape':'Length'}">${opts.map(([v,l,box])=>`<button type="button" aria-pressed="${String(val||'')===v}" data-seg="${name}" data-v="${v}">${box!==undefined?(box?`<i class="shape" style="${box}"></i>`:I.spark):''}<span>${esc(l)}</span></button>`).join('')}</div>`;
- const toggle=(id,on,title,about)=>`<label class="radio-card"><input type="checkbox" id="${id}" ${on?'checked':''}><span><b>${esc(title)}</b>${about?`<small>${esc(about)}</small>`:''}</span></label>`;
- const styles=[['','Choose a style'],...(S.looks||[]).map(l=>[l.name,l.name+(l.summary?' ('+l.summary+')':'')]),...(S.taught||[]).map(v=>[v.id,'Taught: '+v.title.slice(0,50)])];
- Panel.open({id:'brief-settings',title:'Settings for this video',sub:'Saved as you change them; the next video starts from these.',
-  body:`<span class="field-label">Shape</span>${seg('shape',SHAPES,N.shape)}
+ const N={...Studio.N},S=Studio.S||{profiles:[],taught:[],looks:[]},m=N.mode==='motion',art=N.mode==='art';
+ const sel=(id,opts,val,label)=>`<div class="video-setting-field"><label class="field-label" for="${id}">${label}</label><select id="${id}">${opts.map(([v,l])=>`<option value="${esc(v)}"${String(val)===String(v)?' selected':''}>${esc(l)}</option>`).join('')}</select></div>`;
+ const shapes=`<div class="seg-tiles" role="group" aria-label="Shape">${SHAPES.map(([v,l,box])=>`<button type="button" aria-pressed="${(N.shape||'')===v}" data-shape="${v}">${box?`<i class="shape" style="${box}"></i>`:I.spark}<span>${esc(l)}</span></button>`).join('')}</div>`;
+ const toggle=(id,on,title,icon)=>`<label class="video-setting"><span class="video-setting-icon" aria-hidden="true">${I[icon]}</span><b>${esc(title)}</b><input type="checkbox" role="switch" id="${id}" ${on?'checked':''}></label>`;
+ const styles=[['','Choose a style'],...(S.looks||[]).map(l=>[l.name,l.name]),...(S.taught||[]).map(v=>[v.id,v.title])];
+ Panel.open({id:'brief-settings',title:'Settings for this video',
+  body:`<div class="video-settings"><section class="video-settings-section"><h3 class="field-label">Shape</h3>${shapes}</section>
+   <section class="video-settings-section"><h3 class="field-label">Production</h3><div class="video-settings-grid">
    ${art?sel('medium',[['','Studio chooses'],['watercolor','Watercolour'],['oil','Oil'],['acrylic','Acrylic'],['gouache','Gouache'],['pencil','Pencil'],['charcoal','Charcoal'],['ink','Ink'],['pastel','Pastel'],['mixed','Mixed media']],N.medium||'','Medium')
-    :`<span class="field-label">Length</span>${seg('seconds',LENGTHS,N.seconds)}${sel('language',LANGS,N.language,'Language')}`}
-   ${art?'':`<div style="margin-top:16px">${m?toggle('voice',N.voice,'Add a voice-over','Uses your ElevenLabs account.'):toggle('captions',N.captions,'Captions','')}</div>`}
-   <details class="more-opts" ${store.get('more-opts',false)?'open':''} ontoggle="store.set('more-opts',this.open)"><summary>More options</summary>
+    :m?toggle('voice',N.voice,'Voice-over','sound'):toggle('captions',N.captions,'Captions','captions')}
+   ${N.mode==='edit'?`<div class="video-settings-full">${toggle('visuals',N.visuals,'Designed visuals','spark')}</div>`:''}
+   </div></section>
+   ${m&&(S.taught?.length||styles.length>2)?`<section class="video-settings-section"><h3 class="field-label">Style</h3><div class="video-settings-grid">
+   ${m&&S.taught?.length?sel('like',[['','None'],...S.taught.map(v=>[v.id,v.title])],N.like,'Reference style'):''}
+   ${m&&styles.length>2?`<div class="video-mix-toggle">${toggle('useMix',N.useMix,'Blend two styles','spark')}</div>
+    <div class="video-settings-grid video-mix-options" data-mix-options ${N.useMix?'':'hidden'}>${sel('mixA',styles,N.mixA||'','Style A')}${sel('mixB',styles,N.mixB||'','Style B')}
+    <div class="video-mix-weight"><label class="field-label" for="mixWeight">Style blend <b id="mixLabel">${N.mixWeight??70}% A, ${100-(N.mixWeight??70)}% B</b></label><input type="range" id="mixWeight" min="0" max="100" step="5" value="${N.mixWeight??70}" style="width:100%"></div></div>`:''}
+   </div></section>`:''}
+   <section class="video-settings-section"><h3 class="field-label">Review</h3><div class="video-settings-grid">
    ${(S.profiles||[]).length>1?sel('profile',S.profiles.map(p=>[p.id==='main'?'':p.id,p.name]),N.profile,'Taste profile'):''}
-   ${m?toggle('pick',N.pick,'Show me two looks and let me pick','The studio waits for your choice before it builds.'):''}
-   ${N.mode==='edit'?toggle('visuals',N.visuals,'Designed visuals over the footage','Where they help.'):''}
-   ${toggle('second',N.second!==false,'A second opinion','Another reviewer with a different taste checks it.')}
-   ${N.second!==false?sel('secondProfile',[['','A general viewer'],...(S.profiles||[]).filter(p=>p.id!==(N.profile||'main')).map(p=>[p.id,p.name])],N.secondProfile||'','Their taste'):''}
-   ${art?'':`${toggle('useColors',N.useColors,'Use these colours for this video','')}
-    <div class="row" style="gap:12px;margin:4px 0 0 12px" ${N.useColors?'':'hidden'}>${[['primary','Main'],['accent','Accent'],['background','Background']].map(([k,l])=>`<label class="row small" style="gap:6px"><input type="color" id="c-${k}" value="${esc(N[k])}"> ${l}</label>`).join('')}</div>`}
-   ${m&&S.taught?.length?sel('like',[['','None'],...S.taught.map(v=>[v.id,v.title.slice(0,60)])],N.like,'In the spirit of a video you taught'):''}
-   ${m&&styles.length>2?`${toggle('useMix',N.useMix,'Mix two styles I taught','')}
-    <div ${N.useMix?'':'hidden'}>${sel('mixA',styles,N.mixA||'','Style A')}${sel('mixB',styles,N.mixB||'','Style B')}
-    <label class="field-label" for="mixWeight">How much of each: <b id="mixLabel">${N.mixWeight??70}% A, ${100-(N.mixWeight??70)}% B</b></label><input type="range" id="mixWeight" min="0" max="100" step="5" value="${N.mixWeight??70}" style="width:100%"></div>`:''}
-   </details>`,
-  foot:`<button class="btn primary" onclick="Panel.close();dockRefresh()">Done</button>`});
- const B=Panel.body(),redraw=()=>{const y=B.scrollTop;settingsPanel();Panel.body().scrollTop=y;};
- B.querySelectorAll('[data-seg]').forEach(b=>b.onclick=()=>{N[b.dataset.seg]=b.dataset.v;Studio.save();redraw();});
- for(const id of ['medium','language','profile','secondProfile','like','mixA','mixB'])if($('#'+id,B))$('#'+id,B).onchange=e=>{N[id]=e.target.value;Studio.save();};
- for(const id of ['pick','voice','captions','visuals'])if($('#'+id,B))$('#'+id,B).onchange=e=>{N[id]=e.target.checked;Studio.save();};
- for(const id of ['second','useColors','useMix'])if($('#'+id,B))$('#'+id,B).onchange=e=>{N[id]=e.target.checked;Studio.save();redraw();};
- for(const k of ['primary','accent','background'])if($('#c-'+k,B))$('#c-'+k,B).oninput=e=>{N[k]=e.target.value;Studio.save();};
- if($('#mixWeight',B))$('#mixWeight',B).oninput=e=>{N.mixWeight=Number(e.target.value);$('#mixLabel').textContent=`${N.mixWeight}% A, ${100-N.mixWeight}% B`;Studio.save();};
+   ${toggle('second',N.second!==false,'Second opinion','eye')}
+   </div></section></div>`,
+  foot:`<button class="btn primary" id="save-video-settings">Save</button>`});
+ const B=Panel.body();
+ $('#save-video-settings').onclick=()=>{
+  for(const key of VIDEO_SETTINGS_KEYS)Studio.N[key]=N[key];
+  Studio.save();
+  Panel.close();
+  dockRefresh();
+ };
+ B.querySelectorAll('[data-shape]').forEach(b=>b.onclick=()=>{N.shape=b.dataset.shape;B.querySelectorAll('[data-shape]').forEach(option=>option.setAttribute('aria-pressed',String(option===b)));});
+ for(const id of ['medium','profile','mixA','mixB'])if($('#'+id,B))$('#'+id,B).onchange=e=>{N[id]=e.target.value;};
+ for(const id of ['voice','captions','visuals'])if($('#'+id,B))$('#'+id,B).onchange=e=>{N[id]=e.target.checked;};
+ if($('#second',B))$('#second',B).onchange=e=>{N.second=e.target.checked;};
+ const referenceStyle=$('#like',B),blend=$('#useMix',B);
+ const showBlend=()=>{$('[data-mix-options]',B).hidden=!N.useMix;};
+ if(referenceStyle)referenceStyle.onchange=()=>{
+  N.like=referenceStyle.value;
+  if(N.like){
+   N.same=false;
+   N.useMix=false;
+   if(blend){blend.checked=false;showBlend();}
+  }
+ };
+ if(blend)blend.onchange=()=>{
+  N.useMix=blend.checked;
+  if(N.useMix){
+   N.same=false;
+   N.like='';
+   if(referenceStyle&&referenceStyle.value){
+    referenceStyle.value='';
+    referenceStyle.dispatchEvent(new Event('change',{bubbles:true}));
+   }
+  }
+  showBlend();
+ };
+ if($('#mixWeight',B))$('#mixWeight',B).oninput=e=>{N.mixWeight=Number(e.target.value);$('#mixLabel').textContent=`${N.mixWeight}% A, ${100-N.mixWeight}% B`;};
  dockRefresh();
 };
 
 // ---------- the picker: files for this video, or from your library ----------
 const Picker={
- tab:'footage',chosen:new Set(),lib:null,q:'',
+ tab:'footage',chosen:new Set(),lib:null,busy:false,
+ get kinds(){return FILE_KINDS.filter(kind=>kind.modes.includes(Studio.N.mode));},
+ remaining(kind){
+  const limit=Studio.S?.can?.fileLimits?.[kind.id]??(kind.multiple?Infinity:1);
+  return Math.max(0,limit-Studio.N.files.filter(file=>file.kind===kind.id).length);
+ },
+ accepts(kind,name){return kind.accept.split(',').includes(name.slice(name.lastIndexOf('.')).toLowerCase());},
+ libraryKind(entry){
+  const mode=Studio.N.mode;
+  if(entry.available===false||entry.bytes>(Studio.S?.can?.maxMB??Infinity)*1048576)return;
+  if(mode==='art'&&!['image','logo','clip'].includes(entry.kind))return;
+  const id=mode==='art'?'reference':entry.kind==='logo'?'logo':entry.kind==='clip'?(mode==='edit'?'footage':'reference'):'asset';
+  return this.kinds.find(kind=>kind.id===id&&this.accepts(kind,entry.name));
+ },
  open(tab){
-  const N=Studio.N,kinds=FILE_KINDS.filter(k=>k.modes.includes(N.mode));
-  this.tab=tab&&(tab==='library'||kinds.some(k=>k.id===tab))?tab:(kinds[0]?.id||'reference');this.chosen=new Set();this.q='';
-  Overlay.open(`<div class="picker"><div class="picker-head"><b style="padding:0 8px">Add files</b><form class="tb-search" onsubmit="event.preventDefault()">${I.search}<input type="search" id="pick-q" placeholder="Search your library" aria-label="Search your library" autocomplete="off"></form><button class="iconbtn sm" aria-label="Close" onclick="Overlay.close()">${I.x}</button></div>
+  if(this.busy||Studio.busy||Studio.sending)return;
+  const kinds=this.kinds;
+  this.tab=tab&&(tab==='library'||kinds.some(k=>k.id===tab))?tab:(kinds[0]?.id||'reference');this.chosen.clear();this.lib=null;
+  Overlay.open(`<div class="picker"><header class="picker-head"><h2 tabindex="-1" autofocus>Add files</h2><button type="button" class="iconbtn sm" aria-label="Close" onclick="Overlay.close()">${I.x}</button></header>
    <nav class="picker-side" id="pick-side" aria-label="Kinds of file"></nav><div class="picker-main" id="pick-main"></div>
-   <div class="picker-foot"><label class="btn ghost" style="cursor:pointer">${I.upload} Upload<input type="file" id="pick-file" hidden multiple></label><span class="grow muted small" id="pick-note"></span><button class="btn primary" id="pick-use" hidden>Use selected</button></div></div>`,{label:'Add files',onclose:dockRefresh});
-  $('#pick-q').oninput=e=>{this.q=e.target.value.toLowerCase();if(this.tab!=='library'){this.tab='library';}this.draw();};
-  $('#pick-file').onchange=async e=>{const files=[...e.target.files];e.target.value='';if(this.tab==='library'){await libraryUpload(files);this.lib=null;}else await briefUpload(this.tab,files);this.draw();dockRefresh();};
+   <footer class="picker-foot"><button type="button" class="btn picker-upload" id="pick-upload">${I.upload} Upload files</button><input type="file" id="pick-file" hidden><button type="button" class="btn primary" id="pick-use" hidden>Add selected</button></footer></div>`,{label:'Add files',onclose:dockRefresh});
+  $('#pick-upload').onclick=()=>$('#pick-file').click();
+  $('#pick-file').onchange=e=>{const files=[...e.target.files];e.target.value='';this.upload(files);};
   $('#pick-use').onclick=()=>this.useLibrary();
   this.draw();
  },
- async draw(){
-  const N=Studio.N,kinds=FILE_KINDS.filter(k=>k.modes.includes(N.mode)),side=$('#pick-side'),main=$('#pick-main');if(!side)return;
-  side.innerHTML=`<div class="pop-head">For this video</div>${kinds.map(k=>`<button class="navlink" ${this.tab===k.id?'aria-current="page"':''} onclick="Picker.tab='${k.id}';Picker.draw()">${I[k.icon]}<span class="lbl">${esc(k.label)}</span>${N.files.filter(f=>f.kind===k.id).length?`<span class="n">${N.files.filter(f=>f.kind===k.id).length}</span>`:''}</button>`).join('')}
-   <div class="pop-head">From your library</div><button class="navlink" ${this.tab==='library'?'aria-current="page"':''} onclick="Picker.tab='library';Picker.draw()">${I.folder}<span class="lbl">Your media</span></button>`;
-  const fk=FILE_KINDS.find(k=>k.id===this.tab);$('#pick-file').accept=fk?fk.accept:'image/*,video/*,audio/*';$('#pick-file').multiple=fk?fk.multiple:true;
-  $('#pick-use').hidden=this.tab!=='library';$('#pick-use').disabled=!this.chosen.size;$('#pick-use').textContent=this.chosen.size?`Use ${this.chosen.size} selected`:'Use selected';
-  if(this.tab!=='library'){
-   const mine=N.files.filter(f=>f.kind===this.tab);$('#pick-note').textContent=fk.about||'Files stay on this computer.';
-   main.innerHTML=Studio.busy?`<p class="muted"><span class="spin"></span> ${esc(Studio.busy.text)}</p>`:mine.length?`<div class="pick-grid">${mine.map(f=>`<div class="pick"><span class="thumb">${I[fk.icon]}</span><span dir="auto">${esc(f.name)}</span><small>${mb(f.bytes)}</small><button class="btn small ghost" onclick="briefRemove('${esc(f.name)}').then(()=>Picker.draw())">Remove</button></div>`).join('')}</div>`
-    :`<div class="empty"><div class="empty-art">${I[fk.icon]}</div><h3>No ${esc(fk.label.toLowerCase())} yet</h3><p>Upload ${fk.multiple?'files':'a file'} below, or drop ${fk.multiple?'them':'it'} on the prompt box.</p></div>`;
-   return;}
-  $('#pick-note').textContent='Your logos, pictures, music and clips. A copy goes with this video.';
-  if(!this.lib){main.innerHTML='<p class="muted"><span class="spin"></span> Opening your library</p>';this.lib=(await api('/api/library').catch(()=>({entries:[]}))).entries;}
-  const list=this.lib.filter(e=>!this.q||(e.name+' '+e.description+' '+e.tags.join(' ')+' '+e.kind).toLowerCase().includes(this.q));
-  main.innerHTML=list.length?`<div class="pick-grid">${list.map(e=>`<button type="button" class="pick" aria-pressed="${this.chosen.has(e.id)}" onclick="Picker.toggle('${esc(e.id)}')"><span class="thumb">${libThumb(e)}</span><span dir="auto">${esc(e.name)}</span><small>${esc(LIB_LABEL[e.kind]||e.kind)}</small></button>`).join('')}</div>`
-   :`<div class="empty"><div class="empty-art">${I.folder}</div><h3>${this.lib.length?'Nothing matches':'Your library is empty'}</h3><p>${this.lib.length?'Try another word.':'Upload logos, music, pictures and clips once, and use them in every video.'}</p></div>`;
+ async upload(files){
+  const kind=this.kinds.find(k=>k.id===this.tab);
+  if(!kind||this.busy||Studio.busy||Studio.sending||!files.length)return;
+  const sizeLimit=(Studio.S?.can?.maxMB??Infinity)*1048576;
+  const eligible=files.filter(file=>this.accepts(kind,file.name)&&file.size>0&&file.size<=sizeLimit).slice(0,this.remaining(kind));
+  if(eligible.length<files.length)toast('Some files are unsupported, empty, too large, or exceed the limit for this category.',true);
+  if(!eligible.length)return;
+  this.busy=true;this.draw();
+  try{await briefUpload(kind.id,eligible,{replaceLogo:false});}
+  finally{this.busy=false;this.draw();dockRefresh();}
  },
- toggle(id){this.chosen.has(id)?this.chosen.delete(id):this.chosen.add(id);this.draw();},
+ async draw(){
+  const N=Studio.N,side=$('#pick-side'),main=$('#pick-main');if(!side)return;
+  const kind=this.kinds.find(k=>k.id===this.tab),input=$('#pick-file'),upload=$('#pick-upload'),use=$('#pick-use');
+  side.innerHTML=[...this.kinds,{id:'library',icon:'folder',label:'Library'}].map(k=>`<button type="button" class="navlink" data-pick-tab="${k.id}" ${this.tab===k.id?'aria-current="page"':''} ${this.busy?'disabled':''}>${I[k.icon]}<span class="lbl">${k.label}</span></button>`).join('');
+  side.querySelectorAll('[data-pick-tab]').forEach(button=>button.onclick=()=>{this.tab=button.dataset.pickTab;this.chosen.clear();this.draw();$(`[data-pick-tab="${this.tab}"]`,side)?.focus();});
+  upload.hidden=!kind;upload.disabled=this.busy||!kind||!this.remaining(kind);
+  use.hidden=!!kind;use.disabled=this.busy||!this.chosen.size;
+  if(kind){input.accept=kind.accept;input.multiple=kind.multiple;}
+  if(this.busy){main.innerHTML='<p class="muted" role="status"><span class="spin"></span> Adding files…</p>';return;}
+  if(kind){
+   const mine=N.files.filter(file=>file.kind===kind.id);
+   main.innerHTML=mine.length?`<div class="pick-grid">${mine.map(file=>`<div class="pick"><span class="thumb">${uploadPreview(file,N.id)}</span><span dir="auto">${esc(file.name)}</span><button type="button" class="iconbtn sm pick-remove" aria-label="Move ${esc(file.name)} to Trash" data-kind="${esc(file.kind)}" data-name="${esc(file.name)}" onclick="briefRemove(this).then(()=>Picker.draw())">${I.x}</button></div>`).join('')}</div>`
+    :`<div class="picker-empty"><h3>No ${kind.label.toLowerCase()} yet</h3></div>`;
+  }else{
+   if(!this.lib){
+    main.innerHTML='<p class="muted" role="status"><span class="spin"></span> Opening your library</p>';
+    try{const {entries}=await api('/api/library');if($('#pick-main')!==main||this.tab!=='library')return;this.lib=entries;}
+    catch{if($('#pick-main')===main&&this.tab==='library')main.textContent='Could not open the library.';return;}
+   }
+   const selected=this.lib.filter(entry=>this.chosen.has(entry.id));
+   main.innerHTML=this.lib.length?`<div class="pick-grid">${this.lib.map((entry,index)=>{
+    const kind=this.libraryKind(entry),active=this.chosen.has(entry.id);
+    const disabled=!active&&(!kind||selected.filter(e=>this.libraryKind(e)?.id===kind.id).length>=this.remaining(kind));
+    return `<button type="button" class="pick" aria-pressed="${active}" data-library-index="${index}" ${disabled?'disabled':''}><span class="thumb">${libThumb(entry)}</span><span dir="auto">${esc(entry.name)}</span></button>`;
+   }).join('')}</div>`:'<div class="picker-empty"><h3>Your library is empty</h3></div>';
+   main.querySelectorAll('[data-library-index]').forEach(button=>button.onclick=()=>{
+    const index=button.dataset.libraryIndex,id=this.lib[Number(index)].id;
+    if(this.chosen.has(id))this.chosen.delete(id);else this.chosen.add(id);
+    this.draw();$(`[data-library-index="${index}"]`,main)?.focus();
+   });
+  }
+  wireUploadPreviews(main);
+ },
  async useLibrary(){
-  const picked=this.lib.filter(e=>this.chosen.has(e.id));if(!picked.length)return;
-  for(const e of picked){const blob=await fetch(withKey('/api/library/'+e.id+'/file')).then(r=>r.blob());await briefUpload(e.kind==='logo'?'logo':'asset',[new File([blob],e.name,{type:blob.type})]);}
-  Overlay.close();toast(`Added ${picked.length} from your library`);
+  const picked=this.lib?.filter(entry=>this.chosen.has(entry.id));
+  if(!picked?.length||this.busy||Studio.busy||Studio.sending)return;
+  const draft=Studio.N;let lastKind;
+  this.busy=true;this.draw();
+  try{
+   for(const entry of picked){
+    if(Studio.N!==draft)break;
+    const kind=this.libraryKind(entry);if(!kind||!this.remaining(kind))continue;
+    try{
+     const response=await fetch(withKey(`/api/library/${encodeURIComponent(entry.id)}/file`));
+     if(!response.ok)throw new Error(`Could not open ${entry.name}.`);
+     const blob=await response.blob();if(Studio.N!==draft)break;
+     if(await briefUpload(kind.id,[new File([blob],entry.name,{type:blob.type})],{replaceLogo:false})){lastKind=kind.id;this.chosen.delete(entry.id);}
+    }catch(error){toast(error.message,true);}
+   }
+  }finally{if(lastKind){this.tab=lastKind;this.chosen.clear();}this.busy=false;this.draw();dockRefresh();}
  }};
 const LIB_LABEL={logo:'Logo',image:'Picture',music:'Music',sound:'Sound',clip:'Clip'};
-const libThumb=e=>e.kind==='logo'||e.kind==='image'?`<img loading="lazy" alt="" src="${withKey('/api/library/'+e.id+'/file')}">`:I[e.kind==='music'?'music':e.kind==='sound'?'sound':'clip'];
+const libThumb=e=>['logo','image','clip'].includes(e.kind)?`${I[e.kind==='clip'?'film':'image']}<img class="upload-preview" loading="lazy" alt="" src="${esc(withKey(`/api/library/${encodeURIComponent(e.id)}/file?preview=1`))}">`:I[e.kind==='music'?'music':'sound'];

@@ -26,8 +26,8 @@ function scriptDoctorHtml(d,o={}){
 }
 window.sdChoose=(job,id,keepIt)=>act(()=>api(`/api/studio/jobs/${encodeURIComponent(job)}/script/${keepIt?'keep':'decline'}`,{method:'POST',body:JSON.stringify({id})}),keepIt?'Kept: the line is changed in the script':'Declined');
 /** Checks the script on the New video form a moment after typing stops. */
-function sdLive(){
- const box=$('#sd-live');if(!box)return;const N=Studio.N;
+function sdLive(N=Studio.N){
+ const box=$('#sd-live');if(!box)return;
  if(!(N.mode==='motion'&&N.script&&N.text.trim())){box.innerHTML='';SD.last='';return;}
  const key=JSON.stringify([N.text,N.seconds,N.language]);if(key===SD.last)return;
  clearTimeout(SD.timer);SD.timer=setTimeout(async()=>{SD.last=key;

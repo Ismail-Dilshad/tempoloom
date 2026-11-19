@@ -3,9 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
 <title>Tempoloom</title>
 <link rel="icon" href="/favicon.svg?v=10" type="image/svg+xml">
-<script>try{const t=localStorage.getItem('tl-theme');document.documentElement.dataset.themeChoice=t||'system';document.documentElement.dataset.theme=t==='light'||t==='dark'?t:(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');const r=localStorage.getItem('tl-rail');if(r==='"collapsed"')document.documentElement.dataset.rail='collapsed';}catch{document.documentElement.dataset.theme='dark';}</script>
+<script>try{if(localStorage.getItem('tl-rail')==='"collapsed"')document.documentElement.dataset.rail='collapsed';}catch{}</script>
 <link rel="stylesheet" href="/tokens.css">
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/shell.css">
@@ -16,7 +17,6 @@
  <div class="scrim" id="scrim"></div>
  <header class="topbar" id="topbar">
   <div class="tb-left"><button class="iconbtn menu" id="menu" aria-label="Open the menu"></button><h1 class="tb-title" id="title"></h1><span id="page-menu"></span></div>
-  <form class="tb-search topfind" id="topfind" role="search" onsubmit="event.preventDefault();findGo(this.q.value)"><span id="search-icon"></span><input type="search" name="q" id="topq" placeholder="Search everything" aria-label="Search your videos, scenes, lessons and library" autocomplete="off" maxlength="200"><kbd aria-hidden="true">Ctrl K</kbd></form>
   <div class="tb-right"><div class="tb-actions" id="actions"></div><div class="row" id="tb-icons" style="gap:4px;flex-wrap:nowrap"></div></div>
  </header>
  <main class="canvas main" id="canvas"><div class="view" id="view" tabindex="-1"></div></main>

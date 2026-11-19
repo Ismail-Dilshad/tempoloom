@@ -4,6 +4,8 @@ import {describe,it,expect,beforeAll,afterAll} from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {chromium} from 'playwright';
+import {chromiumExecutable} from '../src/renderer/browser-path.js';
 
 const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'tl-studio-'));
 const env={VIDEO_WORKSPACE:path.join(tmp,'ws'),TEMPOLOOM_BRAIN_DIR:path.join(tmp,'brain'),TEMPOLOOM_BRAIN_DB:path.join(tmp,'brain.db'),TEMPOLOOM_KNOWLEDGE_DIR:path.join(tmp,'know')},before={...process.env};
@@ -134,6 +136,145 @@ describe('the Studio page',()=>{
 });
 
 describe('the app',()=>{
+ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('previews Create uploads, restores files, and empties Trash',async()=>{
+  const {serve}=await import('../src/teach/server.js');
+  const {ffmpeg,run}=await import('../src/renderer/ffmpeg-encoder.js');
+  const clip=path.join(tmp,'clip.mp4');
+  await run(ffmpeg,['-v','error','-f','lavfi','-i','color=c=blue:s=64x48','-t','1','-c:v','libx264',clip]);
+  const browser=await chromium.launch({executablePath:chromiumExecutable(),headless:true});
+  const server=await serve({port:0});
+  try{
+   const page=await browser.newPage({reducedMotion:'reduce'});
+   page.setDefaultTimeout(6000);
+   const base=`http://127.0.0.1:${server.port}/?k=${server.key}`;
+   for(const [name,data] of [['library-clip.mp4',fs.readFileSync(clip)],['library-logo.png',png]] as const){
+    const uploaded=await page.request.post(new URL(`/api/library/upload?name=${name}`,base).href,{headers:{'x-teach-key':server.key},data});
+    expect(uploaded.ok(),await uploaded.text()).toBe(true);
+   }
+   await page.goto(base+'#/create');
+   await page.getByRole('button',{name:'Use a reference'}).click();
+   await page.locator('#pick-file').setInputFiles([{name:'sample.png',mimeType:'image/png',buffer:png},{name:'clip.mp4',mimeType:'video/mp4',buffer:fs.readFileSync(clip)}]);
+   await page.locator('#pick-main').getByText('clip.mp4',{exact:true}).waitFor();
+   await page.waitForFunction(()=>{
+    const previews=[...document.querySelectorAll<HTMLImageElement>('#pick-main img')];
+    return previews.length===2&&previews.every(img=>img.naturalWidth>0);
+   });
+   await page.getByRole('button',{name:'Close',exact:true}).click();
+   await page.waitForFunction(()=>{
+    const previews=[...document.querySelectorAll<HTMLImageElement>('.upload-card img')];
+    return previews.length===2&&previews.every(img=>img.naturalWidth>0);
+   });
+   await page.waitForFunction(()=>{
+    const previews=[...document.querySelectorAll<HTMLImageElement>('.dock-attachment img')];
+    return previews.length===2&&previews.every(img=>img.naturalWidth>0);
+   });
+   expect(await page.locator('#dock-files').innerText()).toBe('');
+   await page.locator('#dock-text').fill('Temporary prompt');
+   await page.getByRole('button',{name:'Clear prompt',exact:true}).click();
+   expect(await page.locator('#dock-text').inputValue()).toBe('');
+   expect(await page.locator('#dock-clear').isVisible()).toBe(false);
+   expect(await page.locator('.dock-attachment').count()).toBe(2);
+   const detachSample=page.getByRole('button',{name:'Remove sample.png from prompt'});
+   const useSample=page.getByRole('button',{name:'Use sample.png in prompt'});
+   expect(await page.locator('.create-uploads img').first().evaluate(image=>getComputedStyle(image).objectFit)).toBe('contain');
+   const card=await page.locator('.create-uploads .upload-card').first().boundingBox();
+   expect(card!.width).toBeCloseTo(card!.height);
+   await detachSample.click();
+   await detachSample.waitFor({state:'detached'});
+   expect(await useSample.getAttribute('aria-pressed')).toBe('false');
+   await page.reload();
+   await useSample.waitFor();
+   expect(await useSample.getAttribute('aria-pressed')).toBe('false');
+   await useSample.click();
+   await detachSample.waitFor();
+   await page.getByRole('button',{name:'Add files',exact:true}).click();
+   const picker=page.getByRole('dialog',{name:'Add files'});
+   expect(await picker.getByRole('button',{name:'Footage',exact:true}).count()).toBe(0);
+   await picker.getByRole('button',{name:'Logo',exact:true}).click();
+   await picker.locator('#pick-file').setInputFiles({name:'draft-logo.png',mimeType:'image/png',buffer:png});
+   await picker.getByText('draft-logo.png',{exact:true}).waitFor();
+   expect(await picker.getByRole('button',{name:'Upload files'}).isDisabled()).toBe(true);
+   await picker.getByRole('button',{name:'Library',exact:true}).click();
+   await picker.getByRole('button',{name:'library-logo.png'}).waitFor();
+   expect(await picker.getByRole('button',{name:'library-logo.png'}).isDisabled()).toBe(true);
+   await page.waitForFunction(()=>{
+    const previews=[...document.querySelectorAll<HTMLImageElement>('#pick-main img')];
+    return previews.length===2&&previews.every(img=>img.naturalWidth>0);
+   });
+   await picker.getByRole('button',{name:'library-clip.mp4'}).click();
+   await picker.getByRole('button',{name:'Add selected'}).click();
+   await picker.getByText('library-clip.mp4',{exact:true}).waitFor();
+   expect(await picker.getByRole('button',{name:'Upload files'}).isDisabled()).toBe(true);
+   await picker.getByRole('button',{name:'Close',exact:true}).click();
+   await page.getByRole('button',{name:'More options for draft-logo.png'}).waitFor();
+   await page.getByRole('button',{name:'More options for library-clip.mp4'}).waitFor();
+   await page.getByRole('button',{name:'More options for sample.png'}).click();
+   await page.getByRole('menuitem',{name:'Rename'}).click();
+   const editor=page.locator('.upload-card').getByRole('textbox',{name:'File name'});
+   expect(await editor.inputValue()).toBe('sample.png');
+   await editor.fill('Unsaved.png');
+   await page.getByRole('button',{name:'Cancel rename'}).click();
+   await page.getByRole('button',{name:'More options for sample.png'}).click();
+   await page.getByRole('menuitem',{name:'Rename'}).click();
+   await editor.fill('Renamed photo.png');
+   await page.getByRole('button',{name:'Save file name'}).click();
+   await page.getByRole('button',{name:'More options for clip.mp4'}).click();
+   await page.getByRole('menuitem',{name:'Rename'}).click();
+   const longName='A'.repeat(64)+'.mp4';
+   await editor.fill(longName);
+   await editor.press('Enter');
+   const longTile=page.locator('.upload-card').filter({has:page.getByRole('button',{name:`More options for ${longName}`})});
+   await longTile.hover();
+   expect(await longTile.locator('.upload-name').isVisible()).toBe(false);
+   await page.getByRole('button',{name:'More options for Renamed photo.png'}).click();
+   await page.getByRole('menuitem',{name:'Move to Trash'}).click();
+   await page.getByRole('button',{name:'More options for Renamed photo.png'}).waitFor({state:'detached'});
+   const detachLogo=page.getByRole('button',{name:'Remove draft-logo.png from prompt'});
+   await detachLogo.click();
+   await detachLogo.waitFor({state:'detached'});
+   await page.locator('#dock-text').fill('A video about the ocean');
+   await page.getByRole('button',{name:'Send to the studio'}).click();
+   await page.locator('#dock-send').waitFor({state:'detached'});
+   const sent=rq.requests().find(r=>r.input?.text==='A video about the ocean')!;
+   expect(sent.files.find(file=>file.name==='draft-logo.png')?.detached).toBe(true);
+   expect(rq.brief(sent)).not.toContain('draft-logo.png');
+   expect(rq.brief(sent)).toContain('library-clip.mp4');
+   await page.goto(base+'#/trash');
+   const restored=page.waitForResponse(res=>new URL(res.url()).pathname.includes('/trashed-files/'));
+   await page.getByRole('button',{name:'Restore Renamed photo.png'}).click();
+   const response=await restored;
+   expect(response.ok(),await response.text()).toBe(true);
+   await page.getByRole('button',{name:'Restore Renamed photo.png'}).waitFor({state:'detached'});
+   await page.goto(base+'#/create');
+   await page.getByRole('button',{name:'More options for Renamed photo.png'}).waitFor();
+   const active=rq.requests().find(r=>r.files.some(f=>f.name==='Renamed photo.png'))!;
+   const disposable=rq.filePath(active.id,'asset','discarded.png');
+   fs.writeFileSync(disposable,png);
+   rq.addFile(active.id,'asset',disposable);
+   rq.trashFile(active.id,'asset','discarded.png');
+   const archived=st.plan('Archived project to empty',{type:'script-to-motion',job:'empty-trash-test'}).job;
+   const keep=st.plan('Project restored during confirmation',{type:'script-to-motion',job:'restored-trash-test'}).job;
+   st.archive(archived,true);
+   st.archive(keep,true);
+   await page.goto(base+'#/trash');
+   const empty=page.getByRole('button',{name:'Empty Trash',exact:true});
+   const confirmation=page.getByRole('dialog',{name:'Empty Trash?'});
+   await empty.click();
+   await confirmation.getByText(/Delete 3 items/).waitFor();
+   await confirmation.getByRole('button',{name:'Cancel'}).click();
+   expect(fs.existsSync(disposable)).toBe(true);
+   expect(st.readPlan(archived).archived).toBe(true);
+   await empty.click();
+   st.archive(keep,false);
+   await confirmation.getByRole('button',{name:'Empty Trash'}).click();
+   await page.getByRole('heading',{name:'The trash is empty'}).waitFor();
+   expect(await empty.count()).toBe(0);
+   expect(fs.existsSync(disposable)).toBe(false);
+   expect(fs.existsSync(active.files.find(f=>f.name==='Renamed photo.png')!.file)).toBe(true);
+   expect(()=>st.readPlan(archived)).toThrow();
+   expect(st.readPlan(keep).archived).toBe(false);
+  }finally{await browser.close();await server.close();}
+ },30000);
  it('serves its files, the home summary, written lessons, feedback and archive',async()=>{
   const {serve}=await import('../src/teach/server.js');const s=await serve({port:0});
   try{

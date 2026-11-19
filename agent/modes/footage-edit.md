@@ -27,6 +27,9 @@ default unless the user turns it off (`preferences.autoMotion`).
    pauses, filler words and dead air, retimes captions, adds the brand layer and lists
    every cut for review. Pass `--script` when the user has the script so captions use
    their exact words.
+   When the edit calls for a drawing or painting, create it within this job using
+   the painting and drawing workflow in step 4 of the skill. Time the artwork or its
+   reveal as an overlay in the edit decision list.
 3. **Suggest** (when there were no instructions). Typical suggestions for a talking head:
    - Trim the dead start and end.
    - Remove long pauses, filler words and false starts (keep natural breaths).
