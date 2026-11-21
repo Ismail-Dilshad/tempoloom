@@ -386,7 +386,6 @@ document.addEventListener('loadedmetadata',e=>{const v=e.target;if(v.tagName!=='
 const PLACES=[
  {id:'create',label:'Studio',icon:'spark',count:h=>[h.studio.jobs,h.studio.waitingForYou]},// Create holds the projects too (the Projects place was merged into it)
  {id:'editor',label:'Editor',icon:'cut'},
- '-',// Library was folded in: looks are cards on Studio, locked scenes live in their project, Tidy is in Tools
  {id:'brain',label:'Brain',icon:'brain',count:h=>[h.teach.lessons,0]}];
 /** Public address -> the screen that draws it. Longer addresses first. */
 const ROUTES=[['create','create'],['editor','editor'],['learn','teach/library'],// Learn: what the studio learned from, beside Create
