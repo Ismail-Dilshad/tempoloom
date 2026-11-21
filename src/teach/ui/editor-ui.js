@@ -52,7 +52,10 @@ Object.assign(Ed,{
   const cap=$('[data-captions]',el);if(cap)cap.onclick=()=>this.captions();
   const cl=$('[data-cap-lang]',el);if(cl)cl.onchange=()=>{this.p.capLang=cl.value;this.save();};
   const ck=$('[data-cap-look]',el);if(ck)ck.onchange=()=>{this.p.capLook=ck.value;this.save();};
-  const ce=$('[data-cap-engine]',el);if(ce){ce.onchange=()=>{this.p.capEngine=ce.value;this.save();this.drawLib();};if(!this.stt)this.loadStt().then(()=>{if(this.tab==='text')this.drawLib();});else this.drawStt();}
+  const ce=$('[data-cap-engine]',el);if(ce){ce.onchange=()=>{this.p.capEngine=ce.value;this.save();this.drawLib();};this.drawStt();
+   // what is installed can change (a model set up, the server restarted): ask again, and redraw the box if anything differs
+   if(!this._sttAsking){const key=s=>JSON.stringify(s&&[s.sorani,s.elevenlabs,s.local?.models?.map(m=>m.installed),s.learning]),before=key(this.stt);this._sttAsking=true;
+    this.loadStt().then(()=>{this._sttAsking=false;if(this.tab==='text'&&key(this.stt)!==before)this.drawLib();});}}
   const cs=$('[data-cap-sorani]',el);if(cs)cs.onchange=()=>{this.p.capSorani=cs.checked;this.save();};
   const fx=$('[data-fixes]',el);if(fx)fx.onclick=()=>edFixesDialog();
   const so=$('[data-srt-out]',el);if(so)so.onclick=()=>{const list=this.p.clips.filter(c=>c.text!==undefined&&(c.cap||c.words)).sort((a,b)=>a.start-b.start);if(!list.length)return toast('There are no captions yet.');
