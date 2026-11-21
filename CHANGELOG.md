@@ -22,6 +22,11 @@
   colour and note (double-click on the ruler), shown on the ruler and listed in Details to jump to.
 - **Tracks and mixer**: rename a track (double-click its name), colour it, drag its lower edge for
   height; the **Mixer** sets each track's volume (0-200%), pan, mute and solo, in the player and export.
+- **Sound effects per clip** (Audio tab): equaliser (low, mid, high), compressor and reverb, with
+  presets (clear voice, radio, warm, podcast, hall), heard in the player and mixed into the export.
+  **Clean voice** removes noise, mains hum and rumble (the studio's voice cleaner; the clean copy
+  replaces the clip). **Beat markers** put a marker on every beat of music (bars labelled), so clips
+  snap to the beat.
 - **Paste attributes** (Ctrl+Alt+V, or the clip menu): the copied clip's transform, opacity and
   blend, colour, key and mask, speed, sound or text style onto the selected clips, by group.
 

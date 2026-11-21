@@ -9,7 +9,7 @@ import {ROOT} from './config-root.js';
 import {runPythonModule} from './audio-analysis.js';
 import {ffmpeg} from '../renderer/ffmpeg-encoder.js';
 
-export type ToolKind='stabilize'|'cutout'|'reframe';
+export type ToolKind='stabilize'|'cutout'|'reframe'|'voice'|'beats';
 export type ToolJob={id:string;kind:ToolKind;state:'running'|'done'|'error';started:number;progress:number|null;note?:string;error?:string;
  file?:string;mime?:string;result?:Record<string,unknown>;dir:string};
 const jobs=new Map<string,ToolJob>();
@@ -28,6 +28,12 @@ export function start(kind:ToolKind,source:string,dir:string,o:{aspect?:string}=
    if(IMAGE.test(source)){const r=await media(['cutout',source,'--out-dir',dir]) as {results?:{output:string;subjectCoverage:number}[]};const o=r.results?.[0];if(!o)throw new Error('Nothing was cut out');
     Object.assign(job,{file:o.output,mime:'image/png',result:{subjectCoverage:o.subjectCoverage}});}
    else{const out=path.join(dir,'cutout.webm');const r=await media(['cutout-video',source,'--out',out,'--progress',progressFile]);Object.assign(job,{file:out,mime:'video/webm',result:r});}}
+  else if(kind==='voice'){const {cleanVoice}=await import('../editor/voice-clean.js');const r=await cleanVoice(source,{out:path.join(dir,'clean'+path.extname(source))});
+   Object.assign(job,{file:r.output,mime:/\.(wav|mp3|m4a|flac|ogg|opus)$/i.test(source)?'audio/'+(path.extname(source).slice(1)==='mp3'?'mpeg':path.extname(source).slice(1)):'video/mp4',note:(r.why||[]).slice(0,3).join('; '),result:{why:r.why}});}
+  else if(kind==='beats'){const wav=path.join(dir,'beats.wav');const {execFile}=await import('node:child_process');const {promisify}=await import('node:util');
+   await promisify(execFile)(ffmpeg,['-v','error','-y','-i',source,'-vn','-ac','1','-ar','22050',wav],{windowsHide:true});
+   const r=await media(['beats',wav]) as {beats?:number[];barStarts?:number[];tempoBpm?:number|null};if(!r.beats?.length)throw new Error('No beat was found');
+   Object.assign(job,{note:r.tempoBpm?`${Math.round(r.tempoBpm)} BPM`:'',result:{beats:r.beats,bars:r.barStarts??[],tempo:r.tempoBpm??null}});}
   else{const r=await media(['reframe',source,'--aspect',o.aspect??'9:16']) as {track?:unknown[];edlOperation?:unknown};
    if(!r.track?.length)throw new Error('No face was found to follow');Object.assign(job,{result:{track:r.track,aspect:o.aspect??'9:16'}});}
   job.state='done';job.progress=1;

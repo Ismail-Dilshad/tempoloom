@@ -340,7 +340,7 @@ const Ed={
  // ---------- smart tools: stabilise, remove background, auto reframe (jobs on this computer) ----------
  toolJobs:{},
  async runTool(c,kind){const m=this.mediaOf(c);if(!m||this.toolJobs[c.id])return;
-  const label={stabilize:'Stabilising',cutout:'Removing the background',reframe:'Finding the face'}[kind];
+  const label={stabilize:'Stabilising',cutout:'Removing the background',reframe:'Finding the face',voice:'Cleaning the voice',beats:'Finding the beats'}[kind];
   if(kind==='cutout'&&m.type==='video'){const frames=Math.round((m.dur||c.dur)*30),min=Math.ceil(frames*6.5/60);
    if(!await ask('Remove the background of this video?',`It works frame by frame on this computer's processor: about ${min} minute${min>1?'s':''} for ${frames} frames. Photos take a few seconds.`,'Start'))return;}
   const blob=await this.get(m.id);if(!blob)return toast('The file is not in this browser any more.',true);
@@ -351,11 +351,15 @@ const Ed={
    if(st.state==='error')throw new Error(st.error||'The tool stopped');
    const clip=this.clip(c.id);if(!clip)return;
    if(kind==='reframe')this.applyReframe(clip,st.result.track);
+   else if(kind==='beats'){this.snapshot();let n=0;const have=new Set(this.p.markers.map(x=>Math.round(edMt(x)*100)));
+    for(const b of st.result.beats){if(b<(clip.in||0)||b>this.srcSpan(clip)+(clip.in||0))continue;const t=Math.round(this.tlAt(clip,b)*1000)/1000,bar=st.result.bars.some(x=>Math.abs(x-b)<.01);
+     if(have.has(Math.round(t*100)))continue;this.p.markers.push({t,...(bar?{color:'orange',name:'Bar'}:{color:'yellow'})});n++;}
+    this.p.markers.sort((a,b)=>edMt(a)-edMt(b));this.after(true);toast(`${n} beat markers${st.note?' · '+st.note:''} · snapping follows them`);}
    else{const f=await fetch(withKey('/api/editor/tool/'+st.id+'/file'));if(!f.ok)throw new Error('Could not get the result');const out=await f.blob();
-    const base=m.name.replace(/\.[a-z0-9]{2,5}$/i,''),ext=out.type.includes('png')?'png':out.type.includes('webm')?'webm':'mp4';
-    const [nm]=await this.importFiles([new File([out],`${base} (${kind==='stabilize'?'steady':'cut out'}).${ext}`,{type:out.type})]);
+    const base=m.name.replace(/\.[a-z0-9]{2,5}$/i,''),ext=out.type.includes('png')?'png':out.type.includes('webm')?'webm':out.type.startsWith('audio/')?(out.type.split('/')[1].replace('mpeg','mp3')):'mp4';
+    const [nm]=await this.importFiles([new File([out],`${base} (${kind==='stabilize'?'steady':kind==='voice'?'clean voice':'cut out'}).${ext}`,{type:out.type})]);
     if(nm){this.snapshot();clip.media=nm.id;this.els[clip.id]?.pause?.();delete this.els[clip.id];this.after(true);}
-    toast(kind==='stabilize'?`Stabilised${st.note?' · '+st.note:''}`:'Background removed');}
+    toast(kind==='stabilize'?`Stabilised${st.note?' · '+st.note:''}`:kind==='voice'?`Voice cleaned${st.note?' · '+st.note:''}`:'Background removed');}
    fetch(withKey('/api/editor/tool/'+st.id),{method:'DELETE'}).catch(()=>{});
   }catch(e){toast(e.message,true);}
   finally{delete this.toolJobs[c.id];this.drawProps();}},
@@ -433,7 +437,7 @@ const Ed={
  audio(){if(this.ac)return;try{const ac=this.ac=new AudioContext();this.rec=ac.createMediaStreamDestination();this.master=ac.createGain();this.master.connect(ac.destination);this.master.connect(this.rec);
   const sp=ac.createChannelSplitter(2);this.master.connect(sp);this.meters=[0,1].map(i=>{const a=ac.createAnalyser();a.fftSize=1024;sp.connect(a,i);return a;});
   for(const el of Object.values(this.els))this.route(el);}catch{this.ac=null;}},
- route(el){if(el._routed||!this.ac)return;try{const s=this.ac.createMediaElementSource(el),g=this.ac.createGain(),p=this.ac.createStereoPanner();s.connect(g);g.connect(p);p.connect(this.master);el._gain=g;el._pan=p;el._routed=true;}catch{}},
+ route(el){if(el._routed||!this.ac)return;try{const s=this.ac.createMediaElementSource(el),fx=edFxChain(this.ac),g=this.ac.createGain(),p=this.ac.createStereoPanner();s.connect(fx.input);fx.output.connect(g);g.connect(p);p.connect(this.master);el._fx=fx;el._gain=g;el._pan=p;el._routed=true;}catch{}},
  fade(c,t){const tt=edClamp(t,c.start,c.start+c.dur);let v=1;const local=tt-c.start;if(c.fadeIn&&local<c.fadeIn)v*=Math.max(0,local/c.fadeIn);if(c.fadeOut&&c.start+c.dur-tt<c.fadeOut)v*=Math.max(0,(c.start+c.dur-tt)/c.fadeOut);return v;},
  /** A clip's loudness at t: volume (keyframes), fades, loudness match (gainDb) and ducking. Playback and export both use it. */
  vol(c,t){const tr=this.trackOf(c);if(tr?.muted||(c.detached&&!c.asAudio))return 0;
@@ -474,7 +478,7 @@ const Ed={
    const on=t>=c.start&&t<c.start+c.dur,want=this.srcAt(c,t);
    if(on){
     const fwd=this.playing&&this.rate>0;
-    el.playbackRate=edClamp(this.rateAt(c,t)*(fwd?this.rate:1),.0625,16);const v=this.vol(c,t);if(el._gain){el.volume=1;el._gain.gain.value=v;if(el._pan)el._pan.pan.value=edClamp(this.trackOf(c)?.pan||0,-1,1);}else el.volume=Math.min(1,v);
+    el.playbackRate=edClamp(this.rateAt(c,t)*(fwd?this.rate:1),.0625,16);const v=this.vol(c,t);if(el._gain){el.volume=1;el._gain.gain.value=v;if(el._pan)el._pan.pan.value=edClamp(this.trackOf(c)?.pan||0,-1,1);if(el._fx)el._fx.set(c.afx);}else el.volume=Math.min(1,v);
     if(fwd){if(el.paused){try{el.currentTime=want;}catch{}el.play().catch(()=>{});}else if(Math.abs(el.currentTime-want)>.3*Math.max(1,this.rate))el.currentTime=want;}
     else{if(!el.paused)el.pause();if(Math.abs(el.currentTime-want)>.03){try{el.currentTime=want;}catch{}}}
    }else{if(!el.paused)el.pause();
@@ -740,7 +744,7 @@ const Ed={
    const len=e-s,skip=s-c.start,steps=Math.max(2,Math.ceil(len*120)),curve=new Float32Array(steps);
    for(let i=0;i<steps;i++)curve[i]=this.vol(c,s+Math.min(len*i/(steps-1),len-1e-4));
    g.gain.setValueCurveAtTime(curve,s-t0,len);
-   const pan=oc.createStereoPanner();pan.pan.value=edClamp(this.trackOf(c)?.pan||0,-1,1);n.connect(g).connect(pan).connect(oc.destination);n.start(s-t0,stretch?skip:(c.in||0)+skip,len);
+   const pan=oc.createStereoPanner(),fx=edFxChain(oc);fx.set(c.afx);pan.pan.value=edClamp(this.trackOf(c)?.pan||0,-1,1);n.connect(fx.input);fx.output.connect(g).connect(pan).connect(oc.destination);n.start(s-t0,stretch?skip:(c.in||0)+skip,len);
   }
   if(silent.size)toast('No sound was found in '+[...silent].join(', ')+'. If it has sound, this browser could not read it.');
   return oc.startRendering();
@@ -1028,6 +1032,21 @@ function edParseSubs(raw){const txt=String(raw).replace(/^\uFEFF/,'').replace(/\
  for(const block of txt.split(/\n{2,}/)){const ls=block.split('\n'),k=ls.findIndex(l=>l.includes('-->'));if(k<0)continue;const [a,b]=ls[k].split('-->'),s=tm(a),e=tm(b);
   const text=ls.slice(k+1).join(' ').replace(/<[^>]+>/g,'').replace(/\{\\[^}]*\}/g,'').trim();if(isFinite(s)&&isFinite(e)&&e>s&&text)out.push({s,e,text});}
  return out;}
+// ---------- sound effects: equaliser (low, mid, high), compressor, reverb ----------
+/** One clip's chain: low shelf (120 Hz), mid bell (1.2 kHz), high shelf (6 kHz), a compressor, and a reverb
+ *  (a made-up room, mixed in). set(afx) applies {low,mid,high in dB, comp 0-100, reverb 0-100}. Works in an
+ *  AudioContext (the player) and an OfflineAudioContext (the export) alike. */
+function edFxChain(ac){
+ const input=ac.createGain(),lo=ac.createBiquadFilter(),mid=ac.createBiquadFilter(),hi=ac.createBiquadFilter(),comp=ac.createDynamicsCompressor(),dry=ac.createGain(),wet=ac.createGain(),rev=ac.createConvolver(),output=ac.createGain();
+ lo.type='lowshelf';lo.frequency.value=120;mid.type='peaking';mid.frequency.value=1200;mid.Q.value=.9;hi.type='highshelf';hi.frequency.value=6000;
+ const len=Math.round(ac.sampleRate*1.8),ir=ac.createBuffer(2,len,ac.sampleRate);let seed=7;const rnd=()=>{seed=(seed*16807)%2147483647;return seed/2147483647*2-1;};
+ for(let ch=0;ch<2;ch++){const d=ir.getChannelData(ch);for(let i=0;i<len;i++)d[i]=rnd()*Math.pow(1-i/len,3.2);}rev.buffer=ir;
+ input.connect(lo);lo.connect(mid);mid.connect(hi);hi.connect(comp);comp.connect(dry);comp.connect(rev);rev.connect(wet);dry.connect(output);wet.connect(output);
+ let last='';
+ const set=a=>{const k=JSON.stringify(a||{});if(k===last)return;last=k;a=a||{};lo.gain.value=a.low||0;mid.gain.value=a.mid||0;hi.gain.value=a.high||0;
+  const c=(a.comp||0)/100;comp.threshold.value=-50*c;comp.ratio.value=1+11*c;comp.knee.value=c?12:0;comp.attack.value=.005;comp.release.value=.2;
+  const r=(a.reverb||0)/100;wet.gain.value=r*.6;dry.gain.value=1-r*.25;};
+ set({});return {input,output,set};}
 // ---------- colour grading helpers ----------
 const edGraded=g=>!!g&&(['lift','gamma','gain'].some(k=>g[k]&&(g[k].l||g[k].x||g[k].y))||['m','r','g','b'].some(k=>g.curves?.[k]?.length>2||g.curves?.[k]?.some(([x,y])=>Math.abs(x-y)>1e-3))||(g.lut?.id&&(g.lut.mix??1)>0));
 /** A smooth curve through points [[x,y],...] that never overshoots (monotone cubic, Fritsch-Carlson). */

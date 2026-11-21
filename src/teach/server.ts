@@ -216,11 +216,11 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
     return;}
    // The Editor's smart tools (stabilise, remove background, auto reframe) as background jobs on this computer.
    if(m==='POST'&&p==='/api/editor/tool'){const T=await import('../engine/editor-tools.js'),kind=url.searchParams.get('kind');
-    if(kind!=='stabilize'&&kind!=='cutout'&&kind!=='reframe')throw new HttpError(400,'kind is stabilize, cutout or reframe');
+    if(!['stabilize','cutout','reframe','voice','beats'].includes(String(kind)))throw new HttpError(400,'kind is stabilize, cutout, reframe, voice or beats');
     const ext=(/\.[a-z0-9]{2,5}$/i.exec(url.searchParams.get('name')||'')?.[0]||'.mp4').toLowerCase(),dir=await T.newDir(),src=path.join(dir,'source'+ext);let size=0;
     const limit=new Transform({transform(c:Buffer,_e,cb){size+=c.length;size>MAX_MB*1048576?cb(new HttpError(413,`The file is over ${MAX_MB} MB`)):cb(null,c);}});
     await pipeline(req,limit,fs.createWriteStream(src));if(!size)throw new HttpError(400,'The upload was empty');
-    const aspect=url.searchParams.get('aspect');return json(res,T.status(T.start(kind,src,dir,{...(aspect&&/^(9:16|16:9|1:1|4:5)$/.test(aspect)?{aspect}:{})}).id));}
+    const aspect=url.searchParams.get('aspect');return json(res,T.status(T.start(kind as import('../engine/editor-tools.js').ToolKind,src,dir,{...(aspect&&/^(9:16|16:9|1:1|4:5)$/.test(aspect)?{aspect}:{})}).id));}
    const tj=/^\/api\/editor\/tool\/([a-f0-9-]{36})(\/file)?$/.exec(p);
    if(tj){const T=await import('../engine/editor-tools.js'),id=tj[1]!;
     if(m==='GET'&&!tj[2]){const st=T.status(id);if(!st)throw new HttpError(404,'No such job');return json(res,st);}

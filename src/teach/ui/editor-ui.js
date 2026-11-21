@@ -248,8 +248,13 @@ Object.assign(Ed,{
      <div class="ed-row"><label></label><div class="ed-ctl"><button type="button" class="ed-link" data-loud-all>Match every clip with sound</button></div></div>`);
    const duck=snd?sec('Ducking',`<div class="ed-row"><label>Lower under speech</label><div class="ed-ctl"><input type="checkbox" role="switch" data-duck ${c.duck?'checked':''} aria-label="Lower under speech"></div></div>
      ${c.duck?row('duckdb','Lower by',-(c.duck.db??-12),{min:3,max:30,suffix:'dB'}):''}<p class="ed-hint">${I.music} The sound goes down while someone speaks in the other clips and comes back after. Use it on music.</p>`):'';
+   const af=c.afx||{};const sfx=snd?sec('Equaliser and effects',`${row('afx_low','Low (bass)',af.low||0,{min:-18,max:18,suffix:'dB'})}${row('afx_mid','Mid (voice)',af.mid||0,{min:-18,max:18,suffix:'dB'})}${row('afx_high','High (air)',af.high||0,{min:-18,max:18,suffix:'dB'})}
+     ${row('afx_comp','Compressor',af.comp||0,{min:0,max:100,suffix:'%'})}${row('afx_reverb','Reverb',af.reverb||0,{min:0,max:100,suffix:'%'})}
+     <div class="ed-row"><label>Presets</label><div class="ed-ctl"><div class="ed-chips">${[['voice','Clear voice'],['radio','Radio'],['warm','Warm'],['podcast','Podcast'],['hall','Hall'],['flat','Flat']].map(([v,l])=>`<button type="button" data-afx="${v}">${l}</button>`).join('')}</div></div></div>
+     <div class="ed-row"><label></label><div class="ed-ctl"><div class="ed-tools-row"><button type="button" class="ed-tool" data-tool="voice">${I.mic} Clean voice (noise, hum)</button><button type="button" class="ed-tool" data-tool="beats">${I.flag} Beat markers</button></div></div></div>
+     ${this.toolJobs[c.id]?`<div class="ed-note"><span class="spin"></span> ${esc(this.toolJobs[c.id].label)}…</div>`:''}`,'afx'):'';
    body=(kind==='video'?sec('Sound',c.detached?`<div class="ed-note">${I.detach} The sound is on its own audio track.</div>`:`${row('volume','Volume',cur('volume'),{min:0,max:200,unit:'pct',suffix:'%'})}<div class="ed-row"><label></label><div class="ed-ctl"><button type="button" class="ed-tool" data-detach>${I.detach} Detach audio</button></div></div>`)
-    :sec('Volume',row('volume','Volume',cur('volume'),{min:0,max:200,unit:'pct',suffix:'%'})))+(snd?loud:'')+duck+(kind==='audio'?fades():'');}
+    :sec('Volume',row('volume','Volume',cur('volume'),{min:0,max:200,unit:'pct',suffix:'%'})))+(snd?loud:'')+sfx+duck+(kind==='audio'?fades():'');}
   else if(t==='speed')body=sec('Speed',`${row('speed','Speed',c.speed||1,{min:.25,max:4,step:.05,suffix:'×'})}<div class="ed-chips">${[.5,1,1.5,2,3].map(s=>`<button type="button" data-speed="${s}" aria-pressed="${(c.speed||1)===s}">${s}×</button>`).join('')}</div>
      <div class="ed-row"><label>Length</label><div class="ed-ctl"><span class="ed-val">${edFmt(c.dur)}</span></div></div>`,'speed')+
     sec('Speed curve',`<div class="ed-seg wrap">${[['none','None'],...ED_RAMPS.map(r=>[r[0],r[1]]),...(c.rampName==='custom'?[['custom','Custom']]:[])].map(([id,l])=>`<button type="button" data-ramp="${id}" aria-pressed="${(c.ramp?(c.rampName||'custom'):'none')===id}">${l}</button>`).join('')}</div>
@@ -275,7 +280,8 @@ Object.assign(Ed,{
     let v=inp.type==='checkbox'?inp.checked:inp.type==='range'||inp.type==='number'?Number(inp.value):inp.value;
     if(inp.type==='number'&&!Number.isFinite(v))return;
     if(u!=='raw')v=conv[u][1](v);
-    if(k==='lutmix'){c.grade={...(c.grade||{}),lut:{...(c.grade?.lut||{}),mix:v}};}
+    if(k.startsWith('afx_')){c.afx={...(c.afx||{}),[k.slice(4)]:v};if(!Object.values(c.afx).some(Boolean))delete c.afx;}
+    else if(k==='lutmix'){c.grade={...(c.grade||{}),lut:{...(c.grade?.lut||{}),mix:v}};}
     else if(k==='text'&&c.words?.length){c.text=v;this.retime(c,v);}else if(k==='speed')setSpeed(v);else if(k==='duckdb'){c.duck={db:-edClamp(v,3,30)};this._dk=null;}
     else if(k.startsWith('key_'))c.key={color:'#00b140',sim:25,smooth:10,spill:50,...(c.key||{}),[k.slice(4)]:v};
     else if(k.startsWith('mask_'))c.mask={...(c.mask||{shape:'rect'}),[k.slice(5)]:v};else if(k.startsWith('crop'))c.crop={...(c.crop||{}),[k.slice(4)]:edClamp(v,0,.45)};else if(k.startsWith('adj_'))c.adj={...(c.adj||{}),[k.slice(4)]:v};
@@ -286,6 +292,7 @@ Object.assign(Ed,{
   });
   const segs={align:'align',animIn:'animIn',animOut:'animOut'};
   for(const [attr,key] of Object.entries(segs))el.querySelectorAll(`[data-${attr}]`).forEach(b=>b.onclick=()=>{this.snapshot();c[key]=b.dataset[attr];this.save();this.drawProps();this.draw();});
+  el.querySelectorAll('[data-afx]').forEach(b=>b.onclick=()=>{this.snapshot();const p={voice:{low:-4,mid:3,high:4,comp:45},radio:{low:-14,mid:6,high:-10,comp:70},warm:{low:4,mid:-1,high:-3,comp:20},podcast:{low:2,mid:2,high:3,comp:60},hall:{reverb:45},flat:null}[b.dataset.afx];if(p)c.afx={...p};else delete c.afx;this.after(true);});
   el.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>this.runTool(c,b.dataset.tool));
   el.querySelectorAll('[data-flip]').forEach(b=>b.onclick=()=>{this.snapshot();c[b.dataset.flip]=!c[b.dataset.flip];this.save();this.drawProps();this.draw();});
   el.querySelectorAll('[data-speed]').forEach(b=>b.onclick=()=>{this.snapshot();setSpeed(Number(b.dataset.speed));this.after(true);});
@@ -296,7 +303,7 @@ Object.assign(Ed,{
   el.querySelectorAll('[data-reshape]').forEach(b=>b.onclick=()=>{this.snapshot();c.sticker={...c.sticker,shape:b.dataset.reshape};this.after(true);});
   el.querySelectorAll('[data-reemoji]').forEach(b=>b.onclick=()=>{this.snapshot();c.sticker={...c.sticker,emoji:b.dataset.reemoji};this.after(true);});
   el.querySelectorAll('[data-reset]').forEach(b=>b.onclick=()=>{this.snapshot();const r=b.dataset.reset;
-   if(r==='transform'){Object.assign(c,{scale:1,x:0,y:0,rotate:0,flipH:false,flipV:false});if(c.kf){for(const k of ['scale','x','y','rotate'])delete c.kf[k];}}else if(r==='crop')delete c.crop;else if(r==='mask')delete c.mask;else if(r==='grade')delete c.grade;else if(r==='adjust')delete c.adj;else setSpeed(1);this.after(true);});
+   if(r==='transform'){Object.assign(c,{scale:1,x:0,y:0,rotate:0,flipH:false,flipV:false});if(c.kf){for(const k of ['scale','x','y','rotate'])delete c.kf[k];}}else if(r==='crop')delete c.crop;else if(r==='mask')delete c.mask;else if(r==='afx')delete c.afx;else if(r==='grade')delete c.grade;else if(r==='adjust')delete c.adj;else setSpeed(1);this.after(true);});
   const det=$('[data-detach]',el);if(det)det.onclick=()=>this.detach(c);
   const busy=b=>{b.disabled=true;b.innerHTML='<span class="spin"></span> Measuring…';};
   const ld=$('[data-loud]',el);if(ld)ld.onclick=()=>{busy(ld);this.matchLoudness([c]).finally(()=>this.drawProps());};
