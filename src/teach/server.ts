@@ -126,8 +126,11 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
     const src=path.join(dir,'source'+ext);let size=0;
     const limit=new Transform({transform(c:Buffer,_e,cb){size+=c.length;size>MAX_MB*1048576?cb(new HttpError(413,`The file is over ${MAX_MB} MB`)):cb(null,c);}});
     try{await pipeline(req,limit,fs.createWriteStream(src));if(!size)throw new HttpError(400,'The upload was empty');
-     const {transcribe}=await import('../engine/transcribe.js');const t=await transcribe(src,{});
-     return json(res,{language:t.language,words:t.words.filter(w=>w.type==='word').map(w=>({text:w.text,start:w.start,end:w.end}))});}
+     // lang: "auto" (detect), one of the studio's languages (en, ar, fa, ckb, kmr, badini), or any ISO 639 code.
+     const lang=(url.searchParams.get('lang')||'auto').toLowerCase(),{transcribe}=await import('../engine/transcribe.js'),{languageSchema}=await import('../engine/languages.js');
+     if(lang!=='auto'&&!/^[a-z]{2,3}$/.test(lang))throw new HttpError(400,'The language is a code like en, ar, ckb or ja');
+     const known=languageSchema.safeParse(lang);const t=await transcribe(src,known.success?{language:known.data}:lang==='auto'?{}:{providerCode:lang});
+     return json(res,{language:t.language,code:t.providerLanguage??null,words:t.words.filter(w=>w.type==='word').map(w=>({text:w.text,start:w.start,end:w.end}))});}
     catch(e){throw e instanceof HttpError?e:new HttpError(500,'Could not read the speech: '+(e as Error).message.slice(0,200));}
     finally{await fsp.rm(dir,{recursive:true,force:true}).catch(()=>{});}
    }

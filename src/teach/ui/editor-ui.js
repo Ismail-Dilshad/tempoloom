@@ -17,8 +17,15 @@ Object.assign(Ed,{
   const drop=`<label class="ed-drop" data-import><span class="ed-drop-btn">${I.add} Import</span><span>Drag and drop ${this.tab==='audio'?'music and sound files':'videos, photos and audio files'} here</span></label>`;
   const sel=this.sel&&this.clip(this.sel),visual=sel&&this.kindOf(sel)==='video'&&this.mediaOf(sel);
   let body='';
-  if(this.tab==='text')body=`<button type="button" class="btn small ed-wide" data-captions>${I.captions} Auto captions</button><div class="ed-sub">Add text</div>
-   <div class="ed-text-presets">${ED_TEXTS.map(([l,size,weight,box],i)=>`<button type="button" class="ed-text-preset${box?' box':''}" data-text="${i}"><span style="font-size:${Math.round(size/2.4)}px;font-weight:${weight}">${l}</span><i>${I.add}</i></button>`).join('')}</div>`;
+  if(this.tab==='text'){const caps=this.p.clips.filter(c=>c.cap||c.words).length;
+   body=`<section class="ed-capbox"><div class="ed-sub">${I.captions} Captions</div>
+    <label class="ed-caprow"><span>Spoken language</span><select data-cap-lang aria-label="Spoken language">${ED_CAP_LANGS.map(l=>`<option value="${l}" ${(this.p.capLang||'auto')===l?'selected':''} dir="auto">${esc(edLangName(l))}</option>`).join('')}</select></label>
+    <label class="ed-caprow"><span>Look</span><select data-cap-look aria-label="Caption look">${ED_CAPS.map(([v,l])=>`<option value="${v}" ${(this.p.capLook||'clean')===v?'selected':''}>${l}</option>`).join('')}</select></label>
+    <button type="button" class="btn small primary ed-wide" data-captions>${I.captions} Auto captions</button>
+    <div class="ed-caprow two"><button type="button" class="btn small" data-srt-in>${I.upload} Import .srt</button><button type="button" class="btn small" data-srt-out ${caps?'':'disabled'}>${I.down} Export .srt</button></div>
+    <input type="file" accept=".srt,.vtt,text/vtt,application/x-subrip" data-srt-file hidden></section>
+   <div class="ed-sub">Add text</div>
+   <div class="ed-text-presets">${ED_TEXTS.map(([l,size,weight,box],i)=>`<button type="button" class="ed-text-preset${box?' box':''}" data-text="${i}"><span style="font-size:${Math.round(size/2.4)}px;font-weight:${weight}">${l}</span><i>${I.add}</i></button>`).join('')}</div>`;}
   else if(this.tab==='stickers')body=`<div class="ed-sub">Shapes</div><div class="ed-stickers">${ED_SHAPES.map(([s,l])=>`<button type="button" class="ed-sticker" data-shape="${s}" aria-label="${l}" title="${l}"><svg viewBox="0 0 40 40">${edShapeSvg(s)}</svg></button>`).join('')}</div>
    <div class="ed-sub">Emoji</div><div class="ed-stickers">${ED_EMOJI.map(e=>`<button type="button" class="ed-sticker emoji" data-emoji="${e}">${e}</button>`).join('')}</div>`;
   else if(this.tab==='effects')body=`<div class="ed-sub">${visual?'Filters for the selected clip':'Select a video or photo, then choose a filter'}</div><div class="ed-filters">${ED_FILTERS.map(([id,l,a])=>`<button type="button" class="ed-filter" data-filter="${id}" ${visual?'':'disabled'} aria-pressed="${visual?JSON.stringify(sel.adj||{})===JSON.stringify(a):false}"><span class="ed-filter-swatch" style="filter:${edCssFilter(a)}"></span><span>${l}</span></button>`).join('')}</div>`;
@@ -39,6 +46,14 @@ Object.assign(Ed,{
   el.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{const c=this.sel&&this.clip(this.sel);if(!c)return;this.snapshot();const a=ED_FILTERS.find(f=>f[0]===b.dataset.filter)[2];if(Object.keys(a).length)c.adj={...a};else delete c.adj;this.after(true);this.drawLib();});
   el.querySelectorAll('[data-trans-all]').forEach(b=>b.onclick=()=>{const t=b.dataset.transAll;this.transAll(t,.6);toast(t==='none'?'Transitions removed':'Transition set on every cut');});
   const cap=$('[data-captions]',el);if(cap)cap.onclick=()=>this.captions();
+  const cl=$('[data-cap-lang]',el);if(cl)cl.onchange=()=>{this.p.capLang=cl.value;this.save();};
+  const ck=$('[data-cap-look]',el);if(ck)ck.onchange=()=>{this.p.capLook=ck.value;this.save();};
+  const so=$('[data-srt-out]',el);if(so)so.onclick=()=>{const list=this.p.clips.filter(c=>c.text!==undefined&&(c.cap||c.words)).sort((a,b)=>a.start-b.start);if(!list.length)return toast('There are no captions yet.');
+   edSaveFile(new Blob(['\uFEFF'+edSrt(list)],{type:'application/x-subrip;charset=utf-8'}),this.p.name+'.srt');toast(`Saved ${list.length} caption${list.length>1?'s':''} as .srt`);};
+  const sf=$('[data-srt-file]',el),si=$('[data-srt-in]',el);if(si&&sf){si.onclick=()=>sf.click();
+   sf.onchange=async()=>{const file=sf.files[0];sf.value='';if(!file)return;const cues=edParseSubs(await file.text());if(!cues.length)return toast('No captions were found in that file.',true);
+    const lines=cues.map(q=>{const ws=edWords(q.text),d=(q.e-q.s)/Math.max(1,ws.length);return {s:q.s,e:q.e,words:ws.map((w,i)=>({t:w,s:q.s+i*d,e:q.s+(i+1)*d}))};});
+    const lang=this.p.capLang&&this.p.capLang!=='auto'?this.p.capLang:'auto',n=this.addCaptions(lines,lang,this.p.capLook||'clean');toast(`Imported ${n} caption${n>1?'s':''}`);};}
   const vo=$('[data-voice]',el);if(vo)vo.onclick=()=>this.recordVoice();
   el.querySelectorAll('.ed-media').forEach(t=>{t.ondragstart=e=>{e.dataTransfer.setData('text/x-ed-media',t.dataset.mid);e.dataTransfer.effectAllowed='copy';};t.ondblclick=()=>this.add(t.dataset.mid);});
  },
@@ -125,7 +140,11 @@ Object.assign(Ed,{
     <dt>Resolution</dt><dd>${W} × ${H}</dd><dt>Length</dt><dd>${edFmt(this.end())}</dd><dt>Clips</dt><dd>${this.p.clips.length} on ${this.p.tracks.length} tracks</dd>
     <dt>Background</dt><dd>${seg('bgmode',[['color','Colour'],['blur','Blur']],this.p.bgMode)}</dd>${this.p.bgMode==='color'?`<dt></dt><dd><input type="color" data-bg value="${esc(this.p.bg||'#000000')}" aria-label="Background colour"></dd>`:''}
     <dt>Markers</dt><dd>${this.p.markers.length?`${this.p.markers.length} · <button type="button" class="ed-link" data-clear-markers>Clear</button>`:'Press M to add one'}</dd></dl>`;
-  else if(t==='text')body=sec('Text',`<textarea data-k="text" rows="3" dir="auto" aria-label="Text">${esc(c.text||'')}</textarea>`)+
+  else if(t==='text')body=(c.words?sec('Caption',`<div class="ed-seg wrap">${ED_CAPS.map(([v,l])=>`<button type="button" data-caplook="${v}" aria-pressed="${(c.capLook||'clean')===v}">${l}</button>`).join('')}</div>
+     ${c.capStyle==='karaoke'||c.capStyle==='build'?`<div class="ed-row"><label>Highlight</label><div class="ed-ctl"><input type="color" data-k="hl" value="${esc(c.hl||'#FFD400')}" aria-label="Highlight colour"></div></div>`:''}
+     <div class="ed-row"><label>Capitals</label><div class="ed-ctl"><input type="checkbox" role="switch" data-k="upper" ${c.upper?'checked':''} aria-label="Capitals"></div></div>
+     <div class="ed-row"><label>Language</label><div class="ed-ctl"><span class="ed-val" dir="auto">${esc(edLangName(c.lang||'auto'))}</span></div></div>
+     <div class="ed-row"><label></label><div class="ed-ctl"><button type="button" class="ed-tool" data-cap-all>${I.layers} Use this look on every caption</button></div></div>`):'')+sec('Text',`<textarea data-k="text" rows="3" dir="auto" aria-label="Text">${esc(c.text||'')}</textarea>`)+
     sec('Style',`<div class="ed-row"><label>Font</label><div class="ed-ctl"><select data-k="font" aria-label="Font">${ED_FONTS.map(([f,l])=>`<option value="${esc(f)}" ${c.font===f?'selected':''}>${l}</option>`).join('')}</select></div></div>
      ${row('size','Size',c.size||40,{min:12,max:200})}${row('weight','Weight',c.weight||600,{min:300,max:900,step:100})}${row('spacing','Spacing',c.spacing||0,{min:-5,max:30})}
      <div class="ed-row"><label>Colour</label><div class="ed-ctl"><input type="color" data-k="color" value="${esc(c.color||'#ffffff')}" aria-label="Colour"></div></div>
@@ -184,12 +203,12 @@ Object.assign(Ed,{
   el.querySelectorAll('[data-k]').forEach(inp=>{
    const k=inp.dataset.k,u=inp.dataset.u||'raw';
    const snap=()=>{if(!inp._snap){this.snapshot();inp._snap=true;}};inp.addEventListener('focus',snap);inp.addEventListener('pointerdown',snap);
-   inp.addEventListener('change',()=>{inp._snap=false;this.save();if(['speed','text','box','font'].includes(k))this.drawTimeline();if(k==='box'||k==='key_on')this.drawProps();if(k==='font')document.fonts?.load(`40px "${c.font}"`).then(()=>this.draw()).catch(()=>{});this.drawTime();if(k==='speed')this.after(false);});
+   inp.addEventListener('change',()=>{inp._snap=false;this.save();if(['speed','text','box','font'].includes(k))this.drawTimeline();if(k==='box'||k==='key_on'||k==='upper')this.drawProps();if(k==='font')document.fonts?.load(`40px "${c.font}"`).then(()=>this.draw()).catch(()=>{});this.drawTime();if(k==='speed')this.after(false);});
    inp.addEventListener('input',()=>{
     let v=inp.type==='checkbox'?inp.checked:inp.type==='range'||inp.type==='number'?Number(inp.value):inp.value;
     if(inp.type==='number'&&!Number.isFinite(v))return;
     if(u!=='raw')v=conv[u][1](v);
-    if(k==='speed')setSpeed(v);else if(k==='duckdb'){c.duck={db:-edClamp(v,3,30)};this._dk=null;}
+    if(k==='text'&&c.words?.length){c.text=v;this.retime(c,v);}else if(k==='speed')setSpeed(v);else if(k==='duckdb'){c.duck={db:-edClamp(v,3,30)};this._dk=null;}
     else if(k.startsWith('key_'))c.key={color:'#00b140',sim:25,smooth:10,spill:50,...(c.key||{}),[k.slice(4)]:v};
     else if(k.startsWith('mask_'))c.mask={...(c.mask||{shape:'rect'}),[k.slice(5)]:v};else if(k.startsWith('crop'))c.crop={...(c.crop||{}),[k.slice(4)]:edClamp(v,0,.45)};else if(k.startsWith('adj_'))c.adj={...(c.adj||{}),[k.slice(4)]:v};
     else if(ED_KFKEYS.has(k))this.setVal(c,k,v);else c[k]=v;
@@ -215,6 +234,11 @@ Object.assign(Ed,{
   const la=$('[data-loud-all]',el);if(la)la.onclick=()=>{busy(la);this.matchLoudness(this.p.clips.filter(x=>x.media&&!(x.detached&&!x.asAudio)&&this.mediaOf(x)?.type!=='image')).finally(()=>this.drawProps());};
   const lr=$('[data-loud-reset]',el);if(lr)lr.onclick=()=>{this.snapshot();delete c.gainDb;this.after(true);};
   const dk=$('[data-duck]',el);if(dk)dk.onchange=()=>this.setDuck(c,dk.checked);
+  el.querySelectorAll('[data-caplook]').forEach(b=>b.onclick=()=>{this.snapshot();this.capLook(c,b.dataset.caplook);this.after(true);});
+  const ca=$('[data-cap-all]',el);if(ca)ca.onclick=()=>{this.snapshot();const keys=['capLook','capStyle','font','size','weight','color','hl','stroke','strokeColor','shadow','box','boxColor','upper','align','y','animIn','animOut','animDur','spacing'];
+   const all=this.p.clips.filter(x=>x!==c&&x.words?.length);for(const x of all)for(const k of keys){if(c[k]===undefined)delete x[k];else x[k]=c[k];}
+   // Arabic-script captions keep a font that has every letter
+   for(const x of all)if(edArabicScript(x.text)&&!edArabicScript(c.text))x.font='Vazirmatn';this.after(true);toast(`Used on ${all.length} caption${all.length===1?'':'s'}`);};
   el.querySelectorAll('[data-mask]').forEach(b=>b.onclick=()=>{this.snapshot();const v=b.dataset.mask;if(v==='none')delete c.mask;else c.mask={w:.8,h:.8,x:0,y:0,feather:0,...(c.mask||{}),shape:v};this.after(true);});
   el.querySelectorAll('[data-ease]').forEach(b=>b.onclick=()=>this.setKfEase(c,b.dataset.ease));
   const kp=$('[data-key-pick]',el);if(kp)kp.onclick=()=>{this.picking=this.picking===c.id?null:c.id;this.dom.frame?.classList.toggle('picking',!!this.picking);this.drawProps();this.draw();};

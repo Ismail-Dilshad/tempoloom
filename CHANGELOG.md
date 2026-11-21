@@ -40,6 +40,14 @@
 - **Save frame** (Shift+E, or the picture button by the player): the frame under the playhead as a
   PNG, 1080 on the short side.
 - **Text animations**: Zoom, Blur and Word by word (whole words, right to left for Arabic-script text).
+- **Captions in any language**: Auto captions take a spoken language (detect automatically, the
+  studio's languages including Kurdish, or about 80 more, listed by their own names) and keep each
+  word's timing. Looks: Clean, Karaoke (the word being said lit), Word by word, Build up and Boxed,
+  with a highlight colour, capitals (by the language's own rules) and "Use this look on every
+  caption". Lines break at pauses, sentence ends in any script and a length that fits; Chinese,
+  Japanese, Thai, Lao, Khmer and Myanmar break between dictionary words. Right-to-left lines read
+  right to left with their punctuation in place, and Arabic-script captions use a font that has
+  every letter. Captions import from and export to .srt (and import .vtt).
 
 ## 10.2.0: Sileo notifications
 

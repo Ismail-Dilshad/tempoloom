@@ -28,7 +28,9 @@ const responseSchema=z.object({language_code:z.string().nullable().optional(),la
  words:z.array(z.object({text:z.string(),start:z.number().nullable().optional(),end:z.number().nullable().optional(),type:z.string(),
   speaker_id:z.string().nullable().optional(),logprob:z.number().nullable().optional()}).passthrough()).default([])}).passthrough();
 
-export type TranscribeOptions={language?:Language|'auto';diarize?:boolean;keyterms?:string[];refresh?:boolean;apiKey?:string;
+export type TranscribeOptions={language?:Language|'auto';
+ /** Any other spoken language, as an ISO 639-1 or 639-3 code (for example ja, de, tr, hi); used when `language` is not set. */
+ providerCode?:string;diarize?:boolean;keyterms?:string[];refresh?:boolean;apiKey?:string;
  fetcher?:typeof fetch;cacheDir?:string};
 
 const cacheRoot=()=>path.resolve(ROOT,process.env.VIDEO_WORKSPACE||'workspace','cache','transcripts');
@@ -67,7 +69,8 @@ export async function transcribe(file:string,o:TranscribeOptions={}):Promise<Tra
   const bytes=await fs.readFile(audio);
   const audioSha256=createHash('sha256').update(bytes).digest('hex');
   const language=o.language&&o.language!=='auto'?o.language:undefined;
-  const key=createHash('sha256').update(JSON.stringify({audioSha256,model:DEFAULT_MODEL,language:language??null,diarize:!!o.diarize,keyterms:o.keyterms??[]})).digest('hex').slice(0,24);
+  const code=!language&&o.providerCode&&/^[a-z]{2,3}$/.test(o.providerCode)?o.providerCode:undefined;
+  const key=createHash('sha256').update(JSON.stringify({audioSha256,model:DEFAULT_MODEL,language:language??null,...(code?{code}:{}),diarize:!!o.diarize,keyterms:o.keyterms??[]})).digest('hex').slice(0,24);
   const dir=o.cacheDir??cacheRoot();await fs.mkdir(dir,{recursive:true});
   const cached=path.join(dir,key+'.json');
   if(!o.refresh){try{return {...transcriptSchema.parse(JSON.parse(await fs.readFile(cached,'utf8'))),cached:true,file:cached};}catch{/* not cached */}}
@@ -79,7 +82,7 @@ export async function transcribe(file:string,o:TranscribeOptions={}):Promise<Tra
   form.append('timestamps_granularity','word');
   form.append('tag_audio_events','true');
   form.append('diarize',o.diarize?'true':'false');
-  if(language)form.append('language_code',providerLanguage[language]);
+  if(language)form.append('language_code',providerLanguage[language]);else if(code)form.append('language_code',code);
   for(const term of o.keyterms??[])form.append('keyterms',term);
   const response=await (o.fetcher??fetch)(ENDPOINT,{method:'POST',headers:{'xi-api-key':apiKey},body:form});
   const body=await response.text();

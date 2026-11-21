@@ -30,6 +30,21 @@ const edEase=u=>u<.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2;
 /** How a keyframe moves to the next one. Smooth is the default (and what older projects had). */
 const ED_EASES=[['smooth','Smooth'],['linear','Linear'],['in','Ease in'],['out','Ease out'],['hold','Hold']];
 const edEaseFn={smooth:edEase,linear:u=>u,in:u=>u*u*u,out:u=>1-Math.pow(1-u,3),hold:()=>0};
+/** Caption looks: how a caption shows its words (phrase, karaoke, one word, build up) plus its text style. */
+const ED_CAPS=[['clean','Clean'],['karaoke','Karaoke'],['word','Word by word'],['build','Build up'],['boxed','Boxed']];
+/** Spoken languages for auto captions: auto-detect, the studio's own, then many more (ISO 639 codes; names in their own language). */
+const ED_CAP_LANGS=['auto','en','ckb','kmr','badini','ar','fa','tr','de','fr','es','it','pt','nl','ru','uk','pl','cs','sk','sv','no','da','fi','el','he','hi','ur','bn','pa','gu','mr','ta','te','kn','ml','si','ne',
+ 'ja','ko','zh','th','vi','id','ms','tl','my','km','lo','mn','kk','uz','az','ka','hy','tg','ky','ps','sw','am','ha','yo','ig','zu','so','ro','hu','bg','sr','hr','bs','sl','mk','sq','lt','lv','et','be','ca','eu','gl','cy','ga','is','mt','lb','af'];
+/** Scripts written without spaces between words: lines break between characters or dictionary words there. */
+const edNoSpace=s=>/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}\p{Script=Tibetan}]/u.test(s||'');
+/** Right-to-left when the first letter is Arabic, Hebrew, Syriac, Thaana or N'Ko script. */
+const edRtl=s=>/^[^\p{L}]*[\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Syriac}\p{Script=Thaana}\p{Script=Nko}]/u.test(s||'');
+const edArabicScript=s=>/\p{Script=Arabic}/u.test(s||'');
+const edLen=s=>[...(typeof Intl!=='undefined'&&Intl.Segmenter?new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(s||''):String(s||''))].length;
+/** Words of a text in any language: spaces where the script uses them, else dictionary words (Intl.Segmenter). */
+function edWords(text,lang){const t=String(text||'').trim();if(!t)return [];
+ if(!edNoSpace(t)||typeof Intl==='undefined'||!Intl.Segmenter)return t.split(/\s+/);
+ try{return [...new Intl.Segmenter(lang&&lang!=='auto'?lang:undefined,{granularity:'word'}).segment(t)].map(x=>x.segment).filter(x=>x.trim());}catch{return [...t].filter(x=>x.trim());}}
 const ED_BLENDS=[['normal','Normal'],['multiply','Multiply'],['screen','Screen'],['overlay','Overlay'],['darken','Darken'],['lighten','Lighten'],['color-dodge','Colour dodge'],['color-burn','Colour burn'],
  ['hard-light','Hard light'],['soft-light','Soft light'],['difference','Difference'],['exclusion','Exclusion'],['hue','Hue'],['saturation','Saturation'],['color','Colour'],['luminosity','Luminosity']];
 const ED_MASKS=[['none','None'],['rect','Rectangle'],['circle','Ellipse'],['linear','Linear']];
@@ -522,13 +537,14 @@ const Ed={
   const one=(type,p)=>{if(p>=1)return;const e=edEase(p);if(type==='fade')r.alpha*=e;else if(type==='pop'){const b=1-Math.pow(1-p,3);r.k*=.5+.5*b+Math.sin(p*Math.PI)*.12;r.alpha*=Math.min(1,p*3);}else if(type==='slide'){r.dy+=(1-e)*.08;r.alpha*=e;}else if(type==='type')r.chars=Math.min(r.chars,p);
    else if(type==='zoom'){r.k*=1+(1-e)*.6;r.alpha*=e;}else if(type==='blur'){r.blur=Math.max(r.blur||0,(1-e)*24);r.alpha*=e;}else if(type==='words')r.words=p;};
   one(c.animIn,i);one(c.animOut,o);return r;},
- lines(g,c,W){const words=String(c.text||'').split(/\s+/);const out=[];let line='';for(const w of words){const next=line?line+' '+w:w;if(g.measureText(next).width>W*.86&&line){out.push(line);line=w;}else line=next;}if(line)out.push(line);return out.length?out:[''];},
+ lines(g,c,W){const tx=String(c.text||'');if(edNoSpace(tx))return edPack(g,edWords(tx,c.lang),'',W*.86).map(l=>l.join(''));const words=tx.split(/\s+/);const out=[];let line='';for(const w of words){const next=line?line+' '+w:w;if(g.measureText(next).width>W*.86&&line){out.push(line);line=w;}else line=next;}if(line)out.push(line);return out.length?out:[''];},
  font(c,t){return `${c.weight||600} ${Math.round((c.size||40)*this.val(c,'scale',t)*this.k())}px "${c.font||'Tempoloom UI'}", "Tempoloom UI", system-ui, sans-serif`;},
- textBox(g,c,W,H,t=this.time){g.save();g.font=this.font(c,t);g.letterSpacing=`${(c.spacing||0)*this.k()}px`;const ls=this.lines(g,c,W),lh=(c.size||40)*this.val(c,'scale',t)*this.k()*1.25,w=Math.max(...ls.map(l=>g.measureText(l).width))+lh*.6,h=ls.length*lh+lh*.3;g.restore();
+ textBox(g,c,W,H,t=this.time){if(c.words?.length)return this.capBox(g,c,W,H,t);g.save();g.font=this.font(c,t);g.letterSpacing=`${(c.spacing||0)*this.k()}px`;const ls=this.lines(g,c,W),lh=(c.size||40)*this.val(c,'scale',t)*this.k()*1.25,w=Math.max(...ls.map(l=>g.measureText(l).width))+lh*.6,h=ls.length*lh+lh*.3;g.restore();
   return {w,h,cx:W/2+this.val(c,'x',t)*W,cy:H/2+this.val(c,'y',t)*H,ls,lh};},
  drawText(g,c,W,H,t=this.time,o={}){
+  if(c.words?.length)return this.drawCaption(g,c,W,H,t,o);
   const b=this.textBox(g,c,W,H,t),an=this.animApply(c,t),a=this.val(c,'opacity',t)*(o.alpha??1)*an.alpha;if(a<=0)return;
-  g.save();g.globalAlpha=a;g.translate(b.cx+(o.dx||0),b.cy+(o.dy||0)+an.dy*H);g.rotate(this.val(c,'rotate',t)*Math.PI/180);g.scale(an.k,an.k);if(an.blur)g.filter=`blur(${an.blur*this.k()}px)`;g.font=this.font(c,t);g.letterSpacing=`${(c.spacing||0)*this.k()}px`;g.textBaseline='middle';
+  g.save();g.globalAlpha=a;g.translate(b.cx+(o.dx||0),b.cy+(o.dy||0)+an.dy*H);g.rotate(this.val(c,'rotate',t)*Math.PI/180);g.scale(an.k,an.k);if(an.blur)g.filter=`blur(${an.blur*this.k()}px)`;g.font=this.font(c,t);g.letterSpacing=`${(c.spacing||0)*this.k()}px`;g.textBaseline='middle';g.direction=edRtl(c.text)?'rtl':'ltr';
   if(c.box){g.fillStyle=c.boxColor||'#000';g.globalAlpha=a*.72;g.beginPath();g.roundRect(-b.w/2,-b.h/2,b.w,b.h,b.lh*.25);g.fill();g.globalAlpha=a;}
   g.textAlign=c.align||'center';const x=c.align==='left'?-b.w/2+b.lh*.3:c.align==='right'?b.w/2-b.lh*.3:0;
   let ls=b.ls;if(an.chars<1){let n=Math.round(ls.join(' ').length*an.chars);ls=ls.map(l=>{const s=l.slice(0,Math.max(0,n));n-=l.length+1;return s;});}
@@ -696,19 +712,69 @@ const Ed={
   if(!src.length)return toast('Add a video or sound with speech first.');
   const busy=this.dom.lib?.querySelector('[data-captions]');if(busy){busy.disabled=true;busy.innerHTML='<span class="spin"></span> Reading the speech…';}
   try{
-   const words={};
+   const words={},lang=this.p.capLang||'auto',look=this.p.capLook||'clean';let code=lang;
    for(const id of new Set(src.map(c=>c.media))){const m=this.media.find(x=>x.id===id),blob=await this.get(id);if(!blob)continue;
-    const r=await fetch(withKey('/api/editor/captions?name='+encodeURIComponent(m.name)),{method:'POST',body:blob});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Could not read the speech');words[id]=j.words||[];}
+    const r=await fetch(withKey('/api/editor/captions?name='+encodeURIComponent(m.name)+'&lang='+encodeURIComponent(lang)),{method:'POST',body:blob});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Could not read the speech');
+    words[id]=j.words||[];if(lang==='auto'&&j.code)code=j.code;}
    const lines=[];
-   for(const c of src){const ws=(words[c.media]||[]).filter(w=>w.start>=(c.in||0)&&w.end<=(c.in||0)+c.dur*(c.speed||1)+.05).map(w=>({text:w.text.trim(),s:c.start+(w.start-(c.in||0))/(c.speed||1),e:c.start+(w.end-(c.in||0))/(c.speed||1)})).filter(w=>w.text);
-    let cur=null;for(const w of ws){if(cur&&(cur.words.length>=6||w.s-cur.e>.6||cur.e-cur.s>2.6||/[.!?،؟]$/.test(cur.words.at(-1)))){lines.push(cur);cur=null;}if(!cur)cur={s:w.s,e:w.e,words:[]};cur.words.push(w.text);cur.e=w.e;}if(cur)lines.push(cur);}
+   for(const c of src){const a=c.in||0,b=this.srcAt(c,c.start+c.dur)+.05;
+    const ws=(words[c.media]||[]).filter(w=>w.start>=a&&w.end<=b).map(w=>({t:w.text.trim(),s:this.tlAt(c,w.start),e:this.tlAt(c,Math.min(w.end,b))})).filter(w=>w.t);
+    // A line ends at a pause, after about 3 seconds, at the end of a sentence (in any language), or when it is long.
+    let cur=null;const budget=w=>edNoSpace(w)?16:42;
+    for(const w of ws){const txt=cur?cur.words.map(x=>x.t).join(' '):'';
+     if(cur&&(w.s-cur.e>.6||cur.e-cur.s>3.2||/[\p{Sentence_Terminal}]$/u.test(cur.words.at(-1).t)||edLen(txt+' '+w.t)>budget(txt+w.t))){lines.push(cur);cur=null;}
+     if(!cur)cur={s:w.s,e:w.e,words:[]};cur.words.push(w);cur.e=w.e;}
+    if(cur)lines.push(cur);}
    if(!lines.length)return toast('No speech was found.');
-   this.snapshot();const tr=this.addTrack('text');
-   for(const l of lines){const c=this.textClip(3,l.s,l.words.join(' '));c.dur=Math.max(.4,l.e-l.s);c.track=tr.id;this.p.clips.push(c);}
-   this.after(true);toast(`Added ${lines.length} caption${lines.length>1?'s':''}`);
+   const n=this.addCaptions(lines,code,look);toast(`Added ${n} caption${n>1?'s':''}${code&&code!=='auto'?` (${edLangName(code)})`:''}`);
   }catch(e){toast(e.message,true);}
   finally{this.drawLib();}
  },
+ // ---------- captions with word times: phrase, karaoke, one word at a time, build up ----------
+ capText(c,w){return c.upper?w.toLocaleUpperCase(c.lang&&c.lang!=='auto'?c.lang:undefined):w;},
+ capSep(c){return edNoSpace(c.text)?'':' ';},
+ capBox(g,c,W,H,t=this.time){g.save();g.font=this.font(c,t);g.letterSpacing=`${(c.spacing||0)*this.k()}px`;
+  const lh=(c.size||40)*this.val(c,'scale',t)*this.k()*1.25,lines=edPack(g,c.words.map(w=>this.capText(c,w.t)),this.capSep(c),W*.86),sw=g.measureText(this.capSep(c)).width;
+  const w=Math.max(...lines.map(l=>l.reduce((a,x)=>a+g.measureText(x).width,0)+sw*(l.length-1)))+lh*.6,h=lines.length*lh+lh*.3;g.restore();
+  return {w,h,cx:W/2+this.val(c,'x',t)*W,cy:H/2+this.val(c,'y',t)*H,ls:lines.map(l=>l.join(this.capSep(c))),lh};},
+ drawCaption(g,c,W,H,t,o={}){
+  const lt=t-c.start,ws=c.words,st=c.capStyle||'phrase';let cur=-1,last=-1;for(let i=0;i<ws.length;i++){if(ws[i].s<=lt)last=i;if(lt>=ws[i].s&&lt<ws[i].e)cur=i;}
+  let show=ws.map((_,i)=>i);if(st==='word')show=[cur>=0?cur:Math.max(0,last)];else if(st==='build')show=show.filter(i=>i<=last);if(!show.length)return;
+  const an=this.animApply(c,t),a=this.val(c,'opacity',t)*(o.alpha??1)*an.alpha;if(a<=0)return;
+  g.save();g.font=this.font(c,t);g.letterSpacing=`${(c.spacing||0)*this.k()}px`;g.textBaseline='middle';const rtl=edRtl(c.text);g.direction=rtl?'rtl':'ltr';
+  const sep=this.capSep(c),sw=g.measureText(sep).width,lh=(c.size||40)*this.val(c,'scale',t)*this.k()*1.25,txt=show.map(i=>this.capText(c,ws[i].t)),wd=txt.map(x=>g.measureText(x).width);
+  const rows=[];{let row=[],w=0;show.forEach((i,j)=>{const add=(row.length?sw:0)+wd[j];if(row.length&&w+add>W*.86){rows.push({js:row,w});row=[];w=0;}w+=(row.length?sw:0)+wd[j];row.push(j);});if(row.length)rows.push({js:row,w});}
+  const bw=Math.max(...rows.map(r=>r.w))+lh*.6,bh=rows.length*lh+lh*.3,cx=W/2+this.val(c,'x',t)*W+(o.dx||0),cy=H/2+this.val(c,'y',t)*H+(o.dy||0)+an.dy*H;
+  g.globalAlpha=a;g.translate(cx,cy);g.rotate(this.val(c,'rotate',t)*Math.PI/180);g.scale(an.k,an.k);if(an.blur)g.filter=`blur(${an.blur*this.k()}px)`;
+  if(c.box){g.fillStyle=c.boxColor||'#000';g.globalAlpha=a*.72;g.beginPath();g.roundRect(-bw/2,-bh/2,bw,bh,lh*.25);g.fill();g.globalAlpha=a;}
+  g.textAlign='left';// words are placed one by one; each keeps its shaping and its punctuation on the right side for its direction
+  rows.forEach((r,ri)=>{const y=-bh/2+lh*.15+lh*(ri+.5);let x=c.align==='left'?-bw/2+lh*.3:c.align==='right'?bw/2-lh*.3-r.w:-r.w/2;const pos=[];
+   for(const j of r.js){pos.push(x);x+=wd[j]+sw;}
+   r.js.forEach((j,k)=>{const at=rtl?(pos[0]+r.w)-(pos[k]-pos[0])-wd[j]:pos[k],i=show[j],on=i===cur;
+    let sc=1;if(st==='word'&&on)sc=1+.18*(1-Math.min(1,(lt-ws[i].s)/.12));
+    g.save();g.translate(at+wd[j]/2,y);g.scale(sc,sc);g.textAlign='center';g.direction=rtl?'rtl':'ltr';
+    if(c.shadow&&!c.box){g.shadowColor='rgba(0,0,0,.5)';g.shadowBlur=lh*.25;g.shadowOffsetY=lh*.05;}
+    if(c.stroke){g.lineJoin='round';g.lineWidth=c.stroke*this.k()*2;g.strokeStyle=c.strokeColor||'#000';g.strokeText(txt[j],0,0);g.shadowColor='transparent';}
+    g.fillStyle=on&&(st==='karaoke'||st==='build')?(c.hl||'#FFD400'):(c.color||'#fff');g.fillText(txt[j],0,0);g.restore();});});
+  g.restore();
+ },
+ /** A caption look on one clip. */
+ capLook(c,name){const base={stroke:3,strokeColor:'#000000',shadow:true,box:false,animIn:'fade',animOut:'none',animDur:.15,upper:false,capStyle:'phrase',hl:c.hl||'#FFD400',weight:Math.max(700,c.weight||700)};
+  const looks={clean:{},karaoke:{capStyle:'karaoke'},word:{capStyle:'word',upper:true,weight:800,size:Math.max(c.size||34,56),animIn:'none'},build:{capStyle:'build'},boxed:{box:true,boxColor:'#000000',stroke:0,shadow:false,animIn:'slide',animDur:.2}};
+  Object.assign(c,base,looks[name]||{},{capLook:name});},
+ /** New text in a caption: its words keep their times when the count is the same, else share the clip's length evenly. */
+ retime(c,text){const ws=edWords(text,c.lang);if(ws.length===c.words.length){c.words=c.words.map((w,i)=>({...w,t:ws[i]}));return;}
+  const d=c.dur/Math.max(1,ws.length);c.words=ws.map((w,i)=>({t:w,s:i*d,e:(i+1)*d}));},
+ /** Timeline time where a clip shows file time `src` (inverse of srcAt; works with speed curves). */
+ tlAt(c,src){let lo=c.start,hi=c.start+c.dur;for(let i=0;i<40;i++){const m=(lo+hi)/2;if(this.srcAt(c,m)<src)lo=m;else hi=m;}return (lo+hi)/2;},
+ /** Makes caption clips from lines [{s,e,words:[{t,s,e}]}] on a new text track. */
+ addCaptions(lines,lang,look){
+  this.snapshot();const tr=this.addTrack('text');let n=0;
+  for(let i=0;i<lines.length;i++){const l=lines[i],next=lines[i+1];let e=l.e;if(next&&next.s-e<.3)e=next.s;// no flicker between close lines
+   const text=l.words.map(w=>w.t).join(edNoSpace(l.words.map(w=>w.t).join(''))?'':' '),c=this.textClip(3,l.s,text);
+   c.dur=Math.max(.4,e-l.s);c.track=tr.id;c.lang=lang;c.cap=true;c.words=l.words.map(w=>({t:w.t,s:Math.max(0,w.s-l.s),e:Math.max(.05,w.e-l.s)}));
+   if(edArabicScript(text))c.font='Vazirmatn';this.capLook(c,look);this.p.clips.push(c);n++;}
+  this.after(true);return n;},
  // ---------- project files: one .zip with project.json and the media it uses, to keep or open elsewhere ----------
  async packProject(id){
   if(this.p?.id===id)await this.flush();
@@ -833,6 +899,23 @@ async function edUnzip(file){
  }
  return out;
 }
+// ---------- captions helpers ----------
+/** Greedy lines of words no wider than maxW (sep between words: a space, or nothing for scripts without spaces). */
+function edPack(g,words,sep,maxW){const out=[];let row=[],w=0;const sw=g.measureText(sep).width;
+ for(const x of words){const xw=g.measureText(x).width,add=(row.length?sw:0)+xw;if(row.length&&w+add>maxW){out.push(row);row=[];w=0;}w+=(row.length?sw:0)+xw;row.push(x);}if(row.length)out.push(row);return out.length?out:[['']];}
+const ED_LANG_NAMES={ckb:'کوردی (سۆرانی)',kmr:'Kurdî (Kurmancî)',badini:'Kurdî (Badînî)'};
+/** A language's name in that language (Kurdish names are written out; others come from Intl.DisplayNames). */
+function edLangName(code){if(code==='auto')return 'Detect automatically';if(ED_LANG_NAMES[code])return ED_LANG_NAMES[code];
+ try{const n=new Intl.DisplayNames([code],{type:'language'}).of(code);return n&&n!==code?n.charAt(0).toLocaleUpperCase(code)+n.slice(1):code;}catch{return code;}}
+const edSrtTime=t=>{t=Math.max(0,t);const ms=Math.round(t*1000),h=Math.floor(ms/3600000),m=Math.floor(ms/60000)%60,s=Math.floor(ms/1000)%60;return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')},${String(ms%1000).padStart(3,'0')}`;};
+/** SRT text from caption clips (UTF-8, numbered, HH:MM:SS,mmm). */
+function edSrt(clips){return clips.map((c,i)=>`${i+1}\n${edSrtTime(c.start)} --> ${edSrtTime(c.start+c.dur)}\n${String(c.text||'').trim()}\n`).join('\n');}
+/** Cues from an SRT or WebVTT file: [{s,e,text}]. */
+function edParseSubs(raw){const txt=String(raw).replace(/^\uFEFF/,'').replace(/\r\n?/g,'\n'),out=[];
+ const tm=x=>{const m=/(?:(\d+):)?(\d{1,2}):(\d{2})[,.](\d{1,3})/.exec(x);return m?(+(m[1]||0))*3600+(+m[2])*60+(+m[3])+(+m[4].padEnd(3,'0'))/1000:NaN;};
+ for(const block of txt.split(/\n{2,}/)){const ls=block.split('\n'),k=ls.findIndex(l=>l.includes('-->'));if(k<0)continue;const [a,b]=ls[k].split('-->'),s=tm(a),e=tm(b);
+  const text=ls.slice(k+1).join(' ').replace(/<[^>]+>/g,'').replace(/\{\\[^}]*\}/g,'').trim();if(isFinite(s)&&isFinite(e)&&e>s&&text)out.push({s,e,text});}
+ return out;}
 // ---------- green screen ----------
 /** Keys out a colour (in place, RGBA): distance in the colour plane (Cb/Cr) gives transparency; spill takes the
  *  key colour's tint off the edges. Similarity, smoothness and spill are 0-100 as in the panel. */

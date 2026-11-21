@@ -2149,6 +2149,10 @@ button.video-back{border:0;background:transparent;font:var(--type-small)}
 .ed-sec .ed-seg{margin-top:2px}
 .ed-seg.wrap{grid-auto-flow:row;grid-template-columns:repeat(auto-fit,minmax(74px,1fr))}
 .ed-frame.picking canvas{cursor:crosshair}
+.ed-capbox{display:grid;gap:8px;padding:10px;margin-bottom:12px;border-radius:8px;background:var(--ed-field)}
+.ed-capbox .ed-sub{display:flex;align-items:center;gap:6px;margin:0}.ed-capbox .ed-sub svg{width:14px;height:14px}
+.ed-caprow{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:8px;font:var(--type-caption);color:var(--text-2)}
+.ed-caprow select{min-width:0;width:100%}.ed-caprow.two{grid-template-columns:1fr 1fr}
 .ed-curve{margin-top:8px;border-radius:6px;background:var(--ed-field);padding:4px}
 .ed-curve-svg{display:block;width:100%;height:auto;touch-action:none;cursor:copy}
 .ed-curve-svg line{stroke:color-mix(in srgb,var(--text) 12%,transparent);stroke-width:1}.ed-curve-svg line.one{stroke:color-mix(in srgb,var(--text) 30%,transparent);stroke-dasharray:3 3}
