@@ -2149,6 +2149,12 @@ button.video-back{border:0;background:transparent;font:var(--type-small)}
 .ed-sec .ed-seg{margin-top:2px}
 .ed-seg.wrap{grid-auto-flow:row;grid-template-columns:repeat(auto-fit,minmax(74px,1fr))}
 .ed-frame.picking canvas{cursor:crosshair}
+.ed-export-form [hidden]{display:none!important}
+.ed-tools-row{display:flex;flex-wrap:wrap;gap:6px}
+.ed-wheels{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.ed-wheel{display:grid;gap:4px;justify-items:center;font:var(--type-caption)}.ed-wheel b{font-weight:600}.ed-wheel input{width:100%}
+.ed-wheel-svg{width:100%;max-width:96px;aspect-ratio:1;cursor:crosshair;touch-action:none}
+.ed-gcurve .ed-curve-svg{cursor:crosshair}.ed-gcurve circle{fill:var(--text);stroke:var(--bg,#000);stroke-width:1.5;cursor:grab}
+.ed-scopes{position:absolute;left:6px;bottom:6px;z-index:3;display:flex;gap:4px;pointer-events:none}.ed-scopes canvas{height:72px;width:auto;border-radius:4px;background:rgb(0 0 0 / .72);box-shadow:0 0 0 1px rgb(255 255 255 / .12)}
 .ed-capbox{display:grid;gap:8px;padding:10px;margin-bottom:12px;border-radius:8px;background:var(--ed-field)}
 .ed-capbox .ed-sub{display:flex;align-items:center;gap:6px;margin:0}.ed-capbox .ed-sub svg{width:14px;height:14px}
 .ed-caprow{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:8px;font:var(--type-caption);color:var(--text-2)}

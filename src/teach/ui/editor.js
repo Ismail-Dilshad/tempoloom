@@ -333,6 +333,56 @@ const Ed={
  duplicate(){const list=this.picked();if(!list.length)return;this.snapshot();this.sels.clear();
   const made=[];for(const c of list){const start=c.start+c.dur,d={...JSON.parse(JSON.stringify(c)),id:this.uid(),start};d.track=this.place(this.kindOf(c),start,c.dur,c.track);this.p.clips.push(d);made.push(d);this.sels.add(d.id);this.sel=d.id;}this.regroup(made);this.after(true);},
  copy(cut){const list=this.picked();if(!list.length)return;this.clipboard=JSON.parse(JSON.stringify(list.map(c=>({...c,kind:this.kindOf(c)}))));toast(cut?`Cut ${list.length}`:`Copied ${list.length}`);if(cut)this.remove();},
+ // ---------- smart tools: stabilise, remove background, auto reframe (jobs on this computer) ----------
+ toolJobs:{},
+ async runTool(c,kind){const m=this.mediaOf(c);if(!m||this.toolJobs[c.id])return;
+  const label={stabilize:'Stabilising',cutout:'Removing the background',reframe:'Finding the face'}[kind];
+  if(kind==='cutout'&&m.type==='video'){const frames=Math.round((m.dur||c.dur)*30),min=Math.ceil(frames*6.5/60);
+   if(!await ask('Remove the background of this video?',`It works frame by frame on this computer's processor: about ${min} minute${min>1?'s':''} for ${frames} frames. Photos take a few seconds.`,'Start'))return;}
+  const blob=await this.get(m.id);if(!blob)return toast('The file is not in this browser any more.',true);
+  this.toolJobs[c.id]={kind,label,progress:null,note:''};this.drawProps();
+  try{const r=await fetch(withKey(`/api/editor/tool?kind=${kind}&name=${encodeURIComponent(m.name)}${kind==='reframe'?'&aspect='+encodeURIComponent(this.p.ratio):''}`),{method:'POST',body:blob});
+   let st=await r.json().catch(()=>({}));if(!r.ok)throw new Error(st.error||'Could not start');
+   while(st.state==='running'){await new Promise(res=>setTimeout(res,1500));const q=await fetch(withKey('/api/editor/tool/'+st.id));st=await q.json();this.toolJobs[c.id]={...this.toolJobs[c.id],progress:st.progress,note:st.note||''};if(this.sel===c.id)this.drawProps();}
+   if(st.state==='error')throw new Error(st.error||'The tool stopped');
+   const clip=this.clip(c.id);if(!clip)return;
+   if(kind==='reframe')this.applyReframe(clip,st.result.track);
+   else{const f=await fetch(withKey('/api/editor/tool/'+st.id+'/file'));if(!f.ok)throw new Error('Could not get the result');const out=await f.blob();
+    const base=m.name.replace(/\.[a-z0-9]{2,5}$/i,''),ext=out.type.includes('png')?'png':out.type.includes('webm')?'webm':'mp4';
+    const [nm]=await this.importFiles([new File([out],`${base} (${kind==='stabilize'?'steady':'cut out'}).${ext}`,{type:out.type})]);
+    if(nm){this.snapshot();clip.media=nm.id;this.els[clip.id]?.pause?.();delete this.els[clip.id];this.after(true);}
+    toast(kind==='stabilize'?`Stabilised${st.note?' · '+st.note:''}`:'Background removed');}
+   fetch(withKey('/api/editor/tool/'+st.id),{method:'DELETE'}).catch(()=>{});
+  }catch(e){toast(e.message,true);}
+  finally{delete this.toolJobs[c.id];this.drawProps();}},
+ /** Auto reframe: the clip fills the frame and follows the face (x, and y when there is room), with smooth keyframes every half second. */
+ applyReframe(c,track){const m=this.mediaOf(c),[W,H]=this.base(),s=this.src(c),fit=Math.min(W/s.sw,H/s.sh),cover=Math.max(W/s.sw,H/s.sh),Dw=s.sw*cover,Dh=s.sh*cover;
+  const maxX=Math.max(0,(Dw-W)/(2*W)),maxY=Math.max(0,(Dh-H)/(2*H)),pts=(track||[]).filter(p=>p.face&&p.x!=null);if(!pts.length)return toast('No face was found to follow.');
+  // face position in the cropped picture (0..1), averaged over 1.5 s around each moment
+  const at=src=>{const near=pts.filter(p=>Math.abs(p.time-src)<=.75),use=near.length?near:[pts.reduce((a,b)=>Math.abs(b.time-src)<Math.abs(a.time-src)?b:a)];
+   const fx=use.reduce((a,p)=>a+p.x,0)/use.length,fy=use.reduce((a,p)=>a+(p.y??.5),0)/use.length;return [((fx*(m.w||1))-s.sx)/s.sw,((fy*(m.h||1))-s.sy)/s.sh];};
+  this.snapshot();c.scale=cover/fit;if(c.kf){delete c.kf.scale;delete c.kf.x;delete c.kf.y;}
+  const xs=[],ys=[];for(let t=0;t<=c.dur+1e-6;t+=.5){const [fx,fy]=at(this.srcAt(c,c.start+Math.min(t,c.dur)));xs.push({t:Math.min(t,c.dur),v:Math.round(edClamp(-(fx-.5)*Dw/W,-maxX,maxX)*1000)/1000});ys.push({t:Math.min(t,c.dur),v:Math.round(edClamp(-(fy-.5)*Dh/H,-maxY,maxY)*1000)/1000});}
+  const thin=f=>f.filter((k,i)=>i===0||i===f.length-1||Math.abs(k.v-f[i-1].v)>.004||Math.abs(k.v-f[i+1].v)>.004);
+  c.kf=c.kf||{};const fx=thin(xs);if(fx.length>1)c.kf.x=fx;else{delete c.kf.x;c.x=fx[0]?.v||0;}
+  if(maxY>0.001){const fy=thin(ys);if(fy.length>1)c.kf.y=fy;else{delete c.kf.y;c.y=fy[0]?.v||0;}}else{delete c.kf.y;c.y=0;}
+  if(!Object.keys(c.kf).length)delete c.kf;this.after(true);toast('Reframed: the picture follows the face');},
+ /** Paste attributes (as in Premiere): the copied clip's settings, by group, onto every selected clip of a kind that has them. */
+ pasteAttributes(groups){const src=this.clipboard?.[0];if(!src)return toast('Copy a clip first (Ctrl+C).');const list=this.picked().filter(c=>c.id!==src.id);if(!list.length)return toast('Select the clips to paste onto.');
+  this.snapshot();const cp=v=>v===undefined?undefined:JSON.parse(JSON.stringify(v));let n=0;
+  for(const c of list){const visual=this.kindOf(c)!=='audio';
+   const set=(keys)=>{for(const k of keys){if(src[k]===undefined)delete c[k];else c[k]=cp(src[k]);}};
+   if(groups.transform&&visual)set(['scale','x','y','rotate','flipH','flipV','crop']);
+   if(groups.opacity&&visual)set(['opacity','blend']);
+   if(groups.colour&&visual&&c.text===undefined&&!c.sticker)set(['adj','grade']);
+   if(groups.effects&&visual)set(['key','mask']);
+   if(groups.speed&&c.media&&src.media){const S=this.srcSpan(c);c.speed=src.speed||1;if(src.ramp){c.ramp=cp(src.ramp);c.rampName=src.rampName;}else{delete c.ramp;delete c.rampName;}c.dur=Math.max(.1,S/(c.speed*(c.ramp?edRampAvg(c.ramp):1)));}
+   if(groups.audio&&c.media)set(['volume','gainDb','duck','fadeIn','fadeOut']);
+   if(groups.text&&c.text!==undefined&&src.text!==undefined)set(['font','size','weight','color','stroke','strokeColor','shadow','box','boxColor','align','spacing','animIn','animOut','animDur','capLook','capStyle','hl','upper']);
+   if(groups.keyframes&&src.kf){const ok=new Set([...(visual?['x','y','scale','rotate','opacity']:[]),...(c.media?['volume']:[])]);c.kf={};
+    for(const [k,f] of Object.entries(src.kf))if(ok.has(k))c.kf[k]=f.filter(x=>x.t<=c.dur).map(x=>({...x}));if(!Object.keys(c.kf).length)delete c.kf;}
+   c.fadeIn=Math.min(c.fadeIn||0,c.dur/2);c.fadeOut=Math.min(c.fadeOut||0,c.dur/2);n++;}
+  this.after(true);toast(`Pasted onto ${n} clip${n>1?'s':''}`);},
  paste(){const cb=this.clipboard;if(!cb?.length)return;this.snapshot();const min=Math.min(...cb.map(c=>c.start)),off=this.time-min;this.sels.clear();
   const made=[];for(const c0 of cb){const {kind,...c}=c0;const d={...JSON.parse(JSON.stringify(c)),id:this.uid(),start:c.start+off};d.track=this.place(kind,d.start,d.dur,this.p.tracks.some(t=>t.id===c.track)?c.track:undefined);this.p.clips.push(d);made.push(d);this.sels.add(d.id);this.sel=d.id;}this.regroup(made);
   this.after(true);},
@@ -468,7 +518,7 @@ const Ed={
   const bl=(a.blur||0)+(extra||0);if(bl)f.push(`blur(${bl*k}px)`);return f.join(' ')||'none';},
  /** One picture, sticker or text at time t, with what a transition adds (alpha, offset, zoom, wipe, blur). */
  /** Does this clip need its own layer (blend mode, green screen or mask)? */
- layered(c){return (c.blend&&c.blend!=='normal')||c.key?.on||(c.mask&&c.mask.shape&&c.mask.shape!=='none');},
+ layered(c){return (c.blend&&c.blend!=='normal')||c.key?.on||(c.mask&&c.mask.shape&&c.mask.shape!=='none')||edGraded(c.grade);},
  /** Draws the clip alone on a layer, keys out its colour, cuts it with its mask, then blends the layer onto the frame. */
  drawLayered(g,c,t,o){
   const [W,H]=this.size(),L=this._layer||(this._layer=document.createElement('canvas'));if(L.width!==W||L.height!==H){L.width=W;L.height=H;}
@@ -478,6 +528,7 @@ const Ed={
   if(c.key?.on&&!this.picking){const hw=(Math.abs(Math.cos(rot))*b.w+Math.abs(Math.sin(rot))*b.h)*k/2,hh=(Math.abs(Math.sin(rot))*b.w+Math.abs(Math.cos(rot))*b.h)*k/2;
    const x0=Math.max(0,Math.floor(cx-hw)),y0=Math.max(0,Math.floor(cy-hh)),x1=Math.min(W,Math.ceil(cx+hw)),y1=Math.min(H,Math.ceil(cy+hh));
    if(x1>x0&&y1>y0){const im=lg.getImageData(x0,y0,x1-x0,y1-y0);edKey(im.data,c.key);lg.putImageData(im,x0,y0);}}
+  if(edGraded(c.grade)){const lut=this.gradeLut(c.grade);if(lut){const out=EdGL.apply(L,lut);if(out){lg.save();lg.setTransform(1,0,0,1,0,0);lg.globalCompositeOperation='copy';lg.drawImage(out,0,0);lg.restore();}}}
   const mk=c.mask;
   if(mk&&mk.shape&&mk.shape!=='none'){lg.save();lg.globalCompositeOperation=mk.invert?'destination-out':'destination-in';lg.translate(cx,cy);lg.rotate(rot);lg.scale(k,k);
    const mw=b.w*(mk.w??.8),mh=b.h*(mk.h??.8),mx=b.w*(mk.x||0),my=b.h*(mk.y||0),fe=(mk.feather||0)*this.k();
@@ -514,7 +565,7 @@ const Ed={
   else if(type==='blur'){d(A,{blur:p*30});d(B,{blur:(1-p)*30,alpha:edEase(p)});}
   else{d(A,{});d(B,{alpha:p});}
  },
- draw(){
+ draw(){if(this.scopesOn&&!this.exporting)requestAnimationFrame(()=>this.drawScopes?.());
   const cv=this.dom.canvas;if(!cv||!this.p)return;const [W,H]=this.size();if(cv.width!==W||cv.height!==H){cv.width=W;cv.height=H;}
   const g=cv.getContext('2d'),t=this.time;g.save();g.fillStyle=this.p.bg||'#000';g.fillRect(0,0,W,H);
   // A blurred, enlarged copy of the main picture fills the frame behind it (for a horizontal clip in a vertical video).
@@ -580,14 +631,25 @@ const Ed={
  },
  // ---------- exporting: every frame drawn at its exact time and encoded (WebCodecs), the sound mixed offline;
  // ffmpeg on this computer puts them together. Browsers without WebCodecs record while it plays (exportLive). ----------
+ /** Sound only: the mix of the whole video (or in to out) as WAV, or MP3 made by ffmpeg here. */
+ async exportSound(o){
+  if(this.exporting)return;const span=o.range||{s:0,e:this.end()};this.pause();this.exporting={offline:true,format:o.format,name:o.name};this.drawExport('Mixing the sound…');
+  try{await this.ensureEnvs();let out=edWav(await this.mixAudio(span.s,span.e-span.s));
+   if(o.format==='mp3'){this.drawExport('Making the MP3…');const r=await fetch(withKey('/api/editor/audio?format=mp3'),{method:'POST',body:out});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Could not make the MP3');out=await r.blob();}
+   edSaveFile(out,o.name+'.'+o.format);toast('Sound exported');}
+  catch(e){toast('Export stopped: '+(e?.message||e),true);}finally{this.exporting=null;this.drawExport();}},
  async exportVideo(o){
   if(this.exporting)return;
-  if(o.live)return this.exportLive(o);
+  if(o.format==='mp3'||o.format==='wav')return this.exportSound(o);
+  if(o.live&&o.format!=='gif')return this.exportLive(o);
+  // GIF: at most 15 frames a second and 480 on the short side, so the file stays a sensible size
+  if(o.format==='gif'){o={...o,fps:Math.min(o.fps,15),height:Math.min(o.height,480)};}
+  const quality={standard:.08,high:.12,best:.2}[o.quality||'high']||.12,crf={standard:23,high:19,best:16}[o.quality||'high']||19;
   const scale=o.height/Math.min(...this.base()),fps=o.fps,t0=this.time;
   this.pause();
   this.exporting={scale,format:o.format,fps,name:o.name,studio:!!o.studio,offline:true};
-  const ex=this.exporting,[W,H]=this.size(),cfg=await edVideoConfig(W,H,fps,Math.min(60e6,Math.max(4e6,Math.round(W*H*fps*.12))));
-  if(!cfg){this.exporting=null;return this.exportLive(o);}
+  const ex=this.exporting,[W,H]=this.size(),cfg=await edVideoConfig(W,H,fps,Math.min(80e6,Math.max(4e6,Math.round(W*H*fps*quality))));
+  if(!cfg){this.exporting=null;if(o.format==='gif')return toast('This browser cannot make a GIF (no WebCodecs).',true);return this.exportLive(o);}
   this.pick(null);this.drawTimeline();this.drawProps();this.fit();this.drawExport('Getting ready…');
   const span=o.range||{s:0,e:this.end()},frames=Math.max(1,Math.ceil((span.e-span.s)*fps-1e-6)),chunks=[];let err=null;
   try{
@@ -608,7 +670,7 @@ const Ed={
    await enc.flush();if(err)throw err;enc.close();
    const ivf=edIvf(chunks,W,H,fps,cfg.codec.startsWith('vp09')?'VP90':'VP80');chunks.length=0;
    this.drawExport(ex.format==='mp4'?'Making the MP4…':'Making the WebM…');
-   const r=await fetch(withKey(`/api/editor/mux?fps=${fps}&format=${ex.format}&v=${ivf.size}`),{method:'POST',body:new Blob([ivf,wav])});
+   const r=await fetch(withKey(`/api/editor/mux?fps=${fps}&format=${ex.format}&crf=${crf}&v=${ivf.size}`),{method:'POST',body:new Blob([ivf,wav])});
    if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Could not make the video');
    if(ex.cancelled)return;
    const out=await r.blob(),name=ex.name+'.'+ex.format;edSaveFile(out,name);toast(`Exported (${frames} frames)`);if(ex.studio)this.toStudio(out,name);
@@ -617,7 +679,20 @@ const Ed={
    this.exporting=null;this.drawExport();this.fit();this.time=Math.min(t0,this.end());this.sync();this.draw();this.drawHead();this.drawTime();}
  },
  /** Before the first frame: the fonts of every text, every picture decoded, every video able to show a frame. */
+ // ---------- colour grading: wheels, curves and an imported look, folded into one 3D table ----------
+ luts:new Map(),lutText:new Map(),
+ /** Imports a .cube look (kept in this browser; projects keep only its id and name). */
+ async importLut(file){const text=await file.text(),parsed=edParseCube(text);if(!parsed)throw new Error('This is not a .cube look (LUT_3D_SIZE and its colours were not found).');
+  const id='lut-'+this.uid();await this.write([['meta','lut:'+id,{name:file.name.replace(/\.cube$/i,''),text}]]);this.lutText.set(id,text);this.luts.set(id,parsed);
+  const list=(await this.read('meta','luts'))||[];list.unshift({id,name:file.name.replace(/\.cube$/i,''),size:parsed.n});await this.write([['meta','luts',list]]);this.lutList=list;return id;},
+ async loadLuts(){this.lutList=(await this.read('meta','luts'))||[];for(const l of this.lutList)if(!this.luts.has(l.id)){const r=await this.read('meta','lut:'+l.id);if(r?.text){this.lutText.set(l.id,r.text);const p=edParseCube(r.text);if(p)this.luts.set(l.id,p);}}return this.lutList;},
+ _gl:new Map(),
+ /** The 33-point table for a grade (cached by its settings). Null while its imported look is still loading. */
+ gradeLut(g){const key=JSON.stringify(g);let t=this._gl.get(key);if(t)return t;
+  const look=g.lut?.id?this.luts.get(g.lut.id):null;if(g.lut?.id&&!look){this.loadLuts().then(()=>{if(!this.playing)this.draw();});return null;}
+  t=edBuildLut(g,look);this._gl.set(key,t);if(this._gl.size>40)this._gl.delete(this._gl.keys().next().value);return t;},
  async exportReady(){
+  if(this.p.clips.some(c=>c.grade?.lut?.id))await this.loadLuts();
   await document.fonts?.ready;
   const waits=[];
   for(const c of this.p.clips){
@@ -801,7 +876,9 @@ const Ed={
   const p=this.readProject(id);if(!p)throw new Error('That project is gone');
   const used=new Set(p.clips.map(c=>c.media).filter(Boolean)),files=[],media=[];
   for(const m of this.media.filter(m=>used.has(m.id))){const b=await this.get(m.id);if(!b)continue;files.push(['media/'+m.id+edExt(m.name),b]);media.push({...m,mime:b.type||''});}
-  files.unshift(['project.json',new Blob([JSON.stringify({app:'tempoloom-editor',v:1,project:p,media})],{type:'application/json'})]);
+  const lutIds=new Set(p.clips.map(c=>c.grade?.lut?.id).filter(Boolean)),luts=[];await this.loadLuts();
+  for(const id of lutIds){const t=this.lutText.get(id);if(t){files.push(['luts/'+id+'.cube',new Blob([t])]);luts.push(this.lutList.find(l=>l.id===id)||{id,name:id});}}
+  files.unshift(['project.json',new Blob([JSON.stringify({app:'tempoloom-editor',v:1,project:p,media,luts})],{type:'application/json'})]);
   return edZip(files);
  },
  /** Opens a project file as a new project. Files already here (same id and size) are not stored twice. */
@@ -818,6 +895,9 @@ const Ed={
    await this.put(id,blob);this.urls[id]=URL.createObjectURL(blob);this.media.unshift({...meta,id});map[m.id]=id;
   }
   await this.persist([['meta','media',this.media]]);
+  for(const l of Array.isArray(j.luts)?j.luts:[]){const part=z.get('luts/'+l.id+'.cube');if(!part||!/^lut-[a-z0-9]+$/.test(l.id))continue;const text=await part.text();
+   if(!(await this.read('meta','lut:'+l.id))){await this.write([['meta','lut:'+l.id,{name:l.name,text}]]);const list=(await this.read('meta','luts'))||[];list.unshift({id:l.id,name:l.name,size:edParseCube(text)?.n||0});await this.write([['meta','luts',list]]);}}
+  this.luts.clear();await this.loadLuts();
   const p=j.project;for(const c of p.clips)if(c.media)c.media=map[c.media]||c.media;
   const id=this.create(this.migrate({...p,name:String(p.name||'Imported project').slice(0,80)}));await this.wq;return id;
  },
@@ -936,6 +1016,61 @@ function edParseSubs(raw){const txt=String(raw).replace(/^\uFEFF/,'').replace(/\
  for(const block of txt.split(/\n{2,}/)){const ls=block.split('\n'),k=ls.findIndex(l=>l.includes('-->'));if(k<0)continue;const [a,b]=ls[k].split('-->'),s=tm(a),e=tm(b);
   const text=ls.slice(k+1).join(' ').replace(/<[^>]+>/g,'').replace(/\{\\[^}]*\}/g,'').trim();if(isFinite(s)&&isFinite(e)&&e>s&&text)out.push({s,e,text});}
  return out;}
+// ---------- colour grading helpers ----------
+const edGraded=g=>!!g&&(['lift','gamma','gain'].some(k=>g[k]&&(g[k].l||g[k].x||g[k].y))||['m','r','g','b'].some(k=>g.curves?.[k]?.length>2||g.curves?.[k]?.some(([x,y])=>Math.abs(x-y)>1e-3))||(g.lut?.id&&(g.lut.mix??1)>0));
+/** A smooth curve through points [[x,y],...] that never overshoots (monotone cubic, Fritsch-Carlson). */
+function edCurveFn(pts){const p=[...(pts||[[0,0],[1,1]])].sort((a,b)=>a[0]-b[0]);const n=p.length;if(n<2)return x=>x;
+ const d=[],m=[];for(let i=0;i<n-1;i++)d.push((p[i+1][1]-p[i][1])/((p[i+1][0]-p[i][0])||1e-6));m[0]=d[0];m[n-1]=d[n-2];
+ for(let i=1;i<n-1;i++)m[i]=d[i-1]*d[i]<=0?0:(d[i-1]+d[i])/2;
+ for(let i=0;i<n-1;i++){if(d[i]===0){m[i]=m[i+1]=0;continue;}const a=m[i]/d[i],b=m[i+1]/d[i],s=a*a+b*b;if(s>9){const t=3/Math.sqrt(s);m[i]=t*a*d[i];m[i+1]=t*b*d[i];}}
+ return x=>{if(x<=p[0][0])return p[0][1];if(x>=p[n-1][0])return p[n-1][1];let i=0;while(x>p[i+1][0])i++;const h=p[i+1][0]-p[i][0],t=(x-p[i][0])/h,t2=t*t,t3=t2*t;
+  return (2*t3-3*t2+1)*p[i][1]+(t3-2*t2+t)*h*m[i]+(-2*t3+3*t2)*p[i+1][1]+(t3-t2)*h*m[i+1];};}
+/** A .cube file: {n, data: Float32Array of n^3 RGB, red changing fastest}. */
+function edParseCube(text){let n=0,lo=[0,0,0],hi=[1,1,1];const v=[];
+ for(const raw of String(text).split(/\r?\n/)){const l=raw.trim();if(!l||l[0]==='#')continue;const w=l.split(/\s+/);
+  if(/^LUT_3D_SIZE$/i.test(w[0]))n=+w[1];else if(/^DOMAIN_MIN$/i.test(w[0]))lo=w.slice(1,4).map(Number);else if(/^DOMAIN_MAX$/i.test(w[0]))hi=w.slice(1,4).map(Number);
+  else if(/^[-+0-9.eE]+$/.test(w[0])&&w.length>=3)v.push(+w[0],+w[1],+w[2]);}
+ if(!(n>=2&&n<=129)||v.length<n*n*n*3)return null;const data=new Float32Array(n*n*n*3);for(let i=0;i<data.length;i++){const c=i%3;data[i]=(v[i]-lo[c])/((hi[c]-lo[c])||1);}return {n,data};}
+function edSampleCube(L,r,g,b){const n=L.n,f=x=>Math.min(n-1,Math.max(0,x*(n-1))),R=f(r),G=f(g),B=f(b),r0=Math.floor(R),g0=Math.floor(G),b0=Math.floor(B),r1=Math.min(n-1,r0+1),g1=Math.min(n-1,g0+1),b1=Math.min(n-1,b0+1),fr=R-r0,fg=G-g0,fb=B-b0;
+ const at=(i,j,k,c)=>L.data[((k*n+j)*n+i)*3+c],out=[0,0,0];
+ for(let c=0;c<3;c++){const c00=at(r0,g0,b0,c)*(1-fr)+at(r1,g0,b0,c)*fr,c10=at(r0,g1,b0,c)*(1-fr)+at(r1,g1,b0,c)*fr,c01=at(r0,g0,b1,c)*(1-fr)+at(r1,g0,b1,c)*fr,c11=at(r0,g1,b1,c)*(1-fr)+at(r1,g1,b1,c)*fr;
+  out[c]=(c00*(1-fg)+c10*fg)*(1-fb)+(c01*(1-fg)+c11*fg)*fb;}return out;}
+/** Wheels (lift for shadows, gamma for midtones, gain for highlights: a colour push and a brightness),
+ *  then the curves (master, then red, green, blue), then the imported look at its mix: one 33-point table (RGBA bytes). */
+function edBuildLut(g,look){const N=33,out=new Uint8Array(N*N*N*4);
+ const push=w=>{const x=w?.x||0,y=w?.y||0,s=Math.min(1,Math.hypot(x,y)),a=Math.atan2(y,x);return [0,1,2].map(c=>s*Math.cos(a-c*2*Math.PI/3));};
+ const lp=push(g.lift),mp=push(g.gamma),hp=push(g.gain),ll=g.lift?.l||0,ml=g.gamma?.l||0,hl=g.gain?.l||0;
+ const lift=[0,1,2].map(c=>ll*.25+lp[c]*.12),gain=[0,1,2].map(c=>1+hl*.5+hp[c]*.25),gam=[0,1,2].map(c=>1/Math.max(.2,1+ml*.8+mp[c]*.3));
+ const cv=g.curves||{},M=edCurveFn(cv.m),C=[edCurveFn(cv.r),edCurveFn(cv.g),edCurveFn(cv.b)],mix=look?Math.min(1,Math.max(0,g.lut?.mix??1)):0;
+ const cl=x=>x<0?0:x>1?1:x;
+ for(let b=0;b<N;b++)for(let gg=0;gg<N;gg++)for(let r=0;r<N;r++){let v=[r/(N-1),gg/(N-1),b/(N-1)];
+  v=v.map((x,c)=>Math.pow(cl(x*gain[c]+lift[c]*(1-x)),gam[c]));v=v.map((x,c)=>cl(C[c](cl(M(x)))));
+  if(mix){const l=edSampleCube(look,v[0],v[1],v[2]);v=v.map((x,c)=>x+(l[c]-x)*mix);}
+  const o=((b*N+gg)*N+r)*4;out[o]=Math.round(cl(v[0])*255);out[o+1]=Math.round(cl(v[1])*255);out[o+2]=Math.round(cl(v[2])*255);out[o+3]=255;}
+ return {n:N,data:out};}
+/** The table on the graphics card (WebGL): every pixel of the layer looked up, with trilinear blending. */
+const EdGL={
+ apply(src,lut){try{const gl=this.ctx(src.width,src.height);if(!gl)return null;
+  gl.bindTexture(gl.TEXTURE_2D,this.img);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,src);
+  if(this.lutRef!==lut){gl.bindTexture(gl.TEXTURE_2D,this.lut);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,lut.n*lut.n,lut.n,0,gl.RGBA,gl.UNSIGNED_BYTE,
+   // table rows: green; columns: red + blue*n (red fastest), as edBuildLut writes b,g,r -> reorder to (g)(b,r)
+   this.reorder(lut));this.lutRef=lut;}
+  gl.useProgram(this.prog);gl.uniform1f(this.uN,lut.n);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,this.img);gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,this.lut);
+  gl.viewport(0,0,src.width,src.height);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);return this.canvas;}catch{return null;}},
+ reorder(l){const n=l.n,o=new Uint8Array(n*n*n*4);for(let b=0;b<n;b++)for(let g=0;g<n;g++)for(let r=0;r<n;r++){const s=((b*n+g)*n+r)*4,d=(g*n*n+b*n+r)*4;o[d]=l.data[s];o[d+1]=l.data[s+1];o[d+2]=l.data[s+2];o[d+3]=255;}return o;},
+ ctx(w,h){if(!this.canvas){const c=this.canvas=document.createElement('canvas');const gl=this.gl=c.getContext('webgl',{premultipliedAlpha:true,preserveDrawingBuffer:true});if(!gl)return null;
+   const sh=(t,s)=>{const x=gl.createShader(t);gl.shaderSource(x,s);gl.compileShader(x);return x;},p=this.prog=gl.createProgram();
+   gl.attachShader(p,sh(gl.VERTEX_SHADER,'attribute vec2 a;varying vec2 uv;void main(){uv=(a+1.)/2.;gl_Position=vec4(a,0.,1.);}'));
+   gl.attachShader(p,sh(gl.FRAGMENT_SHADER,`precision highp float;uniform sampler2D img;uniform sampler2D lut;uniform float N;varying vec2 uv;
+    vec3 look(vec3 c){float b=c.b*(N-1.);float b0=floor(b);float b1=min(b0+1.,N-1.);float f=b-b0;float x=c.r*(N-1.)+.5;float y=(c.g*(N-1.)+.5)/N;
+     return mix(texture2D(lut,vec2((x+b0*N)/(N*N),y)).rgb,texture2D(lut,vec2((x+b1*N)/(N*N),y)).rgb,f);}
+    void main(){vec4 s=texture2D(img,uv);if(s.a<=0.){gl_FragColor=vec4(0.);return;}gl_FragColor=vec4(look(clamp(s.rgb,0.,1.))*s.a,s.a);}`));
+   gl.linkProgram(p);gl.useProgram(p);const buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+   const a=gl.getAttribLocation(p,'a');gl.enableVertexAttribArray(a);gl.vertexAttribPointer(a,2,gl.FLOAT,false,0,0);
+   const tex=()=>{const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);for(const [k,v] of [[gl.TEXTURE_MIN_FILTER,gl.LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]])gl.texParameteri(gl.TEXTURE_2D,k,v);return t;};
+   this.img=tex();this.lut=tex();gl.uniform1i(gl.getUniformLocation(p,'img'),0);gl.uniform1i(gl.getUniformLocation(p,'lut'),1);this.uN=gl.getUniformLocation(p,'N');}
+  if(!this.gl)return null;if(this.canvas.width!==w||this.canvas.height!==h){this.canvas.width=w;this.canvas.height=h;}return this.gl;},
+};
 // ---------- green screen ----------
 /** Keys out a colour (in place, RGBA): distance in the colour plane (Cb/Cr) gives transparency; spill takes the
  *  key colour's tint off the edges. Similarity, smoothness and spill are 0-100 as in the panel. */

@@ -1,5 +1,23 @@
 # Changelog
 
+## 10.4.0: The Editor grows up: grading, smart tools, presets
+
+- **Colour grading** (a Colour tab, as in DaVinci Resolve): colour wheels for shadows, midtones and
+  highlights (a colour push and a brightness), curves (all, red, green, blue), and imported `.cube`
+  looks with an intensity. Folded into one 33-point table and applied on the graphics card (WebGL),
+  so the player stays fast and the export is the same. **Scopes** by the player: waveform,
+  vectorscope (with the skin-tone line) and RGB histogram. Looks travel inside project files.
+- **Smart tools**, on this computer, from a clip's Basic tab or its right-click menu: **Stabilise**
+  (the studio's stabiliser; the steady copy replaces the clip, keeping its timing, grade and
+  keyframes), **Remove background** (photos in seconds; videos frame by frame into a transparent
+  WebM, with an estimate first: about 6 s a frame on the processor), **Auto reframe** (fills the
+  frame and keyframes the picture to follow the face).
+- **Export presets**: TikTok · Reels · Shorts, YouTube 1080p and 4K, Instagram 4:5, square, GIF, and
+  sound only; a Quality choice (smaller file, high, best); GIF (looping, its own palette) and MP3 or
+  WAV of the mix. A preset whose shape differs from the video says so.
+- **Paste attributes** (Ctrl+Alt+V, or the clip menu): the copied clip's transform, opacity and
+  blend, colour, key and mask, speed, sound or text style onto the selected clips, by group.
+
 ## 10.3.0: A fuller Editor: exact export, room to save, timeline, sound, effects and speed tools
 
 - **Frame-accurate export**: the Editor draws every frame at its exact time and encodes it in the

@@ -184,7 +184,7 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
    // The editor draws every frame itself and encodes it (VP8/VP9 in IVF), then mixes the sound (WAV). Both come
    // in one upload, the video first (`v` bytes); ffmpeg puts them together as an MP4 (H.264/AAC) or a WebM.
    if(m==='POST'&&p==='/api/editor/mux'){
-    const fps=Math.min(60,Math.max(12,Number(url.searchParams.get('fps'))||30)),format=url.searchParams.get('format')==='webm'?'webm':'mp4';
+    const fps=Math.min(60,Math.max(5,Number(url.searchParams.get('fps'))||30)),fq=url.searchParams.get('format'),format=fq==='webm'?'webm':fq==='gif'?'gif':'mp4',crf=String(Math.min(30,Math.max(14,Number(url.searchParams.get('crf'))||19)));
     const vBytes=Number(url.searchParams.get('v'));if(!Number.isSafeInteger(vBytes)||vBytes<=32)throw new HttpError(400,'The video part is missing');
     const dir=path.join(ROOT,process.env.VIDEO_WORKSPACE||'workspace','cache','editor-export',randomUUID());await fsp.mkdir(dir,{recursive:true});
     const both=path.join(dir,'in.bin'),vid=path.join(dir,'in.ivf'),wav=path.join(dir,'in.wav'),out=path.join(dir,'out.'+format);let size=0;
@@ -193,14 +193,39 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
      await pipeline(req,limit,fs.createWriteStream(both));if(size<=vBytes+44)throw new HttpError(400,'The upload is incomplete');
      await pipeline(fs.createReadStream(both,{start:0,end:vBytes-1}),fs.createWriteStream(vid));
      await pipeline(fs.createReadStream(both,{start:vBytes}),fs.createWriteStream(wav));await fsp.rm(both,{force:true});
-     const codec=format==='mp4'?['-c:v','libx264','-preset','veryfast','-crf','19','-pix_fmt','yuv420p','-r',String(fps),'-c:a','aac','-b:a','192k','-movflags','+faststart']:['-c:v','copy','-c:a','libopus','-b:a','160k'];
-     await promisify(execFile)(ffmpeg,['-y','-hide_banner','-loglevel','error','-i',vid,'-i',wav,'-map','0:v:0','-map','1:a:0',...codec,out],{maxBuffer:1<<24,windowsHide:true});
-     const st=await fsp.stat(out);res.writeHead(200,{'content-type':format==='mp4'?'video/mp4':'video/webm','content-length':String(st.size),'cache-control':'no-store'});
+     // GIF: one palette made for this video (better colours than the web palette), looping, no sound
+     if(format==='gif')await promisify(execFile)(ffmpeg,['-y','-hide_banner','-loglevel','error','-i',vid,'-vf',`fps=${fps},split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4`,'-loop','0',out],{maxBuffer:1<<24,windowsHide:true});
+     else{const codec=format==='mp4'?['-c:v','libx264','-preset','veryfast','-crf',crf,'-pix_fmt','yuv420p','-r',String(fps),'-c:a','aac','-b:a','192k','-movflags','+faststart']:['-c:v','copy','-c:a','libopus','-b:a','160k'];
+      await promisify(execFile)(ffmpeg,['-y','-hide_banner','-loglevel','error','-i',vid,'-i',wav,'-map','0:v:0','-map','1:a:0',...codec,out],{maxBuffer:1<<24,windowsHide:true});}
+     const st=await fsp.stat(out);res.writeHead(200,{'content-type':format==='mp4'?'video/mp4':format==='gif'?'image/gif':'video/webm','content-length':String(st.size),'cache-control':'no-store'});
      await pipeline(fs.createReadStream(out),res);
     }catch(e){if(!res.headersSent)throw e instanceof HttpError?e:new HttpError(500,'Could not make the video: '+(e as Error).message.slice(0,200));}
     finally{await fsp.rm(dir,{recursive:true,force:true}).catch(()=>{});}
     return;
    }
+   // Sound-only export: the editor's WAV mix as an MP3 (ffmpeg, LAME, high VBR quality).
+   if(m==='POST'&&p==='/api/editor/audio'){
+    const dir=path.join(ROOT,process.env.VIDEO_WORKSPACE||'workspace','cache','editor-export',randomUUID());await fsp.mkdir(dir,{recursive:true});
+    const src=path.join(dir,'in.wav'),out=path.join(dir,'out.mp3');let size=0;
+    const limit=new Transform({transform(c:Buffer,_e,cb){size+=c.length;size>MAX_MB*1048576?cb(new HttpError(413,`The sound is over ${MAX_MB} MB`)):cb(null,c);}});
+    try{await pipeline(req,limit,fs.createWriteStream(src));if(size<=44)throw new HttpError(400,'The upload was empty');
+     await promisify(execFile)(ffmpeg,['-y','-hide_banner','-loglevel','error','-i',src,'-c:a','libmp3lame','-q:a','2',out],{maxBuffer:1<<24,windowsHide:true});
+     const st=await fsp.stat(out);res.writeHead(200,{'content-type':'audio/mpeg','content-length':String(st.size),'cache-control':'no-store'});await pipeline(fs.createReadStream(out),res);}
+    catch(e){if(!res.headersSent)throw e instanceof HttpError?e:new HttpError(500,'Could not make the MP3: '+(e as Error).message.slice(0,200));}
+    finally{await fsp.rm(dir,{recursive:true,force:true}).catch(()=>{});}
+    return;}
+   // The Editor's smart tools (stabilise, remove background, auto reframe) as background jobs on this computer.
+   if(m==='POST'&&p==='/api/editor/tool'){const T=await import('../engine/editor-tools.js'),kind=url.searchParams.get('kind');
+    if(kind!=='stabilize'&&kind!=='cutout'&&kind!=='reframe')throw new HttpError(400,'kind is stabilize, cutout or reframe');
+    const ext=(/\.[a-z0-9]{2,5}$/i.exec(url.searchParams.get('name')||'')?.[0]||'.mp4').toLowerCase(),dir=await T.newDir(),src=path.join(dir,'source'+ext);let size=0;
+    const limit=new Transform({transform(c:Buffer,_e,cb){size+=c.length;size>MAX_MB*1048576?cb(new HttpError(413,`The file is over ${MAX_MB} MB`)):cb(null,c);}});
+    await pipeline(req,limit,fs.createWriteStream(src));if(!size)throw new HttpError(400,'The upload was empty');
+    const aspect=url.searchParams.get('aspect');return json(res,T.status(T.start(kind,src,dir,{...(aspect&&/^(9:16|16:9|1:1|4:5)$/.test(aspect)?{aspect}:{})}).id));}
+   const tj=/^\/api\/editor\/tool\/([a-f0-9-]{36})(\/file)?$/.exec(p);
+   if(tj){const T=await import('../engine/editor-tools.js'),id=tj[1]!;
+    if(m==='GET'&&!tj[2]){const st=T.status(id);if(!st)throw new HttpError(404,'No such job');return json(res,st);}
+    if(m==='GET'&&tj[2]){const f=T.jobFile(id);if(!f)throw new HttpError(404,'Not ready');const st=await fsp.stat(f.file);res.writeHead(200,{'content-type':f.mime,'content-length':String(st.size),'cache-control':'no-store'});await pipeline(fs.createReadStream(f.file),res);return;}
+    if(m==='DELETE'){await T.forget(id);return json(res,{ok:true});}}
    if(m==='GET'&&p==='/api/tool-results'){const TR=await import('./tool-runner.js');return json(res,{results:TR.results(),active:TR.activeRuns()});}
    const tres=/^\/api\/tool-results\/([a-f0-9]{12})$/.exec(p);
    if(m==='DELETE'&&tres){const TR=await import('./tool-runner.js');try{return json(res,await TR.deleteResult(tres[1]!));}catch(e){throw new HttpError(404,(e as Error).message);}}

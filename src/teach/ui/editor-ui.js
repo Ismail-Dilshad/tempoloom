@@ -96,6 +96,21 @@ Object.assign(Ed,{
     this.drawStt();});}
   clearTimeout(this._sttT);if(busy)this._sttT=setTimeout(()=>this.drawStt(true),1500);
  },
+ /** Scopes of the frame in the player: luma waveform, vectorscope (Cb/Cr) and RGB histogram. */
+ drawScopes(){const box=this.dom.root?.querySelector('.ed-scopes');if(!box||box.hidden||!this.dom.canvas)return;
+  const S=this._scope||(this._scope=document.createElement('canvas'));S.width=256;S.height=144;const sg=S.getContext('2d',{willReadFrequently:true});sg.drawImage(this.dom.canvas,0,0,256,144);const d=sg.getImageData(0,0,256,144).data;
+  const wv=box.querySelector('[data-scope=wave]').getContext('2d'),vc=box.querySelector('[data-scope=vector]').getContext('2d'),hs=box.querySelector('[data-scope=hist]').getContext('2d');
+  const W=new Float32Array(256*128),V=new Float32Array(128*128),Hr=new Float32Array(256),Hg=new Float32Array(256),Hb=new Float32Array(256);
+  for(let y=0;y<144;y++)for(let x=0;x<256;x++){const i=(y*256+x)*4,r=d[i],g=d[i+1],b=d[i+2],Y=.2126*r+.7152*g+.0722*b;W[(127-Math.round(Y/2))*256+x]++;
+   const cb=-.1146*r-.3854*g+.5*b,cr=.5*r-.4542*g-.0458*b;V[Math.round(64-cr/2.2)*128+Math.round(64+cb/2.2)]++;Hr[r]++;Hg[g]++;Hb[b]++;}
+  const paint=(ctx,w,h,A,col)=>{const im=ctx.createImageData(w,h);for(let i=0;i<w*h;i++){const v=Math.min(255,A[i]*60);im.data[i*4]=col[0]*v/255;im.data[i*4+1]=col[1]*v/255;im.data[i*4+2]=col[2]*v/255;im.data[i*4+3]=v?255:0;}ctx.clearRect(0,0,w,h);ctx.putImageData(im,0,0);};
+  paint(wv,256,128,W,[120,255,160]);wv.strokeStyle='rgba(255,255,255,.18)';for(const l of [0,.25,.5,.75,1]){wv.beginPath();wv.moveTo(0,127-l*127);wv.lineTo(256,127-l*127);wv.stroke();}
+  paint(vc,128,128,V,[255,255,255]);vc.strokeStyle='rgba(255,255,255,.25)';vc.beginPath();vc.arc(64,64,58,0,Math.PI*2);vc.moveTo(64,6);vc.lineTo(64,122);vc.moveTo(6,64);vc.lineTo(122,64);vc.stroke();
+  // skin tone line (about 123 degrees in this view)
+  vc.strokeStyle='rgba(255,180,120,.5)';vc.beginPath();vc.moveTo(64,64);vc.lineTo(64-56*Math.cos(.95),64-56*Math.sin(.95));vc.stroke();
+  hs.clearRect(0,0,256,128);const mx=Math.max(1,...Hr,...Hg,...Hb);hs.globalCompositeOperation='lighter';
+  for(const [A,col] of [[Hr,'rgba(255,60,60,.8)'],[Hg,'rgba(60,255,90,.8)'],[Hb,'rgba(70,120,255,.8)']]){hs.fillStyle=col;hs.beginPath();hs.moveTo(0,128);for(let i=0;i<256;i++)hs.lineTo(i,128-Math.sqrt(A[i]/mx)*126);hs.lineTo(255,128);hs.fill();}
+  hs.globalCompositeOperation='source-over';},
  drawHead(){const h=this.dom.head;if(h)h.style.transform=`translateX(${this.time*this.zoom}px)`;
   const sc=this.dom.scroll;if(this.playing&&sc){const x=this.time*this.zoom;if(x>sc.scrollLeft+sc.clientWidth-80)sc.scrollLeft=x-80;}},
  drawExport(msg){const o=this.dom.exportOverlay;if(!o)return;o.hidden=!this.exporting;const b=o.querySelector('b');if(b&&msg)b.textContent=msg;},
@@ -162,7 +177,7 @@ Object.assign(Ed,{
   const sec=(title,body,reset)=>`<section class="ed-sec"><header><h4>${title}</h4>${reset?`<button type="button" class="iconbtn sm" data-reset="${reset}" aria-label="Reset ${title}" data-tooltip="Reset">${I.refresh}</button>`:''}</header>${body}</section>`;
   const seg=(attr,list,val)=>`<div class="ed-seg">${list.map(([v,l])=>`<button type="button" data-${attr}="${v}" aria-pressed="${val===v}">${l}</button>`).join('')}</div>`;
   const kind=!c?'':c.text!==undefined?'text':c.sticker?'sticker':this.kindOf(c)==='audio'?'audio':m?.type||'video';
-  const tabs=!c?[['details','Details']]:kind==='text'?[['text','Text'],['anim','Animation'],['basic','Basic']]:kind==='sticker'?[['sticker','Sticker'],['anim','Animation'],['basic','Basic']]:kind==='audio'?[['audio','Audio'],['speed','Speed']]:kind==='image'?[['basic','Basic'],['adjust','Adjust'],['mask','Mask']]:[['basic','Basic'],['adjust','Adjust'],['mask','Mask'],['audio','Audio'],['speed','Speed']];
+  const tabs=!c?[['details','Details']]:kind==='text'?[['text','Text'],['anim','Animation'],['basic','Basic']]:kind==='sticker'?[['sticker','Sticker'],['anim','Animation'],['basic','Basic']]:kind==='audio'?[['audio','Audio'],['speed','Speed']]:kind==='image'?[['basic','Basic'],['adjust','Adjust'],['colour','Colour'],['mask','Mask']]:[['basic','Basic'],['adjust','Adjust'],['colour','Colour'],['mask','Mask'],['audio','Audio'],['speed','Speed']];
   if(!tabs.some(([id])=>id===this.ptab))this.ptab=tabs[0][0];
   const t=this.ptab,locked=c&&this.trackOf(c)?.locked;let body='';
   const fades=()=>sec('Fade',`${row('fadeIn','Fade in',c.fadeIn||0,{min:0,max:Math.min(5,+(c.dur/2).toFixed(1)),step:.1,suffix:'s'})}${row('fadeOut','Fade out',c.fadeOut||0,{min:0,max:Math.min(5,+(c.dur/2).toFixed(1)),step:.1,suffix:'s'})}`);
@@ -192,6 +207,9 @@ Object.assign(Ed,{
      ${row('rotate','Rotate',cur('rotate'),{min:-180,max:180,suffix:'°',slider:false})}
      ${media?`<div class="ed-row"><label>Flip</label><div class="ed-ctl"><button type="button" class="ed-tool" data-flip="flipH" aria-pressed="${!!c.flipH}">${I.flipH} Mirror</button><button type="button" class="ed-tool" data-flip="flipV" aria-pressed="${!!c.flipV}">${I.flipV} Flip</button></div></div>`:''}`,'transform')+
     (media?sec('Crop',`${['l','t','r','b'].map(s=>row('crop'+s,{l:'Left',t:'Top',r:'Right',b:'Bottom'}[s],cr[s]||0,{min:0,max:45,unit:'pct',suffix:'%'})).join('')}`,'crop'):'')+
+    (media&&c.media?sec('Smart tools',this.toolJobs[c.id]?`<div class="ed-note"><span class="spin"></span> ${esc(this.toolJobs[c.id].label)}…${this.toolJobs[c.id].progress!=null?` ${Math.round(this.toolJobs[c.id].progress*100)}%`:''}<br><small>${esc(this.toolJobs[c.id].note||'Working on this computer; you can keep editing.')}</small></div>`:
+     `<div class="ed-tools-row">${m?.type==='video'?`<button type="button" class="ed-tool" data-tool="stabilize">${I.wand} Stabilise</button>`:''}<button type="button" class="ed-tool" data-tool="cutout">${I.image} Remove background</button>${m?.type==='video'?`<button type="button" class="ed-tool" data-tool="reframe">${I.crop} Auto reframe</button>`:''}</div>
+     <p class="ed-hint">Stabilise steadies shaky footage. Remove background cuts out the person or object. Auto reframe fills the ${esc(this.p.ratio)} frame and follows the face.</p>`):'')+
     sec('Opacity and blend',row('opacity','Opacity',cur('opacity'),{min:0,max:100,unit:'pct',suffix:'%'})+`<div class="ed-row"><label for="ed-blend">Blend</label><div class="ed-ctl"><select id="ed-blend" data-k="blend" aria-label="Blend mode">${ED_BLENDS.map(([v,l])=>`<option value="${v}" ${(c.blend||'normal')===v?'selected':''}>${l}</option>`).join('')}</select></div></div>`)+(media?fades():'')+
     `<p class="ed-hint">${I.diamond} Keyframes: move the playhead, press the diamond, change the value. It animates between them.</p>`;}
   else if(t==='adjust'){const a=c.adj||{};body=sec('Filter',`<div class="ed-filters small">${ED_FILTERS.map(([id,l,f])=>`<button type="button" class="ed-filter" data-filter="${id}" aria-pressed="${JSON.stringify(a)===JSON.stringify(f)}"><span class="ed-filter-swatch" style="filter:${edCssFilter(f)}"></span><span>${l}</span></button>`).join('')}</div>`)+
@@ -199,6 +217,15 @@ Object.assign(Ed,{
     sec('Green screen',`<div class="ed-row"><label>Remove a colour</label><div class="ed-ctl"><input type="checkbox" role="switch" data-k="key_on" ${c.key?.on?'checked':''} aria-label="Green screen"><button type="button" class="ed-tool" data-key-pick aria-pressed="${this.picking===c.id}">${I.wand} ${this.picking===c.id?'Click the picture…':'Pick from picture'}</button></div></div>
      ${c.key?.on?`<div class="ed-row"><label>Colour</label><div class="ed-ctl"><input type="color" data-k="key_color" value="${esc(c.key.color||'#00b140')}" aria-label="Key colour"></div></div>
       ${row('key_sim','Similarity',c.key.sim??25,{min:0,max:100})}${row('key_smooth','Smoothness',c.key.smooth??10,{min:0,max:100})}${row('key_spill','Spill',c.key.spill??50,{min:0,max:100})}`:''}`);}
+  else if(t==='colour'){const g=c.grade||{},ch=this.curveCh||'m',luts=this.lutList||[];
+   body=sec('Colour wheels',`<div class="ed-wheels">${[['lift','Shadows'],['gamma','Midtones'],['gain','Highlights']].map(([k,l])=>`<div class="ed-wheel" data-wheel="${k}"><b>${l}</b>${edWheelSvg(g[k])}
+     <input type="range" min="-100" max="100" step="1" value="${Math.round((g[k]?.l||0)*100)}" data-wl="${k}" aria-label="${l} brightness"><button type="button" class="ed-link" data-wreset="${k}">Reset</button></div>`).join('')}</div>
+     <p class="ed-hint">Drag the dot towards a colour to tint that range; the slider makes it lighter or darker. Double-click a wheel to reset it.</p>`,'grade')+
+    sec('Curves',`${'<div class="ed-seg">'+[['m','All'],['r','Red'],['g','Green'],['b','Blue']].map(([v,l])=>`<button type="button" data-curvech="${v}" aria-pressed="${ch===v}">${l}</button>`).join('')+'</div>'}
+     <div class="ed-curve ed-gcurve">${edGradeCurveSvg(g.curves?.[ch],ch)}</div><p class="ed-hint">Click the line to add a point, drag it, double-click to remove it.</p>`)+
+    sec('Look (LUT)',`<div class="ed-row"><label>Look</label><div class="ed-ctl"><select data-lut aria-label="Look"><option value="">None</option>${luts.map(l=>`<option value="${l.id}" ${g.lut?.id===l.id?'selected':''}>${esc(l.name)}</option>`).join('')}</select></div></div>
+     ${g.lut?.id?row('lutmix','Intensity',g.lut.mix??1,{min:0,max:100,unit:'pct',suffix:'%'}):''}
+     <div class="ed-row"><label></label><div class="ed-ctl"><button type="button" class="ed-tool" data-lut-import>${I.upload} Import .cube</button><input type="file" accept=".cube" data-lut-file hidden></div></div>`);}
   else if(t==='mask'){const mk=c.mask||{shape:'none'},sh=mk.shape||'none';
    body=sec('Shape',`<div class="ed-seg wrap">${ED_MASKS.map(([v,l])=>`<button type="button" data-mask="${v}" aria-pressed="${sh===v}">${l}</button>`).join('')}</div>`,sh!=='none'?'mask':'')+
     (sh==='none'?`<p class="ed-hint">A mask shows only part of the clip: a box, an ellipse, or one side of a line. Feather softens its edge.</p>`:
@@ -239,7 +266,8 @@ Object.assign(Ed,{
     let v=inp.type==='checkbox'?inp.checked:inp.type==='range'||inp.type==='number'?Number(inp.value):inp.value;
     if(inp.type==='number'&&!Number.isFinite(v))return;
     if(u!=='raw')v=conv[u][1](v);
-    if(k==='text'&&c.words?.length){c.text=v;this.retime(c,v);}else if(k==='speed')setSpeed(v);else if(k==='duckdb'){c.duck={db:-edClamp(v,3,30)};this._dk=null;}
+    if(k==='lutmix'){c.grade={...(c.grade||{}),lut:{...(c.grade?.lut||{}),mix:v}};}
+    else if(k==='text'&&c.words?.length){c.text=v;this.retime(c,v);}else if(k==='speed')setSpeed(v);else if(k==='duckdb'){c.duck={db:-edClamp(v,3,30)};this._dk=null;}
     else if(k.startsWith('key_'))c.key={color:'#00b140',sim:25,smooth:10,spill:50,...(c.key||{}),[k.slice(4)]:v};
     else if(k.startsWith('mask_'))c.mask={...(c.mask||{shape:'rect'}),[k.slice(5)]:v};else if(k.startsWith('crop'))c.crop={...(c.crop||{}),[k.slice(4)]:edClamp(v,0,.45)};else if(k.startsWith('adj_'))c.adj={...(c.adj||{}),[k.slice(4)]:v};
     else if(ED_KFKEYS.has(k))this.setVal(c,k,v);else c[k]=v;
@@ -249,6 +277,7 @@ Object.assign(Ed,{
   });
   const segs={align:'align',animIn:'animIn',animOut:'animOut'};
   for(const [attr,key] of Object.entries(segs))el.querySelectorAll(`[data-${attr}]`).forEach(b=>b.onclick=()=>{this.snapshot();c[key]=b.dataset[attr];this.save();this.drawProps();this.draw();});
+  el.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>this.runTool(c,b.dataset.tool));
   el.querySelectorAll('[data-flip]').forEach(b=>b.onclick=()=>{this.snapshot();c[b.dataset.flip]=!c[b.dataset.flip];this.save();this.drawProps();this.draw();});
   el.querySelectorAll('[data-speed]').forEach(b=>b.onclick=()=>{this.snapshot();setSpeed(Number(b.dataset.speed));this.after(true);});
   el.querySelectorAll('[data-ramp]').forEach(b=>b.onclick=()=>{const id=b.dataset.ramp;if(id==='custom')return;const r=ED_RAMPS.find(x=>x[0]===id);this.setRamp(c,r?r[2].map(x=>[...x]):null);if(r)c.rampName=id;else delete c.rampName;this.save();this.drawProps();});
@@ -258,7 +287,7 @@ Object.assign(Ed,{
   el.querySelectorAll('[data-reshape]').forEach(b=>b.onclick=()=>{this.snapshot();c.sticker={...c.sticker,shape:b.dataset.reshape};this.after(true);});
   el.querySelectorAll('[data-reemoji]').forEach(b=>b.onclick=()=>{this.snapshot();c.sticker={...c.sticker,emoji:b.dataset.reemoji};this.after(true);});
   el.querySelectorAll('[data-reset]').forEach(b=>b.onclick=()=>{this.snapshot();const r=b.dataset.reset;
-   if(r==='transform'){Object.assign(c,{scale:1,x:0,y:0,rotate:0,flipH:false,flipV:false});if(c.kf){for(const k of ['scale','x','y','rotate'])delete c.kf[k];}}else if(r==='crop')delete c.crop;else if(r==='mask')delete c.mask;else if(r==='adjust')delete c.adj;else setSpeed(1);this.after(true);});
+   if(r==='transform'){Object.assign(c,{scale:1,x:0,y:0,rotate:0,flipH:false,flipV:false});if(c.kf){for(const k of ['scale','x','y','rotate'])delete c.kf[k];}}else if(r==='crop')delete c.crop;else if(r==='mask')delete c.mask;else if(r==='grade')delete c.grade;else if(r==='adjust')delete c.adj;else setSpeed(1);this.after(true);});
   const det=$('[data-detach]',el);if(det)det.onclick=()=>this.detach(c);
   const busy=b=>{b.disabled=true;b.innerHTML='<span class="spin"></span> Measuring…';};
   const ld=$('[data-loud]',el);if(ld)ld.onclick=()=>{busy(ld);this.matchLoudness([c]).finally(()=>this.drawProps());};
@@ -272,6 +301,21 @@ Object.assign(Ed,{
    const all=this.p.clips.filter(x=>x!==c&&x.words?.length);for(const x of all)for(const k of keys){if(c[k]===undefined)delete x[k];else x[k]=c[k];}
    // Arabic-script captions keep a font that has every letter
    for(const x of all)if(edArabicScript(x.text)&&!edArabicScript(c.text))x.font='Vazirmatn';this.after(true);toast(`Used on ${all.length} caption${all.length===1?'':'s'}`);};
+  // colour grading
+  const setG=(f,snap=true)=>{if(snap)this.snapshot();c.grade={...(c.grade||{})};f(c.grade);if(!edGraded(c.grade))delete c.grade;this.save();this.draw();};
+  el.querySelectorAll('[data-wheel]').forEach(w=>{const k=w.dataset.wheel,svg=w.querySelector('svg');
+   const at=e=>{const r=svg.getBoundingClientRect();let x=((e.clientX-r.left)/r.width-.5)*2,y=-((e.clientY-r.top)/r.height-.5)*2;const d=Math.hypot(x,y);if(d>1){x/=d;y/=d;}return [Math.round(x*100)/100,Math.round(y*100)/100];};
+   svg.onpointerdown=e=>{e.preventDefault();this.snapshot();const mv=ev=>{const [x,y]=at(ev);setG(g=>{g[k]={...(g[k]||{}),x,y};},false);svg.outerHTML;w.querySelector('svg').innerHTML=edWheelSvg(c.grade?.[k]).replace(/^<svg[^>]*>|<\/svg>$/g,'');};
+    const up=()=>{window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);this.drawProps();};mv(e);window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);};
+   svg.ondblclick=()=>setG(g=>{delete g[k];});});
+  el.querySelectorAll('[data-wl]').forEach(r=>{r.onpointerdown=r.onfocus=()=>{if(!r._s){this.snapshot();r._s=true;}};r.oninput=()=>setG(g=>{g[r.dataset.wl]={...(g[r.dataset.wl]||{}),l:Number(r.value)/100};},false);r.onchange=()=>{r._s=false;};});
+  el.querySelectorAll('[data-wreset]').forEach(b=>b.onclick=()=>{setG(g=>{delete g[b.dataset.wreset];});this.drawProps();});
+  el.querySelectorAll('[data-curvech]').forEach(b=>b.onclick=()=>{this.curveCh=b.dataset.curvech;this.drawProps();});
+  const gc=$('.ed-gcurve svg',el);if(gc)edGradeCurveWire(gc,c,this.curveCh||'m');
+  const ls=$('[data-lut]',el);if(ls){if(!this.lutList)this.loadLuts().then(()=>{if(this.ptab==='colour')this.drawProps();});
+   ls.onchange=()=>{setG(g=>{if(ls.value)g.lut={id:ls.value,mix:g.lut?.mix??1};else delete g.lut;});this.drawProps();};}
+  const li=$('[data-lut-import]',el),lf=$('[data-lut-file]',el);if(li&&lf){li.onclick=()=>lf.click();
+   lf.onchange=async()=>{const f=lf.files[0];lf.value='';if(!f)return;try{const id=await this.importLut(f);setG(g=>{g.lut={id,mix:1};});toast('Look imported');this.drawProps();}catch(e){toast(e.message,true);}};}
   el.querySelectorAll('[data-mask]').forEach(b=>b.onclick=()=>{this.snapshot();const v=b.dataset.mask;if(v==='none')delete c.mask;else c.mask={w:.8,h:.8,x:0,y:0,feather:0,...(c.mask||{}),shape:v};this.after(true);});
   el.querySelectorAll('[data-ease]').forEach(b=>b.onclick=()=>this.setKfEase(c,b.dataset.ease));
   const kp=$('[data-key-pick]',el);if(kp)kp.onclick=()=>{this.picking=this.picking===c.id?null:c.id;this.dom.frame?.classList.toggle('picking',!!this.picking);this.drawProps();this.draw();};
@@ -350,26 +394,40 @@ function edRename(btn,id){
  $('form',el).onsubmit=e=>{e.preventDefault();const name=i.value.trim()||'Untitled project';const p=Ed.readProject(id);if(p){p.name=name;Ed.writeProject(p);}if(Ed.p?.id===id)Ed.p.name=name;
   Ed.setList(Ed.list().map(q=>q.id===id?{...q,name}:q));Pop.close();edProjects($('#view'));};
 }
-/** Export: name, resolution, frame rate and format. MP4 is made by ffmpeg on this computer. */
+/** Export: a preset for where it goes, or name, resolution, frame rate, format and quality yourself. */
+const ED_PRESETS=[['custom','Custom',null],['social','TikTok · Reels · Shorts',{ratio:'9:16',res:1080,fps:30,fmt:'mp4',quality:'high'}],['youtube','YouTube 1080p',{ratio:'16:9',res:1080,fps:30,fmt:'mp4',quality:'high'}],
+ ['youtube4k','YouTube 4K',{ratio:'16:9',res:2160,fps:30,fmt:'mp4',quality:'best'}],['insta','Instagram post (4:5)',{ratio:'4:5',res:1080,fps:30,fmt:'mp4',quality:'high'}],['square','Square post (1:1)',{ratio:'1:1',res:1080,fps:30,fmt:'mp4',quality:'high'}],
+ ['gif','GIF (loop, no sound)',{res:480,fps:15,fmt:'gif',quality:'high'}],['sound','Sound only (MP3)',{fmt:'mp3'}]];
 function edExportDialog(){
  if(!Ed.p.clips.length)return toast('Add something to the timeline first.');
- const short=Math.min(...Ed.base()),res=[[720,'720p'],[1080,'1080p'],[1440,'2K'],[2160,'4K']];
+ const short=Math.min(...Ed.base()),res=[[480,'480p'],[720,'720p'],[1080,'1080p'],[1440,'2K'],[2160,'4K']],wc=typeof VideoEncoder!=='undefined';
+ const seg=(attr,list,val)=>`<div class="ed-seg" data-seg="${attr}">${list.map(([v,l])=>`<button type="button" data-${attr}="${v}" aria-pressed="${val===v}">${l}</button>`).join('')}</div>`;
  dialog(`<form class="ed-export-form"><h2>Export</h2>
   <label class="ed-xrow"><span>Name</span><input id="ex-name" value="${esc(Ed.p.name)}" maxlength="80" dir="auto"></label>
-  <div class="ed-xrow"><span>Resolution</span><div class="ed-seg">${res.map(([h,l])=>`<button type="button" data-res="${h}" aria-pressed="${h===1080}">${l}</button>`).join('')}</div></div>
-  <div class="ed-xrow"><span>Frame rate</span><div class="ed-seg">${[24,30,60].map(f=>`<button type="button" data-fps="${f}" aria-pressed="${f===30}">${f} fps</button>`).join('')}</div></div>
-  <div class="ed-xrow"><span>Format</span><div class="ed-seg"><button type="button" data-fmt="mp4" aria-pressed="true">MP4</button><button type="button" data-fmt="webm" aria-pressed="false">WebM</button></div></div>
-  ${Ed.rangeSpan()?`<div class="ed-xrow"><span>Range</span><div class="ed-seg"><button type="button" data-span="range" aria-pressed="true">In to out</button><button type="button" data-span="all" aria-pressed="false">Whole video</button></div></div>`:''}
-  ${typeof VideoEncoder!=='undefined'?`<div class="ed-xrow"><span>Frames</span><div class="ed-seg"><button type="button" data-mode="exact" aria-pressed="true">Exact</button><button type="button" data-mode="live" aria-pressed="false">Real time</button></div></div>`:''}
-  <label class="ed-xrow ed-xcheck"><span>Studio</span><span class="ed-xopt"><input type="checkbox" role="switch" id="ex-studio" checked> Also save it to Studio</span></label>
-  <p class="ed-xnote" id="ex-note"></p>
+  <label class="ed-xrow"><span>Preset</span><select id="ex-preset">${ED_PRESETS.map(([id,l])=>`<option value="${id}">${l}</option>`).join('')}</select></label>
+  <div class="ed-xrow" data-row="fmt"><span>Format</span>${seg('fmt',[['mp4','MP4'],['webm','WebM'],['gif','GIF'],['mp3','MP3'],['wav','WAV']],'mp4')}</div>
+  <div class="ed-xrow" data-row="res"><span>Resolution</span>${seg('res',res,1080)}</div>
+  <div class="ed-xrow" data-row="fps"><span>Frame rate</span>${seg('fps',[[15,'15'],[24,'24'],[30,'30'],[60,'60']],30)}</div>
+  <div class="ed-xrow" data-row="quality"><span>Quality</span>${seg('quality',[['standard','Smaller file'],['high','High'],['best','Best']],'high')}</div>
+  ${Ed.rangeSpan()?`<div class="ed-xrow"><span>Range</span>${seg('span',[['range','In to out'],['all','Whole video']],'range')}</div>`:''}
+  ${wc?`<div class="ed-xrow" data-row="mode"><span>Frames</span>${seg('mode',[['exact','Exact'],['live','Real time']],'exact')}</div>`:''}
+  <label class="ed-xrow ed-xcheck" data-row="studio"><span>Studio</span><span class="ed-xopt"><input type="checkbox" role="switch" id="ex-studio" checked> Also save it to Studio</span></label>
+  <p class="ed-xnote" id="ex-warn" hidden></p><p class="ed-xnote" id="ex-note"></p>
   <div class="ed-xactions"><button type="button" class="btn ghost" data-no>Cancel</button><button class="btn primary" type="submit">${I.down} Export</button></div></form>`);
- const f=$('.ed-export-form'),st={res:1080,fps:30,fmt:'mp4',mode:typeof VideoEncoder!=='undefined'?'exact':'live',span:Ed.rangeSpan()?'range':'all'};
- const note=()=>{const [w,h]=Ed.base(),k=st.res/short,sp=st.span==='range'&&Ed.rangeSpan();$('#ex-note').textContent=`${Math.round(w*k/2)*2} × ${Math.round(h*k/2)*2} · ${edFmt(sp?sp.e-sp.s:Ed.end()).slice(0,5)} · ${st.mode==='exact'?'every frame is drawn exactly; footage with few keyframes can take longer than the video.':'it plays through once while it records; a busy computer can skip frames.'}`;};note();
- f.querySelectorAll('[data-res],[data-fps],[data-fmt],[data-mode],[data-span]').forEach(b=>b.onclick=()=>{const key=b.dataset.res?'res':b.dataset.fps?'fps':b.dataset.fmt?'fmt':b.dataset.mode?'mode':'span';st[key]=key==='res'||key==='fps'?Number(b.dataset[key]):b.dataset[key];
-  b.parentElement.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));note();});
+ const f=$('.ed-export-form'),st={preset:'custom',res:1080,fps:30,fmt:'mp4',quality:'high',mode:wc?'exact':'live',span:Ed.rangeSpan()?'range':'all',ratio:null};
+ const press=()=>f.querySelectorAll('[data-seg]').forEach(g=>{const k=g.dataset.seg;g.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(String(st[k])===b.dataset[k])));});
+ const sync=()=>{const sound=st.fmt==='mp3'||st.fmt==='wav',gif=st.fmt==='gif';
+  for(const r of ['res','fps','quality','mode','studio'])f.querySelector(`[data-row="${r}"]`)?.toggleAttribute('hidden',sound||(gif&&(r==='mode'||r==='studio')));
+  if(gif){st.fps=Math.min(st.fps,15);st.res=Math.min(st.res,480);st.mode='exact';}press();
+  const [w,h]=Ed.base(),k=st.res/short,sp=st.span==='range'&&Ed.rangeSpan(),len=edFmt(sp?sp.e-sp.s:Ed.end()).slice(0,5);
+  $('#ex-note').textContent=sound?`Sound only · ${len} · the same mix you hear, with volumes, fades and ducking.`:`${Math.round(w*k/2)*2} × ${Math.round(h*k/2)*2} · ${st.fps} fps · ${len} · ${gif?'loops, no sound; at most 15 fps and 480p to keep it small.':st.mode==='exact'?'every frame is drawn exactly; footage with few keyframes can take longer than the video.':'it plays through once while it records; a busy computer can skip frames.'}`;
+  const warn=$('#ex-warn');warn.hidden=!(st.ratio&&st.ratio!==Ed.p.ratio);if(!warn.hidden)warn.textContent=`This preset is ${st.ratio}; your video is ${Ed.p.ratio}. Change it under Details → Shape, or export anyway.`;};
+ f.querySelectorAll('[data-seg] button').forEach(b=>b.onclick=()=>{const k=b.closest('[data-seg]').dataset.seg,v=b.dataset[k];st[k]=k==='res'||k==='fps'?Number(v):v;st.preset='custom';st.ratio=null;$('#ex-preset').value='custom';sync();});
+ $('#ex-preset').onchange=e=>{const p=ED_PRESETS.find(x=>x[0]===e.target.value);st.preset=p[0];st.ratio=p[2]?.ratio||null;if(p[2])Object.assign(st,{res:p[2].res??st.res,fps:p[2].fps??st.fps,fmt:p[2].fmt??st.fmt,quality:p[2].quality??st.quality});sync();};
+ sync();
  f.querySelector('[data-no]').onclick=()=>closeDialog();
- f.onsubmit=e=>{e.preventDefault();const name=$('#ex-name').value.trim()||Ed.p.name,studio=$('#ex-studio').checked;closeDialog(true);Ed.exportVideo({name,height:st.res,fps:st.fps,format:st.fmt,studio,live:st.mode==='live',range:st.span==='range'?Ed.rangeSpan():null});};
+ f.onsubmit=e=>{e.preventDefault();const name=$('#ex-name').value.trim()||Ed.p.name,studio=$('#ex-studio').checked&&!['mp3','wav','gif'].includes(st.fmt);closeDialog(true);
+  Ed.exportVideo({name,height:st.res,fps:st.fps,format:st.fmt,quality:st.quality,studio,live:st.mode==='live',range:st.span==='range'?Ed.rangeSpan():null});};
 }
 function edBuild(el){
  const p=Ed.p;
@@ -382,10 +440,10 @@ function edBuild(el){
   <section class="ed-panel ed-lib" aria-label="Library"></section><i class="ed-rz v" data-rz="c1" aria-hidden="true"></i><i class="ed-rz v" data-rz="c2" aria-hidden="true"></i><i class="ed-rz h" data-rz="tl" aria-hidden="true"></i>
   <section class="ed-panel ed-view" aria-label="Player">
    <header class="ed-ph"><span>Player</span><span class="ed-ratio">${esc(p.ratio)}</span></header>
-   <div class="ed-stage"><div class="ed-frame"><canvas aria-label="Preview"></canvas><div class="ed-guides" aria-hidden="true"><i class="g-top"></i><i class="g-right"></i><i class="g-bottom"></i></div></div>
+   <div class="ed-stage"><div class="ed-frame"><canvas aria-label="Preview"></canvas><div class="ed-scopes" ${Ed.scopesOn?'':'hidden'}><canvas data-scope="wave" width="256" height="128" title="Waveform: brightness across the picture"></canvas><canvas data-scope="vector" width="128" height="128" title="Vectorscope: colour and saturation"></canvas><canvas data-scope="hist" width="256" height="128" title="Histogram: red, green, blue levels"></canvas></div><div class="ed-guides" aria-hidden="true"><i class="g-top"></i><i class="g-right"></i><i class="g-bottom"></i></div></div>
     <div class="ed-export" hidden><span class="spin"></span><b>Recording…</b><span>Keep this tab open.</span><button type="button" class="btn small" data-cancel-export>Cancel</button></div></div>
    <div class="ed-controls"><span class="ed-time"></span><button type="button" class="ed-play" data-play></button>
-    <span class="ed-ctl-right"><canvas class="ed-meter" width="72" height="14" role="img" aria-label="Sound level"></canvas><button type="button" class="iconbtn sm" data-frame aria-label="Save frame" data-tooltip="Save this frame as a picture · Shift+E">${I.image}</button><button type="button" class="iconbtn sm" data-guides aria-pressed="${Ed.guides}" aria-label="Safe areas" data-tooltip="Safe areas for TikTok and Reels">${I.safe}</button><button type="button" class="iconbtn sm" data-full aria-label="Full screen" data-tooltip="Full screen">${I.expand}</button></span></div>
+    <span class="ed-ctl-right"><canvas class="ed-meter" width="72" height="14" role="img" aria-label="Sound level"></canvas><button type="button" class="iconbtn sm" data-scopes aria-pressed="${!!Ed.scopesOn}" aria-label="Scopes" data-tooltip="Scopes: waveform, vectorscope, histogram">${I.chart}</button><button type="button" class="iconbtn sm" data-frame aria-label="Save frame" data-tooltip="Save this frame as a picture · Shift+E">${I.image}</button><button type="button" class="iconbtn sm" data-guides aria-pressed="${Ed.guides}" aria-label="Safe areas" data-tooltip="Safe areas for TikTok and Reels">${I.safe}</button><button type="button" class="iconbtn sm" data-full aria-label="Full screen" data-tooltip="Full screen">${I.expand}</button></span></div>
   </section>
   <section class="ed-panel ed-props" aria-label="Properties"></section>
   <section class="ed-panel ed-tl" aria-label="Timeline">
@@ -433,6 +491,7 @@ function edBuild(el){
  q('[data-track-add]').onclick=e=>{const b=e.currentTarget,pop=Pop.open(b,Object.entries(ED_KINDS).map(([k,v])=>`<button class="pop-item" data-k="${k}">${I[v.icon]}<span>${k==='video'?'Overlay video track':v.label+' track'}</span></button>`).join(''),{label:'Add a track'});
   if(pop)pop.querySelectorAll('[data-k]').forEach(x=>x.onclick=()=>{Pop.close();Ed.snapshot();Ed.addTrack(x.dataset.k);Ed.drawTimeline();});};
  q('[data-frame]').onclick=()=>Ed.saveFrame();
+ q('[data-scopes]').onclick=e=>{Ed.scopesOn=!Ed.scopesOn;e.currentTarget.setAttribute('aria-pressed',String(Ed.scopesOn));q('.ed-scopes').hidden=!Ed.scopesOn;Ed.draw();};
  q('[data-guides]').onclick=e=>{Ed.guides=!Ed.guides;e.currentTarget.setAttribute('aria-pressed',String(Ed.guides));Ed.dom.frame.classList.toggle('guides',Ed.guides);};
  Ed.dom.frame.classList.toggle('guides',Ed.guides);
  q('[data-full]').onclick=()=>{const st=Ed.dom.stage;document.fullscreenElement?document.exitFullscreen():st.requestFullscreen?.().catch(()=>{});};
@@ -559,6 +618,7 @@ window.addEventListener('keydown',e=>{
  else if(mod&&k==='d')Ed.duplicate();
  else if(mod&&k==='c')Ed.copy();
  else if(mod&&k==='x')Ed.copy(true);
+ else if(mod&&e.altKey&&k==='v')edPasteAttrs();
  else if(mod&&k==='v')Ed.paste();
  else if(mod&&k==='a')Ed.selectAll();
  else if(mod&&k==='g'&&e.shiftKey)Ed.ungroup();
@@ -586,12 +646,14 @@ function edMenu(x,y,items){
 }
 function edClipMenu(x,y,c){
  const m=Ed.mediaOf(c),many=Ed.sels.size>1,video=m?.type==='video'&&!c.asAudio,visual=Ed.kindOf(c)!=='audio';
- edMenu(x,y,[['Split at playhead','split',()=>Ed.split(),false,false,'Ctrl+B'],['Copy','copy',()=>Ed.copy(),false,false,'Ctrl+C'],['Cut','cut',()=>Ed.copy(true),false,false,'Ctrl+X'],
+ edMenu(x,y,[['Split at playhead','split',()=>Ed.split(),false,false,'Ctrl+B'],['Copy','copy',()=>Ed.copy(),false,false,'Ctrl+C'],['Cut','cut',()=>Ed.copy(true),false,false,'Ctrl+X'],['Paste attributes…','sliders',()=>edPasteAttrs(),!Ed.clipboard?.length,false,'Ctrl+Alt+V'],
   [`Paste${Ed.clipboard?.length?` (${Ed.clipboard.length})`:''}`,'copy',()=>Ed.paste(),!Ed.clipboard?.length,false,'Ctrl+V'],['Duplicate','layers',()=>Ed.duplicate(),false,false,'Ctrl+D'],
   ...(many?[['Group','link',()=>Ed.group(),false,false,'Ctrl+G']]:[]),...(Ed.picked().some(x=>x.group)?[['Ungroup','link',()=>Ed.ungroup(),false,false,'Ctrl+Shift+G']]:[]),'-',
   ...(video&&!many?[[c.detached?'Audio is detached':'Detach audio','detach',()=>Ed.detach(c),!!c.detached]]:[]),
   ...(!many&&c.media&&m?.type!=='image'?[['Speed 0.5×','sliders',()=>edSpeed(c,.5)],['Speed 1×','sliders',()=>edSpeed(c,1)],['Speed 2×','sliders',()=>edSpeed(c,2)]]:[]),
   ...(!many&&video?[['Freeze frame','freeze',()=>{Ed.seek(edClamp(Ed.time,c.start,c.start+c.dur-.04));Ed.freeze();},false,false,'Shift+F']]:[]),
+  ...(!many&&video?[['Stabilise','wand',()=>Ed.runTool(c,'stabilize')],['Auto reframe','crop',()=>Ed.runTool(c,'reframe')]]:[]),
+  ...(!many&&c.media&&m?.type!=='audio'&&!c.asAudio?[['Remove background','image',()=>Ed.runTool(c,'cutout')]]:[]),
   ...(!many&&c.media?[['Replace with…','refresh',()=>edReplace(x,y,c)]]:[]),
   ...(!many&&visual?[['Reset position and size','refresh',()=>{Ed.snapshot();Object.assign(c,{scale:1,x:0,y:0,rotate:0,flipH:false,flipV:false});if(c.kf)for(const k of ['scale','x','y','rotate'])delete c.kf[k];Ed.after(true);}]]:[]),
   '-',['Ripple delete','trash',()=>Ed.rippleRemove(),false,false,'Shift+Del'],[many?`Delete ${Ed.sels.size} clips`:'Delete','trash',()=>Ed.remove(),false,true,'Del']]);
@@ -624,6 +686,37 @@ function edCurveWire(svg,c){
  svg.ondblclick=e=>{const pt=e.target.closest('[data-pt]');if(!pt)return;const i=Number(pt.dataset.pt);if(i===0||i===c.ramp.length-1)return;
   const pts=c.ramp.filter((_,j)=>j!==i);c.rampName='custom';Ed.setRamp(c,pts);};
 }
+/** Paste attributes: which groups of the copied clip's settings go onto the selected clips. */
+function edPasteAttrs(){
+ const src=Ed.clipboard?.[0];if(!src)return toast('Copy a clip first (Ctrl+C).');if(!Ed.picked().length)return toast('Select the clips to paste onto.');
+ const groups=[['transform','Position, size, rotation, crop',src.scale!==undefined],['opacity','Opacity and blend',true],['colour','Colour (adjustments, grade, look)',!!(src.adj||src.grade)],['effects','Green screen and mask',!!(src.key||src.mask)],
+  ['speed','Speed and speed curve',!!src.media],['audio','Volume, loudness, ducking, fades',!!src.media],['keyframes','Keyframes',!!src.kf],['text','Text style and caption look',src.text!==undefined]];
+ dialog(`<form class="ed-export-form ed-paste"><h2>Paste attributes</h2><p class="ed-xnote">From the copied clip onto ${Ed.picked().length} selected clip${Ed.picked().length>1?'s':''}.</p>
+  ${groups.map(([id,l,on])=>`<label class="ed-xrow ed-xcheck"><span></span><span class="ed-xopt"><input type="checkbox" data-g="${id}" ${on&&id!=='keyframes'?'checked':''} ${on?'':'disabled'}> ${l}</span></label>`).join('')}
+  <div class="ed-xactions"><button type="button" class="btn ghost" data-no>Cancel</button><button class="btn primary">Paste</button></div></form>`);
+ const f=$('.ed-paste');f.querySelector('[data-no]').onclick=()=>closeDialog();
+ f.onsubmit=e=>{e.preventDefault();const g={};f.querySelectorAll('[data-g]').forEach(x=>{g[x.dataset.g]=x.checked;});closeDialog(true);Ed.pasteAttributes(g);};
+}
+// ---------- colour widgets ----------
+function edWheelSvg(w){const x=w?.x||0,y=w?.y||0;
+ return `<svg viewBox="-50 -50 100 100" class="ed-wheel-svg" role="img" aria-label="Colour wheel"><defs><radialGradient id="ewf"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>
+  <circle r="46" fill="url(#ewc)" style="fill:conic-gradient(red,yellow,lime,cyan,blue,magenta,red)"/>${Array.from({length:36},(_,i)=>{const a=i*10*Math.PI/180;return `<path d="M0 0 L${46*Math.cos(a)} ${-46*Math.sin(a)} A46 46 0 0 0 ${46*Math.cos(a+.18)} ${-46*Math.sin(a+.18)}Z" fill="hsl(${(i*10+0)%360} 85% 55%)"/>`;}).join('')}
+  <circle r="46" fill="url(#ewf)"/><circle r="46" fill="none" stroke="rgba(0,0,0,.35)"/><line x1="-4" x2="4" stroke="#0006"/><line y1="-4" y2="4" stroke="#0006"/>
+  <circle cx="${x*46}" cy="${-y*46}" r="5" fill="#fff" stroke="#000" stroke-width="1.5"/></svg>`;}
+function edGradeCurveSvg(pts,ch){const P=pts||[[0,0],[1,1]],f=edCurveFn(P),col={m:'#fff',r:'#ff5a5a',g:'#4be37a',b:'#5a8cff'}[ch];
+ const line=Array.from({length:65},(_,i)=>{const x=i/64;return `${x*200},${(1-f(x))*120}`;}).join(' ');
+ return `<svg viewBox="0 0 200 120" class="ed-curve-svg" role="img" aria-label="Curve">${[.25,.5,.75].map(v=>`<line x1="${v*200}" x2="${v*200}" y1="0" y2="120"/><line x1="0" x2="200" y1="${v*120}" y2="${v*120}"/>`).join('')}
+  <line x1="0" y1="120" x2="200" y2="0" class="one"/><polyline points="${line}" style="stroke:${col}"/>${P.map(([x,y],i)=>`<circle data-gp="${i}" cx="${x*200}" cy="${(1-y)*120}" r="4"/>`).join('')}</svg>`;}
+function edGradeCurveWire(svg,c,ch){
+ const at=e=>{const r=svg.getBoundingClientRect();return [edClamp((e.clientX-r.left)/r.width,0,1),edClamp(1-(e.clientY-r.top)/r.height,0,1)];};
+ const get=()=>(c.grade?.curves?.[ch]||[[0,0],[1,1]]).map(p=>[...p]);
+ const put=pts=>{c.grade={...(c.grade||{}),curves:{...(c.grade?.curves||{}),[ch]:pts}};if(!edGraded(c.grade))delete c.grade;Ed.draw();const n=Ed.dom.props?.querySelector('.ed-gcurve');if(n){n.innerHTML=edGradeCurveSvg(pts,ch);edGradeCurveWire(n.querySelector('svg'),c,ch);}};
+ svg.onpointerdown=e=>{e.preventDefault();Ed.snapshot();const pts=get();let i=e.target.closest('[data-gp]')?Number(e.target.closest('[data-gp]').dataset.gp):-1;
+  if(i<0){const [x,y]=at(e);i=pts.findIndex(p=>p[0]>x);if(i<=0)return;pts.splice(i,0,[x,y]);put(pts);}
+  const mv=ev=>{const [x,y]=at(ev),lo=i>0?pts[i-1][0]+.01:0,hi=i<pts.length-1?pts[i+1][0]-.01:1;pts[i]=[i===0?0:i===pts.length-1?1:edClamp(x,lo,hi),Math.round(y*1000)/1000];put(pts);};
+  const up=()=>{window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);Ed.save();};window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);};
+ svg.ondblclick=e=>{const g=e.target.closest('[data-gp]');if(!g)return;const i=Number(g.dataset.gp),pts=get();if(i===0||i===pts.length-1)return;Ed.snapshot();pts.splice(i,1);put(pts);Ed.save();};
+}
 function edSpeed(c,v){Ed.snapshot();const m=Ed.mediaOf(c),max=m?.dur?((m.dur-(c.in||0))/(v*(c.ramp?edRampAvg(c.ramp):1))):Infinity;c.dur=Math.max(.1,Math.min(c.dur*(c.speed||1)/v,max));c.speed=v;Ed.after(true);}
 // ---------- resizable panels: drag the lines between them; sizes are remembered ----------
 function edLayout(R){
@@ -643,7 +736,7 @@ function edLayout(R){
 }
 // ---------- the shortcuts sheet ----------
 function edKeys(){
- const rows=[['Space','Play or pause'],['Ctrl+B or S','Split at the playhead'],['Delete','Delete the selection'],['Ctrl+G / Ctrl+Shift+G','Group / ungroup'],['Alt + click','One clip of a group'],['Shift+E','Save the frame as a picture'],['Shift+Delete','Ripple delete: close the space'],['Q / W','Delete left / right of the playhead'],['J / K / L','Play back, stop, play forward (again: faster)'],['I / O','Mark in / out'],['Shift+I / Shift+O','Go to in / out'],['Alt+X','Clear in and out'],['Shift+F','Freeze frame'],['Ctrl+Z / Ctrl+Shift+Z','Undo / redo'],['Ctrl+C / X / V','Copy, cut, paste at the playhead'],['Ctrl+D','Duplicate'],['Ctrl+A','Select every clip'],
+ const rows=[['Space','Play or pause'],['Ctrl+B or S','Split at the playhead'],['Delete','Delete the selection'],['Ctrl+Alt+V','Paste attributes: the copied clip\'s look onto the selection'],['Ctrl+G / Ctrl+Shift+G','Group / ungroup'],['Alt + click','One clip of a group'],['Shift+E','Save the frame as a picture'],['Shift+Delete','Ripple delete: close the space'],['Q / W','Delete left / right of the playhead'],['J / K / L','Play back, stop, play forward (again: faster)'],['I / O','Mark in / out'],['Shift+I / Shift+O','Go to in / out'],['Alt+X','Clear in and out'],['Shift+F','Freeze frame'],['Ctrl+Z / Ctrl+Shift+Z','Undo / redo'],['Ctrl+C / X / V','Copy, cut, paste at the playhead'],['Ctrl+D','Duplicate'],['Ctrl+A','Select every clip'],
   ['Shift or Ctrl + click','Add a clip to the selection'],['Drag on empty space','Select with a box'],['M','Add or remove a marker'],['← / →','One frame back / forward'],['Shift + ← / →','One second back / forward'],['Home / End','Start / end'],['Ctrl + wheel','Zoom the timeline'],['Right-click','Clip menu'],['Esc','Clear the selection'],['?','This sheet']];
  dialog(`<div class="ed-keys"><h2>Keyboard shortcuts</h2><dl>${rows.map(([k,d])=>`<dt>${k.split(' / ').map(x=>`<kbd>${esc(x)}</kbd>`).join(' / ')}</dt><dd>${esc(d)}</dd>`).join('')}</dl><div class="ed-xactions"><button type="button" class="btn primary" data-no>Done</button></div></div>`);
  $('.ed-keys [data-no]').onclick=()=>closeDialog();

@@ -104,6 +104,8 @@ def main(argv=None):
     r.add_argument('--edl-out')
     o = sub.add_parser('cutout'); o.add_argument('inputs', nargs='+'); o.add_argument('--model', default=None)
     o.add_argument('--out-dir'); o.add_argument('--allow-download', action='store_true'); o.add_argument('--alpha-matting', action='store_true')
+    ov = sub.add_parser('cutout-video'); ov.add_argument('input'); ov.add_argument('--out', required=True); ov.add_argument('--model', default=None)
+    ov.add_argument('--max-side', type=int, default=1280); ov.add_argument('--progress'); ov.add_argument('--allow-download', action='store_true')
     v = sub.add_parser('separate'); v.add_argument('input'); v.add_argument('--model', default=None)
     v.add_argument('--stems', choices=['vocals', 'all'], default='vocals'); v.add_argument('--out-dir')
     v.add_argument('--allow-download', action='store_true'); v.add_argument('--device', choices=['auto', 'cpu', 'cuda'], default='auto')
@@ -146,6 +148,9 @@ def main(argv=None):
         result = track_faces(args.input, args.aspect, args.samples_per_second, args.allow_download)
         if args.edl_out and result['edlOperation']:
             result['edl'] = edl(result['input'], result['edlOperation'], args.edl_out)
+    elif args.command == 'cutout-video':
+        from .cutout import remove_background_video, DEFAULT_MODEL
+        result = remove_background_video(args.input, args.out, args.model or DEFAULT_MODEL, args.allow_download, args.max_side, args.progress)
     elif args.command == 'separate':
         from .separate import separate, DEFAULT_MODEL
         result = separate(args.input, args.model or DEFAULT_MODEL, args.stems, args.out_dir, args.allow_download, args.device, args.name)
