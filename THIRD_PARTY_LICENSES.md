@@ -122,3 +122,13 @@ Design and logic ported from [Agent Reach](https://github.com/Panniantong/agent-
 | yt-dlp | Unlicense | Video info, search, subtitles, study-only downloads |
 | CloakBrowser 0.6.3 (optional) | MIT (Python package); its browser download has its own terms | Optional browser engine, only when chosen |
 | Jina Reader, Exa search | Hosted services | Public page text and web search; no key |
+
+## Speech recognition for captions (not bundled)
+
+Captions on this computer use these, installed by `pnpm install` and `pnpm tempoloom captions setup`; nothing
+is copied into this repository.
+
+| Item | Source | License |
+| --- | --- | --- |
+| `sherpa-onnx-node` (runtime, npm) | [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) | Apache-2.0 |
+| Omnilingual ASR CTC 1B v2 and 300M v2, int8 ONNX (downloaded to `workspace/cache/audio-models/omnilingual-asr/`) | [facebookresearch/omnilingual-asr](https://github.com/facebookresearch/omnilingual-asr), converted by [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models) | Apache-2.0 |

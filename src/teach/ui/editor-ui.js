@@ -20,6 +20,8 @@ Object.assign(Ed,{
   if(this.tab==='text'){const caps=this.p.clips.filter(c=>c.cap||c.words).length;
    body=`<section class="ed-capbox"><div class="ed-sub">${I.captions} Captions</div>
     <label class="ed-caprow"><span>Spoken language</span><select data-cap-lang aria-label="Spoken language">${ED_CAP_LANGS.map(l=>`<option value="${l}" ${(this.p.capLang||'auto')===l?'selected':''} dir="auto">${esc(edLangName(l))}</option>`).join('')}</select></label>
+    <label class="ed-caprow"><span>Listen with</span><select data-cap-engine aria-label="Speech recognition"><option value="local" ${this.capEngine()==='local'?'selected':''}>This computer (free, offline)</option><option value="elevenlabs" ${this.capEngine()==='elevenlabs'?'selected':''}>ElevenLabs (online, key)</option></select></label>
+    <div class="ed-capnote" data-stt-note></div>
     <label class="ed-caprow"><span>Look</span><select data-cap-look aria-label="Caption look">${ED_CAPS.map(([v,l])=>`<option value="${v}" ${(this.p.capLook||'clean')===v?'selected':''}>${l}</option>`).join('')}</select></label>
     <button type="button" class="btn small primary ed-wide" data-captions>${I.captions} Auto captions</button>
     <div class="ed-caprow two"><button type="button" class="btn small" data-srt-in>${I.upload} Import .srt</button><button type="button" class="btn small" data-srt-out ${caps?'':'disabled'}>${I.down} Export .srt</button></div>
@@ -48,6 +50,7 @@ Object.assign(Ed,{
   const cap=$('[data-captions]',el);if(cap)cap.onclick=()=>this.captions();
   const cl=$('[data-cap-lang]',el);if(cl)cl.onchange=()=>{this.p.capLang=cl.value;this.save();};
   const ck=$('[data-cap-look]',el);if(ck)ck.onchange=()=>{this.p.capLook=ck.value;this.save();};
+  const ce=$('[data-cap-engine]',el);if(ce){ce.onchange=()=>{this.p.capEngine=ce.value;this.save();this.drawStt();};this.drawStt(true);}
   const so=$('[data-srt-out]',el);if(so)so.onclick=()=>{const list=this.p.clips.filter(c=>c.text!==undefined&&(c.cap||c.words)).sort((a,b)=>a.start-b.start);if(!list.length)return toast('There are no captions yet.');
    edSaveFile(new Blob(['\uFEFF'+edSrt(list)],{type:'application/x-subrip;charset=utf-8'}),this.p.name+'.srt');toast(`Saved ${list.length} caption${list.length>1?'s':''} as .srt`);};
   const sf=$('[data-srt-file]',el),si=$('[data-srt-in]',el);if(si&&sf){si.onclick=()=>sf.click();
@@ -66,6 +69,25 @@ Object.assign(Ed,{
    g.fillStyle='rgba(128,128,128,.22)';g.fillRect(0,y,W,h);g.fillStyle=gr;g.fillRect(0,y,x,h);
    pk[i]=live?Math.max(x,pk[i]-W*.006):0;if(pk[i]>1){g.fillStyle=pk[i]>=W*.95?'#ef4444':'rgba(255,255,255,.85)';g.fillRect(Math.min(W-2,pk[i]-1),y,2,h);}});
   const top=Math.max(...lv);cv.title=live&&top>0?`Peak ${(20*Math.log10(top)).toFixed(1)} dBFS`:'Sound level';},
+ // ---------- speech recognition for captions: this computer (Omnilingual ASR) or ElevenLabs ----------
+ capEngine(){const st=this.stt;return this.p.capEngine||(st&&!st.local.models.some(m=>m.installed)&&st.elevenlabs?'elevenlabs':'local');},
+ async loadStt(){try{const r=await fetch(withKey('/api/editor/stt'));if(r.ok)this.stt=await r.json();}catch{}return this.stt;},
+ /** The line under the engine choice: ready, set up (one download), downloading %, or add a key. */
+ async drawStt(fetchFirst){
+  if(fetchFirst||!this.stt)await this.loadStt();const el=this.dom.lib?.querySelector('[data-stt-note]');if(!el||!this.stt)return;
+  const st=this.stt,eng=this.capEngine(),lm=st.local.models,ready=lm.find(m=>m.installed),pr=st.local.progress,busy=pr&&(pr.state==='downloading'||pr.state==='unpacking');
+  const sel=this.dom.lib.querySelector('[data-cap-engine]');if(sel&&sel.value!==eng)sel.value=eng;
+  if(eng==='elevenlabs')el.innerHTML=st.elevenlabs?`${I.check} Ready. Audio is sent to ElevenLabs.`:`Add your ElevenLabs key in Settings, Models and keys.`;
+  else if(ready)el.innerHTML=`${I.check} Ready on this computer: ${esc(ready.label)}. 1,600+ languages (Kurdish Sorani too), found automatically. Nothing is uploaded.`;
+  else if(busy)el.innerHTML=`<span class="spin"></span> ${pr.state==='unpacking'?'Unpacking…':`Downloading the speech model… ${Math.floor(pr.bytes/pr.total*100)}%`}`;
+  else{const d=lm.find(m=>m.id===st.local.default)||lm[0];
+   el.innerHTML=`${pr?.state==='error'?`<b>The download stopped: ${esc(pr.error||'')}</b><br>`:''}Free speech recognition for 1,600+ languages (Kurdish Sorani too), offline. One download of ${d.mb} MB.
+    <span class="ed-caprow two"><button type="button" class="btn small primary" data-stt-setup="${d.id}">${I.down} Set up (${d.mb} MB)</button>${lm.filter(m=>m.id!==d.id).map(m=>`<button type="button" class="btn small" data-stt-setup="${m.id}">Lighter (${m.mb} MB)</button>`).join('')}</span>`;
+   el.querySelectorAll('[data-stt-setup]').forEach(b=>b.onclick=async()=>{b.disabled=true;
+    try{const r=await fetch(withKey('/api/editor/stt/setup?model='+b.dataset.sttSetup),{method:'POST'});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Could not start the download');this.stt=j;}catch(e){toast(e.message,true);}
+    this.drawStt();});}
+  clearTimeout(this._sttT);if(busy)this._sttT=setTimeout(()=>this.drawStt(true),1500);
+ },
  drawHead(){const h=this.dom.head;if(h)h.style.transform=`translateX(${this.time*this.zoom}px)`;
   const sc=this.dom.scroll;if(this.playing&&sc){const x=this.time*this.zoom;if(x>sc.scrollLeft+sc.clientWidth-80)sc.scrollLeft=x-80;}},
  drawExport(msg){const o=this.dom.exportOverlay;if(!o)return;o.hidden=!this.exporting;const b=o.querySelector('b');if(b&&msg)b.textContent=msg;},

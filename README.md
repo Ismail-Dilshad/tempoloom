@@ -85,6 +85,7 @@ The agent runs these for you; they are listed for scripting and debugging.
 | `pnpm tempoloom edit auto talk.mp4` | Talking-head footage edited automatically: pauses cut, punch-ins, designed visuals on what is said, captions, music ([guide](docs/guides/video-editing.md)) |
 | `pnpm tempoloom create --manifest request.json` | Create a video job (`--resume JOB` to continue) |
 | `pnpm tempoloom edit --edl edit.json` | Edit footage from an edit decision list |
+| `pnpm tempoloom captions setup` | Captions on this computer: one download (751 MB), then speech to text in 1,600+ languages, Kurdish Sorani included, with no key and no upload (Meta's Omnilingual ASR); `captions transcribe FILE` prints the words with times. The Editor's Auto captions button uses it |
 | `pnpm tempoloom fonts recommend --file script.txt` | Fonts that cover a script, ranked by style |
 | `pnpm tempoloom tools` | Every tool the agent can use, and its status |
 | `pnpm tempoloom knowledge search "kinetic type"` | Search the motion and editing knowledge base |

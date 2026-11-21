@@ -119,8 +119,21 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
    const rr=/^\/api\/tool-runs\/([a-f0-9]{12})(\/stop)?$/.exec(p);
    if(rr){const TR=await import('./tool-runner.js');try{return json(res,m==='POST'&&rr[2]?TR.stopRun(rr[1]!):TR.getRun(rr[1]!));}catch(e){throw new HttpError(404,(e as Error).message);}}
    // The editor's auto captions: the words said in a video or sound file, with their times (ElevenLabs).
+   // Which speech-to-text the editor can use: on this computer (Omnilingual ASR, once set up) and ElevenLabs (with a key).
+   if(m==='GET'&&p==='/api/editor/stt'){const L=await import('../engine/local-stt.js');return json(res,{local:L.status(),elevenlabs:hasApiKey()});}
+   // Sets up captions on this computer: downloads the model once, in the background; GET /api/editor/stt shows progress.
+   if(m==='POST'&&p==='/api/editor/stt/setup'){const L=await import('../engine/local-stt.js'),mdl=url.searchParams.get('model')==='300m'?'300m':'1b';
+    if(!L.status().runtime)throw new HttpError(400,'The speech runtime is missing; run pnpm install');
+    if(!L.installed(mdl)){const pr=L.status().progress;if(!(pr&&(pr.state==='downloading'||pr.state==='unpacking')))void L.setup(mdl).catch(()=>{});}
+    return json(res,{local:L.status(),elevenlabs:hasApiKey()});}
+   // The editor's auto captions: the words said in a video or sound file, with their times. engine: local (this computer),
+   // elevenlabs, or auto (this computer when set up, else ElevenLabs when there is a key).
    if(m==='POST'&&p==='/api/editor/captions'){
-    if(!hasApiKey())throw new HttpError(400,'Auto captions need your ElevenLabs key: add it in Settings, Models and keys.');
+    const L=await import('../engine/local-stt.js'),want=url.searchParams.get('engine')||'auto';
+    const engine=want==='local'||(want==='auto'&&L.installed())?'local':want==='elevenlabs'||hasApiKey()?'elevenlabs':null;
+    if(!engine)throw new HttpError(400,'Auto captions need a speech model: set up captions on this computer (one free download) or add an ElevenLabs key in Settings.');
+    if(engine==='local'&&!L.installed())throw new HttpError(400,'Captions on this computer are not set up yet: press Set up in the Captions box (one download).');
+    if(engine==='elevenlabs'&&!hasApiKey())throw new HttpError(400,'Auto captions with ElevenLabs need your key: add it in Settings, Models and keys.');
     const ext=(/\.[a-z0-9]{2,5}$/i.exec(url.searchParams.get('name')||'')?.[0]||'.webm').toLowerCase();
     const dir=path.join(ROOT,process.env.VIDEO_WORKSPACE||'workspace','cache','editor-captions',randomUUID());await fsp.mkdir(dir,{recursive:true});
     const src=path.join(dir,'source'+ext);let size=0;
@@ -129,8 +142,9 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
      // lang: "auto" (detect), one of the studio's languages (en, ar, fa, ckb, kmr, badini), or any ISO 639 code.
      const lang=(url.searchParams.get('lang')||'auto').toLowerCase(),{transcribe}=await import('../engine/transcribe.js'),{languageSchema}=await import('../engine/languages.js');
      if(lang!=='auto'&&!/^[a-z]{2,3}$/.test(lang))throw new HttpError(400,'The language is a code like en, ar, ckb or ja');
+     if(engine==='local'){const r=await L.transcribeLocal(src);return json(res,{engine:'local',model:r.model,language:null,code:lang!=='auto'?lang:r.code,words:r.words});}
      const known=languageSchema.safeParse(lang);const t=await transcribe(src,known.success?{language:known.data}:lang==='auto'?{}:{providerCode:lang});
-     return json(res,{language:t.language,code:t.providerLanguage??null,words:t.words.filter(w=>w.type==='word').map(w=>({text:w.text,start:w.start,end:w.end}))});}
+     return json(res,{engine:'elevenlabs',language:t.language,code:t.providerLanguage??null,words:t.words.filter(w=>w.type==='word').map(w=>({text:w.text,start:w.start,end:w.end}))});}
     catch(e){throw e instanceof HttpError?e:new HttpError(500,'Could not read the speech: '+(e as Error).message.slice(0,200));}
     finally{await fsp.rm(dir,{recursive:true,force:true}).catch(()=>{});}
    }

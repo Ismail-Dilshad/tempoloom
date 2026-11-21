@@ -30,6 +30,12 @@ session id. Answer with: tempoloom answer --session ID --text "..." `},
 
 Answers the next briefing question of a session started with tempoloom brief.`},
  edit: {run: ts('src/editor/cli.ts'), help: 'Edit footage: edit auto FILE (talking head, fully automatic) or --edl EDIT.json (trim, crop, zoom, captions...)'},
+ captions: {run: ts('src/cli/captions-cli.ts'), help: 'Captions on this computer: captions setup (one download), status, transcribe FILE', usage: `Usage: tempoloom captions status
+       tempoloom captions setup [--model 1b|300m] [--yes]
+       tempoloom captions transcribe FILE [--model 1b|300m] [--json]
+
+Speech to text without a key or an upload: Meta's Omnilingual ASR (1,600+ languages, Kurdish Sorani
+included) run by sherpa-onnx. setup downloads the model once (1b: about 751 MB, 300m: about 279 MB).`},
  fonts: {run: ts('src/cli/fonts-cli.ts'), help: 'List or recommend fonts for a script and style', usage: `Usage: tempoloom fonts list
        tempoloom fonts recommend (--file SCRIPT.txt | --text "TEXT") [--role headline|body|accent]
 

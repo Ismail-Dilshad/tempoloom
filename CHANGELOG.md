@@ -48,6 +48,14 @@
   Japanese, Thai, Lao, Khmer and Myanmar break between dictionary words. Right-to-left lines read
   right to left with their punctuation in place, and Arabic-script captions use a font that has
   every letter. Captions import from and export to .srt (and import .vtt).
+- **Captions on this computer, free**: Auto captions can listen with Meta's Omnilingual ASR
+  (1,600+ languages, Kurdish Sorani included; Apache 2.0) run by sherpa-onnx: no key, no upload,
+  the language found automatically. Set up once from the Captions box or `pnpm tempoloom captions
+  setup` (1B: 751 MB, or a lighter 300M: 279 MB). Long audio is cut at pauses into pieces the model
+  accepts; word times come from its character timestamps. On 8 Sorani test sentences (AsoSoft
+  corpus) 3.9% of letters were wrong, most word differences being spelling (joined or split
+  words); 40 s of audio took 9 s on an 11th-gen Core i5 CPU. ElevenLabs stays available as the
+  online choice.
 
 ## 10.2.0: Sileo notifications
 

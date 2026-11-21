@@ -710,11 +710,11 @@ const Ed={
  async captions(){
   const src=this.p.clips.filter(c=>{const m=this.mediaOf(c);return m&&(m.type==='audio'||m.type==='video')&&!this.trackOf(c)?.muted&&!(c.detached&&!c.asAudio);});
   if(!src.length)return toast('Add a video or sound with speech first.');
-  const busy=this.dom.lib?.querySelector('[data-captions]');if(busy){busy.disabled=true;busy.innerHTML='<span class="spin"></span> Reading the speech…';}
+  const busy=this.dom.lib?.querySelector('[data-captions]');if(busy){busy.disabled=true;busy.innerHTML=`<span class="spin"></span> ${this.capEngine?.()==='local'?'Listening on this computer…':'Reading the speech…'}`;}
   try{
    const words={},lang=this.p.capLang||'auto',look=this.p.capLook||'clean';let code=lang;
    for(const id of new Set(src.map(c=>c.media))){const m=this.media.find(x=>x.id===id),blob=await this.get(id);if(!blob)continue;
-    const r=await fetch(withKey('/api/editor/captions?name='+encodeURIComponent(m.name)+'&lang='+encodeURIComponent(lang)),{method:'POST',body:blob});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Could not read the speech');
+    const r=await fetch(withKey('/api/editor/captions?name='+encodeURIComponent(m.name)+'&lang='+encodeURIComponent(lang)+'&engine='+encodeURIComponent(this.capEngine?.()||'auto')),{method:'POST',body:blob});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Could not read the speech');
     words[id]=j.words||[];if(lang==='auto'&&j.code)code=j.code;}
    const lines=[];
    for(const c of src){const a=c.in||0,b=this.srcAt(c,c.start+c.dur)+.05;
@@ -726,6 +726,8 @@ const Ed={
      if(!cur)cur={s:w.s,e:w.e,words:[]};cur.words.push(w);cur.e=w.e;}
     if(cur)lines.push(cur);}
    if(!lines.length)return toast('No speech was found.');
+   // Speech models on this computer write no capitals: each caption line starts with one (in scripts that have them).
+   for(const l of lines){const w=l.words[0];if(w){const loc=code&&code!=='auto'?code:undefined,f=w.t.charAt(0),F=f.toLocaleUpperCase(loc);if(F!==f)w.t=F+w.t.slice(1);}}
    const n=this.addCaptions(lines,code,look);toast(`Added ${n} caption${n>1?'s':''}${code&&code!=='auto'?` (${edLangName(code)})`:''}`);
   }catch(e){toast(e.message,true);}
   finally{this.drawLib();}
