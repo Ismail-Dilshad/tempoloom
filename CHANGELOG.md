@@ -15,6 +15,13 @@
 - **Export presets**: TikTok · Reels · Shorts, YouTube 1080p and 4K, Instagram 4:5, square, GIF, and
   sound only; a Quality choice (smaller file, high, best); GIF (looping, its own palette) and MP3 or
   WAV of the mix. A preset whose shape differs from the video says so.
+- **Pro trims** (as in Premiere and Resolve): Alt + drag an edge for a ripple trim, Ctrl + drag an
+  edge to roll the cut between two clips, Alt + drag a clip to slip it (another part of the file, the
+  same place), Ctrl + Alt + drag to slide it between its neighbours; each stops where a file ends.
+- **Labels and markers**: label colours for clips (right-click) and tracks; markers with a name,
+  colour and note (double-click on the ruler), shown on the ruler and listed in Details to jump to.
+- **Tracks and mixer**: rename a track (double-click its name), colour it, drag its lower edge for
+  height; the **Mixer** sets each track's volume (0-200%), pan, mute and solo, in the player and export.
 - **Paste attributes** (Ctrl+Alt+V, or the clip menu): the copied clip's transform, opacity and
   blend, colour, key and mask, speed, sound or text style onto the selected clips, by group.
 

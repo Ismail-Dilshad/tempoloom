@@ -45,6 +45,10 @@ const edLen=s=>[...(typeof Intl!=='undefined'&&Intl.Segmenter?new Intl.Segmenter
 function edWords(text,lang){const t=String(text||'').trim();if(!t)return [];
  if(!edNoSpace(t)||typeof Intl==='undefined'||!Intl.Segmenter)return t.split(/\s+/);
  try{return [...new Intl.Segmenter(lang&&lang!=='auto'?lang:undefined,{granularity:'word'}).segment(t)].map(x=>x.segment).filter(x=>x.trim());}catch{return [...t].filter(x=>x.trim());}}
+/** Label colours for clips, markers and tracks (as in Premiere and Resolve). */
+const ED_LABELS=[['red','Red','#e5484d'],['orange','Orange','#f76b15'],['yellow','Yellow','#ffc53d'],['green','Green','#30a46c'],['teal','Teal','#12a594'],['blue','Blue','#3e63dd'],['purple','Purple','#8e4ec6'],['pink','Pink','#d6409f']];
+const edLabel=id=>ED_LABELS.find(l=>l[0]===id)?.[2];
+const edMt=m=>typeof m==='number'?m:m.t;
 const ED_BLENDS=[['normal','Normal'],['multiply','Multiply'],['screen','Screen'],['overlay','Overlay'],['darken','Darken'],['lighten','Lighten'],['color-dodge','Colour dodge'],['color-burn','Colour burn'],
  ['hard-light','Hard light'],['soft-light','Soft light'],['difference','Difference'],['exclusion','Exclusion'],['hue','Hue'],['saturation','Saturation'],['color','Colour'],['luminosity','Luminosity']];
 const ED_MASKS=[['none','None'],['rect','Rectangle'],['circle','Ellipse'],['linear','Linear']];
@@ -126,7 +130,7 @@ const Ed={
   const ids=new Set(this.media.map(m=>m.id));
   p.clips=(p.clips||[]).filter(c=>c.text!==undefined||c.sticker||ids.has(c.media));
   for(const c of p.clips)if(!p.tracks.some(t=>t.id===c.track)){const kind=c.text!==undefined?'text':c.sticker?'sticker':this.media.find(m=>m.id===c.media)?.type==='audio'||c.asAudio?'audio':'video';c.track=(p.tracks.find(t=>t.kind===kind)||this.addTrackTo(p,kind)).id;}
-  if(p.magnet===undefined)p.magnet=true;p.markers=p.markers||[];p.bgMode=p.bgMode||'color';p.v=3;return p;
+  if(p.magnet===undefined)p.magnet=true;p.markers=(p.markers||[]).map(m=>typeof m==='number'?{t:m}:m);p.bgMode=p.bgMode||'color';p.v=3;return p;
  },
  open(id){
   if(this.p?.id===id)return true;
@@ -429,11 +433,12 @@ const Ed={
  audio(){if(this.ac)return;try{const ac=this.ac=new AudioContext();this.rec=ac.createMediaStreamDestination();this.master=ac.createGain();this.master.connect(ac.destination);this.master.connect(this.rec);
   const sp=ac.createChannelSplitter(2);this.master.connect(sp);this.meters=[0,1].map(i=>{const a=ac.createAnalyser();a.fftSize=1024;sp.connect(a,i);return a;});
   for(const el of Object.values(this.els))this.route(el);}catch{this.ac=null;}},
- route(el){if(el._routed||!this.ac)return;try{const s=this.ac.createMediaElementSource(el),g=this.ac.createGain();s.connect(g);g.connect(this.master);el._gain=g;el._routed=true;}catch{}},
+ route(el){if(el._routed||!this.ac)return;try{const s=this.ac.createMediaElementSource(el),g=this.ac.createGain(),p=this.ac.createStereoPanner();s.connect(g);g.connect(p);p.connect(this.master);el._gain=g;el._pan=p;el._routed=true;}catch{}},
  fade(c,t){const tt=edClamp(t,c.start,c.start+c.dur);let v=1;const local=tt-c.start;if(c.fadeIn&&local<c.fadeIn)v*=Math.max(0,local/c.fadeIn);if(c.fadeOut&&c.start+c.dur-tt<c.fadeOut)v*=Math.max(0,(c.start+c.dur-tt)/c.fadeOut);return v;},
  /** A clip's loudness at t: volume (keyframes), fades, loudness match (gainDb) and ducking. Playback and export both use it. */
  vol(c,t){const tr=this.trackOf(c);if(tr?.muted||(c.detached&&!c.asAudio))return 0;
-  return edClamp(this.val(c,'volume',t)*this.fade(c,t)*edDb(c.gainDb||0)*(c.duck?this.duckAt(t,c):1),0,8);},
+  if(this.p.tracks.some(x=>x.solo)&&!tr?.solo)return 0;
+  return edClamp(this.val(c,'volume',t)*this.fade(c,t)*edDb(c.gainDb||0)*(tr?.vol??1)*(c.duck?this.duckAt(t,c):1),0,8);},
  // ---------- ducking: music goes down while someone speaks ----------
  /** Clips that count as speech: every clip with sound that is not itself ducked. */
  voices(){return this.p.clips.filter(c=>c.media&&!c.duck&&!this.trackOf(c)?.muted&&!(c.detached&&!c.asAudio)&&this.mediaOf(c)?.type!=='image');},
@@ -469,7 +474,7 @@ const Ed={
    const on=t>=c.start&&t<c.start+c.dur,want=this.srcAt(c,t);
    if(on){
     const fwd=this.playing&&this.rate>0;
-    el.playbackRate=edClamp(this.rateAt(c,t)*(fwd?this.rate:1),.0625,16);const v=this.vol(c,t);if(el._gain){el.volume=1;el._gain.gain.value=v;}else el.volume=Math.min(1,v);
+    el.playbackRate=edClamp(this.rateAt(c,t)*(fwd?this.rate:1),.0625,16);const v=this.vol(c,t);if(el._gain){el.volume=1;el._gain.gain.value=v;if(el._pan)el._pan.pan.value=edClamp(this.trackOf(c)?.pan||0,-1,1);}else el.volume=Math.min(1,v);
     if(fwd){if(el.paused){try{el.currentTime=want;}catch{}el.play().catch(()=>{});}else if(Math.abs(el.currentTime-want)>.3*Math.max(1,this.rate))el.currentTime=want;}
     else{if(!el.paused)el.pause();if(Math.abs(el.currentTime-want)>.03){try{el.currentTime=want;}catch{}}}
    }else{if(!el.paused)el.pause();
@@ -735,7 +740,7 @@ const Ed={
    const len=e-s,skip=s-c.start,steps=Math.max(2,Math.ceil(len*120)),curve=new Float32Array(steps);
    for(let i=0;i<steps;i++)curve[i]=this.vol(c,s+Math.min(len*i/(steps-1),len-1e-4));
    g.gain.setValueCurveAtTime(curve,s-t0,len);
-   n.connect(g).connect(oc.destination);n.start(s-t0,stretch?skip:(c.in||0)+skip,len);
+   const pan=oc.createStereoPanner();pan.pan.value=edClamp(this.trackOf(c)?.pan||0,-1,1);n.connect(g).connect(pan).connect(oc.destination);n.start(s-t0,stretch?skip:(c.in||0)+skip,len);
   }
   if(silent.size)toast('No sound was found in '+[...silent].join(', ')+'. If it has sound, this browser could not read it.');
   return oc.startRendering();
@@ -780,7 +785,14 @@ const Ed={
    this.tab='audio';const [m]=await this.importFiles([f]);if(m){const c=this.add(m.id,at);if(c)toast('Voice-over added');}};
   rec.start(250);
  },
- toggleMarker(){const t=Math.round(this.time*30)/30,ms=this.p.markers,i=ms.findIndex(x=>Math.abs(x-t)<.05);this.snapshot();if(i>=0)ms.splice(i,1);else{ms.push(t);ms.sort((a,b)=>a-b);}this.after(false);},
+ toggleMarker(){const t=Math.round(this.time*30)/30,ms=this.p.markers,i=ms.findIndex(x=>Math.abs(edMt(x)-t)<.05);this.snapshot();if(i>=0)ms.splice(i,1);else{ms.push({t});ms.sort((a,b)=>edMt(a)-edMt(b));}this.after(false);},
+ setMarker(i,patch){const m=this.p.markers[i];if(!m)return;this.snapshot();if(patch===null)this.p.markers.splice(i,1);else this.p.markers[i]={...(typeof m==='number'?{t:m}:m),...patch};this.after(true);},
+ // ---------- tracks: name, colour, height, and the mixer (volume, pan, solo) ----------
+ setTrackProp(id,patch){const t=this.p.tracks.find(x=>x.id===id);if(!t)return;Object.assign(t,patch);for(const [k,v] of Object.entries(patch))if(v===undefined||v===null||v==='')delete t[k];this.save();},
+ /** Rolls a cut: the end of one clip and the start of the next move together (as Premiere's rolling edit). */
+ roll(a,b,d,oa,ob){const sa=oa.speed||1,sb=ob.speed||1,ma=this.mediaOf(a),mb=this.mediaOf(b);
+  let lo=Math.max(-(oa.dur-.1),-(ob.media?(ob.in||0)/sb:Infinity)),hi=Math.min(ob.dur-.1,ma&&ma.type!=='image'?(ma.dur-(oa.in||0))/sa-oa.dur:Infinity);d=edClamp(d,lo,hi);
+  a.dur=oa.dur+d;b.start=ob.start+d;b.dur=ob.dur-d;if(b.media)b.in=(ob.in||0)+d*sb;void mb;return d;},
  // ---------- auto captions: the speech in each clip with sound, as caption text clips ----------
  async captions(){
   const src=this.p.clips.filter(c=>{const m=this.mediaOf(c);return m&&(m.type==='audio'||m.type==='video')&&!this.trackOf(c)?.muted&&!(c.detached&&!c.asAudio);});

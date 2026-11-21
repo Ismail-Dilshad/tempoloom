@@ -114,13 +114,13 @@ Object.assign(Ed,{
  drawHead(){const h=this.dom.head;if(h)h.style.transform=`translateX(${this.time*this.zoom}px)`;
   const sc=this.dom.scroll;if(this.playing&&sc){const x=this.time*this.zoom;if(x>sc.scrollLeft+sc.clientWidth-80)sc.scrollLeft=x-80;}},
  drawExport(msg){const o=this.dom.exportOverlay;if(!o)return;o.hidden=!this.exporting;const b=o.querySelector('b');if(b&&msg)b.textContent=msg;},
- laneH(t){return t.main?ED_H.main:ED_H[t.kind]||44;},
+ laneH(t){return t.h||(t.main?ED_H.main:ED_H[t.kind]||44);},
  drawTimeline(){
   const el=this.dom.tracks;if(!el)return;const z=this.zoom,len=Math.max(this.end()+10,(this.dom.scroll?.clientWidth||900)/z);
   this.dom.inner.style.width=len*z+'px';
   const step=z>=120?1:z>=60?2:z>=30?5:z>=12?10:30;
   this.dom.ruler.innerHTML=Array.from({length:Math.ceil(len/step)+1},(_,i)=>`<span style="left:${i*step*z}px">${edFmt(i*step).slice(0,5)}</span>`).join('')+
-   this.p.markers.map(m=>`<i class="ed-marker" style="left:${m*z}px" title="Marker ${edFmt(m)}"></i>`).join('')+
+   this.p.markers.map((m,i)=>`<i class="ed-marker${m.name?' named':''}" data-mk="${i}" style="left:${edMt(m)*z}px;${m.color?`--mc:${edLabel(m.color)}`:''}" title="${esc(m.name||'Marker')} · ${edFmt(edMt(m))}${m.note?'\n'+esc(m.note):''} (double-click to edit)">${m.name?`<span>${esc(m.name)}</span>`:''}</i>`).join('')+
    (()=>{const r=this.p.range;if(!r||(r.in==null&&r.out==null))return '';const a=r.in??0,b=r.out??Math.max(this.end(),a);
     return `<i class="ed-range" style="left:${a*z}px;width:${Math.max(2,(b-a)*z)}px" title="In ${edFmt(a)} · Out ${edFmt(b)}">${r.in!=null?'<b class="ed-rmark ed-rmark-in"></b>':''}${r.out!=null?'<b class="ed-rmark ed-rmark-out"></b>':''}</i>`;})();
   const tr=this.p.tracks;
@@ -128,11 +128,18 @@ Object.assign(Ed,{
    const joins=t.kind==='video'?cl.slice(1).filter((c,i)=>Math.abs(cl[i].start+cl[i].dur-c.start)<.05).map(c=>`<button type="button" class="ed-join${c.trans?' on':''}${this.junction===c.id?' sel':''}" data-join="${c.id}" style="left:${c.start*z}px" aria-label="Transition" title="${c.trans?ED_TRANS.find(x=>x[0]===c.trans.type)?.[1]:'Add a transition'}">${c.trans?I.trans:''}</button>`).join(''):'';
    return `<div class="ed-lane${t.main?' main':''}${t.locked?' locked':''}${t.hidden?' hidden':''}" data-track="${t.id}" data-kind="${t.kind}" style="height:${this.laneH(t)}px">${cl.map(c=>this.clipHtml(c)).join('')}${joins}${t.main&&!this.p.clips.length?`<span class="ed-lane-hint">${I.film} Drag media here and start creating</span>`:''}</div>`;}).join('')}<div class="ed-lane-new" data-new="bottom"></div>`;
   this.dom.heads.innerHTML=`<div class="ed-head-gap"></div>${tr.map(t=>{const vis=t.kind!=='audio',snd=t.kind==='video'||t.kind==='audio';
-   return `<div class="ed-head${t.main?' main':''}" style="height:${this.laneH(t)}px" data-track="${t.id}"><span class="ed-head-name">${I[ED_KINDS[t.kind].icon]}${t.main?'Main':ED_KINDS[t.kind].label}</span>
+   return `<div class="ed-head${t.main?' main':''}" style="height:${this.laneH(t)}px" data-track="${t.id}"><i class="ed-head-rz" data-hrz title="Drag to resize"></i>${t.color?`<i class="ed-head-color" style="background:${edLabel(t.color)}"></i>`:''}<span class="ed-head-name" title="Double-click to rename">${I[ED_KINDS[t.kind].icon]}${t.name?esc(t.name):t.main?'Main':ED_KINDS[t.kind].label}</span>
     <span class="ed-head-tools"><button type="button" data-tk="locked" aria-pressed="${!!t.locked}" aria-label="${t.locked?'Unlock':'Lock'} track">${t.locked?I.lock:I.unlock}</button>
     ${vis?`<button type="button" data-tk="hidden" aria-pressed="${!!t.hidden}" aria-label="${t.hidden?'Show':'Hide'} track">${t.hidden?I.eyeOff:I.eye}</button>`:''}
     ${snd?`<button type="button" data-tk="muted" aria-pressed="${!!t.muted}" aria-label="${t.muted?'Unmute':'Mute'} track">${t.muted?I.mute:I.sound}</button>`:''}
     ${t.main?'':`<button type="button" data-tk="remove" aria-label="Delete track">${I.x}</button>`}</span></div>`;}).join('')}<div class="ed-head-gap"></div>`;
+  this.dom.heads.querySelectorAll('.ed-head').forEach(h=>{const id=h.dataset.track,t=this.p.tracks.find(x=>x.id===id);if(!t)return;
+   h.querySelector('.ed-head-name').ondblclick=()=>{const n=prompt('Track name',t.name||'');if(n===null)return;this.snapshot();this.setTrackProp(id,{name:n.trim().slice(0,30)||undefined});this.drawTimeline();};
+   h.oncontextmenu=e=>{e.preventDefault();edMenu(e.clientX,e.clientY,[['Rename…','text',()=>h.querySelector('.ed-head-name').ondblclick()],...ED_LABELS.map(([v,l])=>[`<i class="ed-swatch" style="background:${edLabel(v)}"></i>${l}`,'',()=>{this.snapshot();this.setTrackProp(id,{color:v});this.drawTimeline();}]),['No colour','x',()=>{this.snapshot();this.setTrackProp(id,{color:undefined});this.drawTimeline();},!t.color],'-',['Mixer…','sound',()=>edMixer()]]);};
+   const rz=h.querySelector('[data-hrz]');rz.onpointerdown=e=>{e.preventDefault();e.stopPropagation();const y0=e.clientY,h0=this.laneH(t);this.snapshot();
+    const mv=ev=>{t.h=Math.round(edClamp(h0+ev.clientY-y0,28,160));this.drawTimeline();},up=()=>{window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);this.save();};
+    window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);};});
+  this.dom.ruler.querySelectorAll('[data-mk]').forEach(n=>{n.onpointerdown=e=>e.stopPropagation();n.onclick=()=>this.seek(edMt(this.p.markers[Number(n.dataset.mk)]));n.ondblclick=e=>edMarkerEdit(e.currentTarget,Number(n.dataset.mk));});
   this.dom.heads.querySelectorAll('[data-tk]').forEach(b=>b.onclick=()=>{const id=b.closest('[data-track]').dataset.track;b.dataset.tk==='remove'?this.removeTrack(id):this.setTrack(id,b.dataset.tk);});
   el.querySelectorAll('[data-join]').forEach(b=>b.onclick=e=>{e.stopPropagation();this.selectJoin(b.dataset.join);});
   const mg=this.dom.root?.querySelector('[data-magnet]');if(mg)mg.setAttribute('aria-pressed',String(!!this.p.magnet));
@@ -150,7 +157,7 @@ Object.assign(Ed,{
    <span class="ed-clip-label">${c.group?`<b class="ed-linked" title="Grouped">${I.link}</b>`:''}${c.detached?I.mute:''}${esc(m.name)}${c.speed&&c.speed!==1?` · ${c.speed}×`:''}</span>`;}
   const kts=sel&&c.kf?[...new Set(Object.values(c.kf).flat().map(x=>Math.round(x.t*100)/100))]:[];
   const fi=(c.fadeIn||0)*this.zoom,fo=(c.fadeOut||0)*this.zoom,fades=c.media&&w>40?`${fi?`<i class="ed-fz l" style="width:${fi}px"></i>`:''}${fo?`<i class="ed-fz r" style="width:${fo}px"></i>`:''}<i class="ed-fh" data-fh="in" style="left:${Math.max(10,fi)}px" title="Fade in ${(c.fadeIn||0).toFixed(1)} s: drag"></i><i class="ed-fh" data-fh="out" style="left:${Math.min(w-10,w-fo)}px" title="Fade out ${(c.fadeOut||0).toFixed(1)} s: drag"></i>`:'';
-  return `<div class="ed-clip ${kind}${sel?' sel':''}" data-cid="${c.id}" style="left:${c.start*this.zoom}px;width:${w}px">${inner}${fades}${kts.map(t=>`<i class="ed-kf" style="left:${t*this.zoom}px"></i>`).join('')}<i class="ed-h l" data-h="l"></i><i class="ed-h r" data-h="r"></i></div>`;
+  return `<div class="ed-clip ${kind}${sel?' sel':''}${c.label?' labelled':''}" data-cid="${c.id}" style="left:${c.start*this.zoom}px;width:${w}px;${c.label?`--lc:${edLabel(c.label)}`:''}">${inner}${fades}${kts.map(t=>`<i class="ed-kf" style="left:${t*this.zoom}px"></i>`).join('')}<i class="ed-h l" data-h="l"></i><i class="ed-h r" data-h="r"></i></div>`;
  },
  drawProps(){
   const el=this.dom.props;if(!el)return;const [W,H]=this.base(),n=this.sels.size;
@@ -184,7 +191,8 @@ Object.assign(Ed,{
   if(!c)body=`<dl class="ed-details"><dt>Name</dt><dd dir="auto">${esc(this.p.name)}</dd><dt>Shape</dt><dd>${seg('ratio',Object.keys(ED_RATIOS).map(r=>[r,r]),this.p.ratio)}</dd>
     <dt>Resolution</dt><dd>${W} × ${H}</dd><dt>Length</dt><dd>${edFmt(this.end())}</dd><dt>Clips</dt><dd>${this.p.clips.length} on ${this.p.tracks.length} tracks</dd>
     <dt>Background</dt><dd>${seg('bgmode',[['color','Colour'],['blur','Blur']],this.p.bgMode)}</dd>${this.p.bgMode==='color'?`<dt></dt><dd><input type="color" data-bg value="${esc(this.p.bg||'#000000')}" aria-label="Background colour"></dd>`:''}
-    <dt>Markers</dt><dd>${this.p.markers.length?`${this.p.markers.length} · <button type="button" class="ed-link" data-clear-markers>Clear</button>`:'Press M to add one'}</dd></dl>`;
+    <dt>Markers</dt><dd>${this.p.markers.length?`${this.p.markers.length} · <button type="button" class="ed-link" data-clear-markers>Clear</button>`:'Press M to add one'}</dd></dl>
+    ${this.p.markers.length?`<div class="ed-mlist">${this.p.markers.map((m,i)=>`<button type="button" class="ed-mrow" data-mgo="${i}"><i class="ed-swatch" style="background:${m.color?edLabel(m.color):'var(--warn)'}"></i><span>${edFmt(edMt(m))}</span><b dir="auto">${esc(m.name||'Marker')}</b>${m.note?`<small dir="auto">${esc(m.note)}</small>`:''}</button>`).join('')}</div>`:''}`;
   else if(t==='text')body=(c.words?sec('Caption',`<div class="ed-seg wrap">${ED_CAPS.map(([v,l])=>`<button type="button" data-caplook="${v}" aria-pressed="${(c.capLook||'clean')===v}">${l}</button>`).join('')}</div>
      ${c.capStyle==='karaoke'||c.capStyle==='build'?`<div class="ed-row"><label>Highlight</label><div class="ed-ctl"><input type="color" data-k="hl" value="${esc(c.hl||'#FFD400')}" aria-label="Highlight colour"></div></div>`:''}
      ${c.words.some(w=>w.alt)?`<div class="ed-checks"><b>${I.flag} Check these words</b>${c.words.map((w,i)=>w.alt?`<div class="ed-check"><span class="ed-check-words"><bdi>${esc(c.words.slice(i,i+(w.altSpan||1)).map(x=>x.t).join(' '))}</bdi><i>other model heard</i><bdi>${esc(w.alt)}</bdi></span><span class="ed-check-btns"><button type="button" class="btn small" data-alt="${i}">Use</button><button type="button" class="btn small ghost" data-keep="${i}">Keep</button></span></div>`:'').join('')}</div>`:''}
@@ -255,6 +263,7 @@ Object.assign(Ed,{
    el.querySelectorAll('[data-ratio]').forEach(b=>b.onclick=()=>{this.snapshot();this.p.ratio=b.dataset.ratio;this.save();this.drawProps();this.fit();this.draw();const lb=this.dom.root?.querySelector('.ed-ratio');if(lb)lb.textContent=this.p.ratio;});
    el.querySelectorAll('[data-bgmode]').forEach(b=>b.onclick=()=>{this.snapshot();this.p.bgMode=b.dataset.bgmode;this.save();this.drawProps();this.draw();});
    const bg=$('[data-bg]',el);if(bg){bg.onfocus=()=>this.snapshot();bg.oninput=()=>{this.p.bg=bg.value;this.save();this.draw();};}
+   el.querySelectorAll('[data-mgo]').forEach(b=>{b.onclick=()=>this.seek(edMt(this.p.markers[Number(b.dataset.mgo)]));b.ondblclick=()=>edMarkerEdit(b,Number(b.dataset.mgo));});
    const cm=$('[data-clear-markers]',el);if(cm)cm.onclick=()=>{this.snapshot();this.p.markers=[];this.after(true);};return;
   }
   const setSpeed=v=>{const mm=this.mediaOf(c),max=mm?.dur&&mm.type!=='image'?((mm.dur-(c.in||0))/(v*(c.ramp?edRampAvg(c.ramp):1))):Infinity;c.dur=Math.max(.1,Math.min(c.dur*(c.speed||1)/v,max));c.speed=v;};
@@ -458,6 +467,7 @@ function edBuild(el){
     <button type="button" class="iconbtn sm" data-trim="end" aria-label="Delete right" data-tooltip="Delete right of the playhead · W">${I.trimR}</button>
     <button type="button" class="iconbtn sm" data-freeze aria-label="Freeze frame" data-tooltip="Freeze frame · Shift+F">${I.freeze}</button>
     <button type="button" class="iconbtn sm" data-track-add aria-label="Add a track" data-tooltip="Add a track" aria-haspopup="menu">${I.layers}</button>
+    <button type="button" class="iconbtn sm" data-mixer aria-label="Mixer" data-tooltip="Mixer: volume, pan, solo per track">${I.sliders}</button>
     <button type="button" class="iconbtn sm" data-marker aria-label="Marker" data-tooltip="Marker at the playhead · M">${I.flag}</button>
     <button type="button" class="iconbtn sm" data-voice-tl aria-label="Record voice-over" data-tooltip="Record voice-over">${I.mic}</button>
     <span class="grow"></span>
@@ -485,7 +495,7 @@ function edBuild(el){
  q('[data-play]').onclick=()=>Ed.play();
  q('[data-undo]').onclick=()=>Ed.undo();q('[data-redo]').onclick=()=>Ed.redo();q('[data-split]').onclick=()=>Ed.split();q('[data-dup]').onclick=()=>Ed.duplicate();q('[data-del]').onclick=()=>Ed.remove();
  R.querySelectorAll('[data-trim]').forEach(b=>b.onclick=()=>Ed.trimTo(b.dataset.trim));q('[data-freeze]').onclick=()=>Ed.freeze();
- q('[data-marker]').onclick=()=>Ed.toggleMarker();q('[data-voice-tl]').onclick=()=>{Ed.tab='audio';Ed.recordVoice();};
+ q('[data-marker]').onclick=()=>Ed.toggleMarker();q('[data-mixer]').onclick=()=>edMixer();q('[data-voice-tl]').onclick=()=>{Ed.tab='audio';Ed.recordVoice();};
  q('[data-snap]').onclick=e=>{Ed.snap=!Ed.snap;e.currentTarget.setAttribute('aria-pressed',String(Ed.snap));};
  q('[data-magnet]').onclick=()=>{Ed.snapshot();Ed.p.magnet=!Ed.p.magnet;Ed.after(false);toast(Ed.p.magnet?'Main track magnet on: no gaps':'Main track magnet off');};
  q('[data-track-add]').onclick=e=>{const b=e.currentTarget,pop=Pop.open(b,Object.entries(ED_KINDS).map(([k,v])=>`<button class="pop-item" data-k="${k}">${I[v.icon]}<span>${k==='video'?'Overlay video track':v.label+' track'}</span></button>`).join(''),{label:'Add a track'});
@@ -543,19 +553,30 @@ function edWireTimeline(){
   const c=Ed.clip(clip.dataset.cid);if(!c)return;e.preventDefault();
   if(Ed.trackOf(c)?.locked)return toast('This track is locked.');
   Ed.solo=e.altKey;
-  if(e.shiftKey||e.ctrlKey||e.metaKey){Ed.select(c.id,true);Ed.solo=false;return;}
+  const proTrim=e.altKey||((e.ctrlKey||e.metaKey)&&e.target.dataset.h);
+  if((e.shiftKey||e.ctrlKey||e.metaKey)&&!proTrim){Ed.select(c.id,true);Ed.solo=false;return;}
   if(!Ed.sels.has(c.id)||(e.altKey&&Ed.sels.size>1))Ed.select(c.id);else{Ed.sel=c.id;Ed.drawProps();}Ed.solo=false;
   if(e.target.dataset.fh){const key=e.target.dataset.fh==='in'?'fadeIn':'fadeOut',left=clip.getBoundingClientRect().left;let snapped=false;
    const mv=ev=>{if(!snapped){Ed.snapshot();snapped=true;}const x=(ev.clientX-left)/Ed.zoom;c[key]=Math.round(edClamp(key==='fadeIn'?x:c.dur-x,0,Math.min(5,c.dur/2))*10)/10;Ed.drawTimeline();Ed.sync();Ed.draw();};
    const up=()=>{window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);if(snapped)Ed.after(true);};
    window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);return;}
   const mode=e.target.dataset.h||'move',x0=e.clientX,group=mode==='move'&&Ed.sels.size>1?Ed.picked():[c],orig=new Map(group.map(g=>[g.id,{...g}])),o=orig.get(c.id),m=Ed.mediaOf(c),srcDur=m&&m.type!=='image'&&!c.sticker?m.dur:Infinity,kind=Ed.kindOf(c);
-  const ids=new Set(group.map(g=>g.id)),edges=Ed.p.clips.filter(x=>!ids.has(x.id)).flatMap(x=>[x.start,x.start+x.dur]).concat([0,Ed.time,...Ed.p.markers]);
+  const ids=new Set(group.map(g=>g.id)),edges=Ed.p.clips.filter(x=>!ids.has(x.id)).flatMap(x=>[x.start,x.start+x.dur]).concat([0,Ed.time,...Ed.p.markers.map(edMt)]);
   const snapT=t=>{if(!Ed.snap)return t;const tol=8/Ed.zoom;let best=t,d=tol;for(const s of edges){if(Math.abs(s-t)<d){d=Math.abs(s-t);best=s;}}return best;};
   let moved=false,newLane=null;
+  // Pro trims: Alt + edge = ripple trim; Ctrl + edge = roll; Alt + body = slip; Ctrl + Alt + body = slide.
+  const touching=(edge,which)=>Ed.p.clips.find(x=>x.track===c.track&&x.id!==c.id&&Math.abs((which==='prev'?x.start+x.dur:x.start)-edge)<.05);
+  const prev=touching(o.start,'prev'),next=touching(o.start+o.dur,'next'),oP=prev&&{...prev},oN=next&&{...next};
+  const after=Ed.p.clips.filter(x=>x.track===c.track&&x.id!==c.id&&x.start>=o.start+o.dur-.001).map(x=>[x,x.start]);
+  const pro=mode==='move'?(e.altKey&&(e.ctrlKey||e.metaKey)?'slide':e.altKey?'slip':null):e.altKey?'ripple':(e.ctrlKey||e.metaKey)?'roll':null;
+  if(pro&&kind!=='audio'&&!c.media&&(pro==='slip'))return;
   const mv=ev=>{
    const dt=(ev.clientX-x0)/Ed.zoom;if(!moved&&Math.abs(ev.clientX-x0)<3&&Math.abs(ev.clientY-e.clientY)<3)return;if(!moved){Ed.snapshot();moved=true;}
-   if(mode==='move'){
+   if(pro==='slip'&&c.media){const sp=o.speed||1,span=Ed.srcSpan(o),max=Math.max(0,(srcDur===Infinity?(o.in||0):srcDur-span));c.in=edClamp((o.in||0)-dt*sp,0,max);Ed.seek(edClamp(Ed.time,c.start,c.start+c.dur-.01));}
+   else if(pro==='slide'){let d=dt;if(oP){d=Math.max(d,-(oP.dur-.1));const mp=Ed.mediaOf(oP);if(mp&&mp.type!=='image'&&mp.dur)d=Math.min(d,(mp.dur-(oP.in||0))/(oP.speed||1)-oP.dur);}if(oN){const sn=oN.speed||1;d=Math.min(d,oN.dur-.1);d=Math.max(d,-(oN.in||0)/sn);}if(!oP)d=Math.max(d,-o.start);
+    c.start=o.start+d;if(prev)prev.dur=oP.dur+d;if(next){const sn=oN.speed||1;next.start=oN.start+d;next.dur=oN.dur-d;if(next.media)next.in=(oN.in||0)+d*sn;}}
+   else if(pro==='roll'&&(mode==='r'?next:prev)){if(mode==='r')Ed.roll(c,next,dt,o,oN);else Ed.roll(prev,c,dt,oP,o);}
+   else if(mode==='move'){
     const min=Math.min(...group.map(g=>orig.get(g.id).start));let d=Math.max(-min,dt);
     const s=o.start+d,a=snapT(s)-s,b=snapT(s+o.dur)-(s+o.dur);d+=Math.abs(a)<=Math.abs(b)?a:b;d=Math.max(-min,d);
     for(const g of group)g.start=orig.get(g.id).start+d;
@@ -567,6 +588,9 @@ function edWireTimeline(){
     if(o.ramp){c.in=Ed.srcAt(o,s);c.ramp=d>.001?edRampSplit(o.ramp,d/o.dur)[1]:o.ramp;}else if(c.media)c.in=(o.in||0)+d*sp;
     if(c.kf)for(const f of Object.values(c.kf))for(const x of f)x.t=Math.max(0,x.t-(d-(c._kfd||0)));c._kfd=d;}
    else{let e2=snapT(o.start+o.dur+dt);const sp=o.speed||1;e2=Math.min(e2,o.ramp?o.start+o.dur:o.start+(srcDur-(o.in||0))/sp);c.dur=Math.max(.1,e2-o.start);if(o.ramp)c.ramp=c.dur<o.dur-.001?edRampSplit(o.ramp,c.dur/o.dur)[0]:o.ramp;}
+   // ripple: what follows on the track moves with the trimmed edge (a trimmed start keeps the clip where it was)
+   if(pro==='ripple'){if(mode==='l'){const d=c.start-o.start;c.start=o.start;for(const [x,s0] of after)x.start=Math.max(0,s0-d);}else{const d=c.dur-o.dur;for(const [x,s0] of after)x.start=Math.max(0,s0+d);}}
+   for(const x of [prev,next,...after.map(a=>a[0])]){if(!x)continue;const node=Ed.dom.tracks.querySelector(`[data-cid="${x.id}"]`);if(node){node.style.left=x.start*Ed.zoom+'px';node.style.width=x.dur*Ed.zoom+'px';}}
    for(const g of group){const node=Ed.dom.tracks.querySelector(`[data-cid="${g.id}"]`);if(node){node.style.left=g.start*Ed.zoom+'px';node.style.width=g.dur*Ed.zoom+'px';}}
    Ed.sync();Ed.draw();Ed.drawTime();};
   const up=()=>{window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);delete c._kfd;
@@ -654,6 +678,7 @@ function edClipMenu(x,y,c){
   ...(!many&&video?[['Freeze frame','freeze',()=>{Ed.seek(edClamp(Ed.time,c.start,c.start+c.dur-.04));Ed.freeze();},false,false,'Shift+F']]:[]),
   ...(!many&&video?[['Stabilise','wand',()=>Ed.runTool(c,'stabilize')],['Auto reframe','crop',()=>Ed.runTool(c,'reframe')]]:[]),
   ...(!many&&c.media&&m?.type!=='audio'&&!c.asAudio?[['Remove background','image',()=>Ed.runTool(c,'cutout')]]:[]),
+  ['Label colour…','flag',()=>setTimeout(()=>edMenu(x,y,[...ED_LABELS.map(([v,l])=>[`<i class="ed-swatch" style="background:${edLabel(v)}"></i>${l}`,'',()=>{Ed.snapshot();for(const k of Ed.picked())k.label=v;Ed.after(true);}]),['None','x',()=>{Ed.snapshot();for(const k of Ed.picked())delete k.label;Ed.after(true);}]]),0)],
   ...(!many&&c.media?[['Replace with…','refresh',()=>edReplace(x,y,c)]]:[]),
   ...(!many&&visual?[['Reset position and size','refresh',()=>{Ed.snapshot();Object.assign(c,{scale:1,x:0,y:0,rotate:0,flipH:false,flipV:false});if(c.kf)for(const k of ['scale','x','y','rotate'])delete c.kf[k];Ed.after(true);}]]:[]),
   '-',['Ripple delete','trash',()=>Ed.rippleRemove(),false,false,'Shift+Del'],[many?`Delete ${Ed.sels.size} clips`:'Delete','trash',()=>Ed.remove(),false,true,'Del']]);
@@ -717,6 +742,30 @@ function edGradeCurveWire(svg,c,ch){
   const up=()=>{window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);Ed.save();};window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);};
  svg.ondblclick=e=>{const g=e.target.closest('[data-gp]');if(!g)return;const i=Number(g.dataset.gp),pts=get();if(i===0||i===pts.length-1)return;Ed.snapshot();pts.splice(i,1);put(pts);Ed.save();};
 }
+/** A marker's name, colour and note (double-click a marker on the ruler or in the list). */
+function edMarkerEdit(anchor,i){const m=Ed.p.markers[i];if(!m)return;const mk=typeof m==='number'?{t:m}:m;
+ const el=Pop.open(anchor,`<form class="refine-pop ed-mk-pop"><label class="field-label" for="ed-mkn">Marker at ${edFmt(mk.t)}</label><input id="ed-mkn" maxlength="60" value="${esc(mk.name||'')}" placeholder="Name" dir="auto">
+  <textarea id="ed-mkt" rows="2" maxlength="300" placeholder="Note" dir="auto">${esc(mk.note||'')}</textarea><div class="ed-mk-colors">${ED_LABELS.map(([v,l])=>`<button type="button" class="ed-swatch big" data-mc="${v}" style="background:${edLabel(v)}" aria-label="${l}" aria-pressed="${mk.color===v}"></button>`).join('')}</div>
+  <div class="refine-actions"><button type="button" class="btn small ghost danger-text" data-del>Delete</button><button type="button" class="btn small ghost" data-cancel>Cancel</button><button class="btn small primary">Save</button></div></form>`,{role:'dialog',label:'Marker',focus:false});
+ if(!el)return;let color=mk.color;$('#ed-mkn',el).focus();
+ el.querySelectorAll('[data-mc]').forEach(b=>b.onclick=()=>{color=color===b.dataset.mc?undefined:b.dataset.mc;el.querySelectorAll('[data-mc]').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.mc===color)));});
+ $('[data-cancel]',el).onclick=()=>Pop.close(true);$('[data-del]',el).onclick=()=>{Pop.close(true);Ed.setMarker(i,null);};
+ $('form',el).onsubmit=e=>{e.preventDefault();Pop.close(true);Ed.setMarker(i,{name:$('#ed-mkn',el).value.trim()||undefined,note:$('#ed-mkt',el).value.trim()||undefined,color});};}
+/** The mixer: every track with sound, its volume (0-200%), pan (left-right), mute and solo. Changes play at once. */
+function edMixer(){const tracks=Ed.p.tracks.filter(t=>t.kind==='audio'||t.kind==='video');Ed.snapshot();
+ dialog(`<div class="ed-keys ed-mixer"><h2>Mixer</h2><div class="ed-mix-rows">${tracks.map(t=>`<div class="ed-mix" data-mt="${t.id}"><b dir="auto">${t.color?`<i class="ed-swatch" style="background:${edLabel(t.color)}"></i>`:''}${esc(t.name||(t.main?'Main':ED_KINDS[t.kind].label))}</b>
+   <label>Volume <input type="range" min="0" max="200" value="${Math.round((t.vol??1)*100)}" data-mv><span>${Math.round((t.vol??1)*100)}%</span></label>
+   <label>Pan <input type="range" min="-100" max="100" value="${Math.round((t.pan||0)*100)}" data-mp><span>${edPanLabel(t.pan||0)}</span></label>
+   <span class="ed-mix-btns"><button type="button" class="btn small${t.muted?' primary':''}" data-mm>Mute</button><button type="button" class="btn small${t.solo?' primary':''}" data-ms>Solo</button></span></div>`).join('')}</div>
+  <p class="ed-xnote">Volume and pan apply to every clip on the track, in the player and the export. Solo plays only the soloed tracks.</p>
+  <div class="ed-xactions"><button type="button" class="btn primary" data-no>Done</button></div></div>`);
+ const box=$('.ed-mixer');box.querySelector('[data-no]').onclick=()=>{closeDialog();Ed.after(true);};
+ box.querySelectorAll('[data-mt]').forEach(r=>{const id=r.dataset.mt,t=Ed.p.tracks.find(x=>x.id===id);
+  r.querySelector('[data-mv]').oninput=e=>{t.vol=Number(e.target.value)/100;if(t.vol===1)delete t.vol;e.target.nextElementSibling.textContent=e.target.value+'%';Ed.sync();};
+  r.querySelector('[data-mp]').oninput=e=>{t.pan=Number(e.target.value)/100;if(!t.pan)delete t.pan;e.target.nextElementSibling.textContent=edPanLabel(t.pan||0);Ed.sync();};
+  r.querySelector('[data-mm]').onclick=e=>{t.muted=!t.muted;e.target.classList.toggle('primary',!!t.muted);Ed.sync();Ed.drawTimeline();};
+  r.querySelector('[data-ms]').onclick=e=>{t.solo=!t.solo;if(!t.solo)delete t.solo;e.target.classList.toggle('primary',!!t.solo);Ed.sync();};});}
+const edPanLabel=p=>Math.abs(p)<.01?'Centre':`${Math.round(Math.abs(p)*100)}% ${p<0?'left':'right'}`;
 function edSpeed(c,v){Ed.snapshot();const m=Ed.mediaOf(c),max=m?.dur?((m.dur-(c.in||0))/(v*(c.ramp?edRampAvg(c.ramp):1))):Infinity;c.dur=Math.max(.1,Math.min(c.dur*(c.speed||1)/v,max));c.speed=v;Ed.after(true);}
 // ---------- resizable panels: drag the lines between them; sizes are remembered ----------
 function edLayout(R){
@@ -736,7 +785,7 @@ function edLayout(R){
 }
 // ---------- the shortcuts sheet ----------
 function edKeys(){
- const rows=[['Space','Play or pause'],['Ctrl+B or S','Split at the playhead'],['Delete','Delete the selection'],['Ctrl+Alt+V','Paste attributes: the copied clip\'s look onto the selection'],['Ctrl+G / Ctrl+Shift+G','Group / ungroup'],['Alt + click','One clip of a group'],['Shift+E','Save the frame as a picture'],['Shift+Delete','Ripple delete: close the space'],['Q / W','Delete left / right of the playhead'],['J / K / L','Play back, stop, play forward (again: faster)'],['I / O','Mark in / out'],['Shift+I / Shift+O','Go to in / out'],['Alt+X','Clear in and out'],['Shift+F','Freeze frame'],['Ctrl+Z / Ctrl+Shift+Z','Undo / redo'],['Ctrl+C / X / V','Copy, cut, paste at the playhead'],['Ctrl+D','Duplicate'],['Ctrl+A','Select every clip'],
+ const rows=[['Space','Play or pause'],['Ctrl+B or S','Split at the playhead'],['Delete','Delete the selection'],['Alt + drag an edge','Ripple trim: what follows moves too'],['Ctrl + drag an edge','Roll: move the cut between two clips'],['Alt + drag a clip','Slip: another part of the file, same place'],['Ctrl + Alt + drag a clip','Slide: move it between its neighbours'],['Ctrl+Alt+V','Paste attributes: the copied clip\'s look onto the selection'],['Ctrl+G / Ctrl+Shift+G','Group / ungroup'],['Alt + click','One clip of a group'],['Shift+E','Save the frame as a picture'],['Shift+Delete','Ripple delete: close the space'],['Q / W','Delete left / right of the playhead'],['J / K / L','Play back, stop, play forward (again: faster)'],['I / O','Mark in / out'],['Shift+I / Shift+O','Go to in / out'],['Alt+X','Clear in and out'],['Shift+F','Freeze frame'],['Ctrl+Z / Ctrl+Shift+Z','Undo / redo'],['Ctrl+C / X / V','Copy, cut, paste at the playhead'],['Ctrl+D','Duplicate'],['Ctrl+A','Select every clip'],
   ['Shift or Ctrl + click','Add a clip to the selection'],['Drag on empty space','Select with a box'],['M','Add or remove a marker'],['← / →','One frame back / forward'],['Shift + ← / →','One second back / forward'],['Home / End','Start / end'],['Ctrl + wheel','Zoom the timeline'],['Right-click','Clip menu'],['Esc','Clear the selection'],['?','This sheet']];
  dialog(`<div class="ed-keys"><h2>Keyboard shortcuts</h2><dl>${rows.map(([k,d])=>`<dt>${k.split(' / ').map(x=>`<kbd>${esc(x)}</kbd>`).join(' / ')}</dt><dd>${esc(d)}</dd>`).join('')}</dl><div class="ed-xactions"><button type="button" class="btn primary" data-no>Done</button></div></div>`);
  $('.ed-keys [data-no]').onclick=()=>closeDialog();
