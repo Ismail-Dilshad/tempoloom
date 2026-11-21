@@ -1,6 +1,6 @@
 # Changelog
 
-## 10.3.0: Editor export you can trust, room to save, timeline and sound tools
+## 10.3.0: Editor export you can trust, room to save, timeline, sound and effect tools
 
 - **Frame-accurate export**: the Editor draws every frame at its exact time and encodes it in the
   page (WebCodecs, VP9 or VP8); nothing is dropped when the computer is busy, and it no longer has
@@ -27,6 +27,11 @@
   default 12), easing in just before and out after. Fades are dragged straight on the clip in the
   timeline. A stereo level meter (-60 to 0 dBFS, peak line) sits by the player. Playback and export
   use the same volumes, so what you hear is what you export.
+- **Effects**: Green screen (Adjust tab) removes a colour, picked with an eyedropper from the
+  picture, with similarity, smoothness and spill. Sixteen blend modes (Screen, Multiply, Overlay...)
+  under Opacity. A Mask tab for pictures and videos: rectangle (round corners), ellipse or linear,
+  with size, position, angle, feather and invert. Keyframes ease Smooth (as before), Linear, Ease in,
+  Ease out or Hold, chosen at the playhead.
 
 ## 10.2.0: Sileo notifications
 

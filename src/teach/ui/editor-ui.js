@@ -117,7 +117,7 @@ Object.assign(Ed,{
   const sec=(title,body,reset)=>`<section class="ed-sec"><header><h4>${title}</h4>${reset?`<button type="button" class="iconbtn sm" data-reset="${reset}" aria-label="Reset ${title}" data-tooltip="Reset">${I.refresh}</button>`:''}</header>${body}</section>`;
   const seg=(attr,list,val)=>`<div class="ed-seg">${list.map(([v,l])=>`<button type="button" data-${attr}="${v}" aria-pressed="${val===v}">${l}</button>`).join('')}</div>`;
   const kind=!c?'':c.text!==undefined?'text':c.sticker?'sticker':this.kindOf(c)==='audio'?'audio':m?.type||'video';
-  const tabs=!c?[['details','Details']]:kind==='text'?[['text','Text'],['anim','Animation'],['basic','Basic']]:kind==='sticker'?[['sticker','Sticker'],['anim','Animation'],['basic','Basic']]:kind==='audio'?[['audio','Audio'],['speed','Speed']]:kind==='image'?[['basic','Basic'],['adjust','Adjust']]:[['basic','Basic'],['adjust','Adjust'],['audio','Audio'],['speed','Speed']];
+  const tabs=!c?[['details','Details']]:kind==='text'?[['text','Text'],['anim','Animation'],['basic','Basic']]:kind==='sticker'?[['sticker','Sticker'],['anim','Animation'],['basic','Basic']]:kind==='audio'?[['audio','Audio'],['speed','Speed']]:kind==='image'?[['basic','Basic'],['adjust','Adjust'],['mask','Mask']]:[['basic','Basic'],['adjust','Adjust'],['mask','Mask'],['audio','Audio'],['speed','Speed']];
   if(!tabs.some(([id])=>id===this.ptab))this.ptab=tabs[0][0];
   const t=this.ptab,locked=c&&this.trackOf(c)?.locked;let body='';
   const fades=()=>sec('Fade',`${row('fadeIn','Fade in',c.fadeIn||0,{min:0,max:Math.min(5,+(c.dur/2).toFixed(1)),step:.1,suffix:'s'})}${row('fadeOut','Fade out',c.fadeOut||0,{min:0,max:Math.min(5,+(c.dur/2).toFixed(1)),step:.1,suffix:'s'})}`);
@@ -142,10 +142,21 @@ Object.assign(Ed,{
      ${row('rotate','Rotate',cur('rotate'),{min:-180,max:180,suffix:'°',slider:false})}
      ${media?`<div class="ed-row"><label>Flip</label><div class="ed-ctl"><button type="button" class="ed-tool" data-flip="flipH" aria-pressed="${!!c.flipH}">${I.flipH} Mirror</button><button type="button" class="ed-tool" data-flip="flipV" aria-pressed="${!!c.flipV}">${I.flipV} Flip</button></div></div>`:''}`,'transform')+
     (media?sec('Crop',`${['l','t','r','b'].map(s=>row('crop'+s,{l:'Left',t:'Top',r:'Right',b:'Bottom'}[s],cr[s]||0,{min:0,max:45,unit:'pct',suffix:'%'})).join('')}`,'crop'):'')+
-    sec('Opacity',row('opacity','Opacity',cur('opacity'),{min:0,max:100,unit:'pct',suffix:'%'}))+(media?fades():'')+
+    sec('Opacity and blend',row('opacity','Opacity',cur('opacity'),{min:0,max:100,unit:'pct',suffix:'%'})+`<div class="ed-row"><label for="ed-blend">Blend</label><div class="ed-ctl"><select id="ed-blend" data-k="blend" aria-label="Blend mode">${ED_BLENDS.map(([v,l])=>`<option value="${v}" ${(c.blend||'normal')===v?'selected':''}>${l}</option>`).join('')}</select></div></div>`)+(media?fades():'')+
     `<p class="ed-hint">${I.diamond} Keyframes: move the playhead, press the diamond, change the value. It animates between them.</p>`;}
   else if(t==='adjust'){const a=c.adj||{};body=sec('Filter',`<div class="ed-filters small">${ED_FILTERS.map(([id,l,f])=>`<button type="button" class="ed-filter" data-filter="${id}" aria-pressed="${JSON.stringify(a)===JSON.stringify(f)}"><span class="ed-filter-swatch" style="filter:${edCssFilter(f)}"></span><span>${l}</span></button>`).join('')}</div>`)+
-    sec('Adjust',ED_ADJ.map(([k,l,mn,mx])=>row('adj_'+k,l,a[k]||0,{min:mn,max:mx})).join(''),'adjust');}
+    sec('Adjust',ED_ADJ.map(([k,l,mn,mx])=>row('adj_'+k,l,a[k]||0,{min:mn,max:mx})).join(''),'adjust')+
+    sec('Green screen',`<div class="ed-row"><label>Remove a colour</label><div class="ed-ctl"><input type="checkbox" role="switch" data-k="key_on" ${c.key?.on?'checked':''} aria-label="Green screen"><button type="button" class="ed-tool" data-key-pick aria-pressed="${this.picking===c.id}">${I.wand} ${this.picking===c.id?'Click the picture…':'Pick from picture'}</button></div></div>
+     ${c.key?.on?`<div class="ed-row"><label>Colour</label><div class="ed-ctl"><input type="color" data-k="key_color" value="${esc(c.key.color||'#00b140')}" aria-label="Key colour"></div></div>
+      ${row('key_sim','Similarity',c.key.sim??25,{min:0,max:100})}${row('key_smooth','Smoothness',c.key.smooth??10,{min:0,max:100})}${row('key_spill','Spill',c.key.spill??50,{min:0,max:100})}`:''}`);}
+  else if(t==='mask'){const mk=c.mask||{shape:'none'},sh=mk.shape||'none';
+   body=sec('Shape',`<div class="ed-seg wrap">${ED_MASKS.map(([v,l])=>`<button type="button" data-mask="${v}" aria-pressed="${sh===v}">${l}</button>`).join('')}</div>`,sh!=='none'?'mask':'')+
+    (sh==='none'?`<p class="ed-hint">A mask shows only part of the clip: a box, an ellipse, or one side of a line. Feather softens its edge.</p>`:
+     sec('Mask',`${sh!=='linear'?row('mask_w','Width',mk.w??.8,{min:1,max:200,unit:'pct',suffix:'%'})+row('mask_h','Height',mk.h??.8,{min:1,max:200,unit:'pct',suffix:'%'}):''}
+      ${row('mask_x','Position X',mk.x||0,{min:-100,max:100,unit:'pct',suffix:'%'})}${row('mask_y','Position Y',mk.y||0,{min:-100,max:100,unit:'pct',suffix:'%'})}
+      ${sh==='linear'?row('mask_angle','Angle',mk.angle||0,{min:-180,max:180,suffix:'°'}):''}${sh==='rect'?row('mask_round','Round corners',mk.round||0,{min:0,max:100,unit:'pct',suffix:'%'}):''}
+      ${row('mask_feather','Feather',mk.feather||0,{min:0,max:200,suffix:'px'})}
+      <div class="ed-row"><label>Invert</label><div class="ed-ctl"><input type="checkbox" role="switch" data-k="mask_invert" ${mk.invert?'checked':''} aria-label="Invert mask"></div></div>`));}
   else if(t==='audio'){const snd=!(kind==='video'&&c.detached),g=c.gainDb||0,lu=m?.lufs;
    const loud=sec('Loudness',`<div class="ed-row"><label>Match</label><div class="ed-ctl"><button type="button" class="ed-tool" data-loud>${I.wave} Even loudness (−14 LUFS)</button></div></div>
      <div class="ed-row"><label>Gain</label><div class="ed-ctl"><span class="ed-val">${g>0?'+':''}${g.toFixed(1)} dB${typeof lu==='number'?` · file ${lu} LUFS`:''}</span>${g?`<button type="button" class="ed-link" data-loud-reset>Reset</button>`:''}</div></div>
@@ -156,6 +167,8 @@ Object.assign(Ed,{
     :sec('Volume',row('volume','Volume',cur('volume'),{min:0,max:200,unit:'pct',suffix:'%'})))+(snd?loud:'')+duck+(kind==='audio'?fades():'');}
   else if(t==='speed')body=sec('Speed',`${row('speed','Speed',c.speed||1,{min:.25,max:4,step:.05,suffix:'×'})}<div class="ed-chips">${[.5,1,1.5,2,3].map(s=>`<button type="button" data-speed="${s}" aria-pressed="${(c.speed||1)===s}">${s}×</button>`).join('')}</div>
      <div class="ed-row"><label>Length</label><div class="ed-ctl"><span class="ed-val">${edFmt(c.dur)}</span></div></div>`,'speed');
+  const ke=c&&(t==='basic'||t==='audio')&&c.kf?this.kfEaseAt(c):null;
+  if(ke)body=sec('Keyframe at the playhead',`<div class="ed-row"><label>To the next</label><div class="ed-ctl"><div class="ed-seg wrap">${ED_EASES.map(([v,l])=>`<button type="button" data-ease="${v}" aria-pressed="${ke===v}">${l}</button>`).join('')}</div></div></div>`)+body;
   el.innerHTML=`<nav class="ed-ptabs" role="tablist">${tabs.map(([id,l])=>`<button type="button" role="tab" aria-selected="${t===id}" data-ptab="${id}">${l}</button>`).join('')}
     ${c?`<span class="grow"></span><button type="button" class="iconbtn sm" data-remove aria-label="Delete clip" data-tooltip="Delete">${I.trash}</button>`:''}</nav><div class="ed-pbody${locked?' locked':''}">${locked?`<div class="ed-note">${I.lock} This track is locked.</div>`:''}${body}</div>`;
   el.querySelectorAll('[data-ptab]').forEach(b=>b.onclick=()=>{this.ptab=b.dataset.ptab;this.drawProps();});
@@ -169,12 +182,14 @@ Object.assign(Ed,{
   el.querySelectorAll('[data-k]').forEach(inp=>{
    const k=inp.dataset.k,u=inp.dataset.u||'raw';
    const snap=()=>{if(!inp._snap){this.snapshot();inp._snap=true;}};inp.addEventListener('focus',snap);inp.addEventListener('pointerdown',snap);
-   inp.addEventListener('change',()=>{inp._snap=false;this.save();if(['speed','text','box','font'].includes(k))this.drawTimeline();if(k==='box')this.drawProps();if(k==='font')document.fonts?.load(`40px "${c.font}"`).then(()=>this.draw()).catch(()=>{});this.drawTime();if(k==='speed')this.after(false);});
+   inp.addEventListener('change',()=>{inp._snap=false;this.save();if(['speed','text','box','font'].includes(k))this.drawTimeline();if(k==='box'||k==='key_on')this.drawProps();if(k==='font')document.fonts?.load(`40px "${c.font}"`).then(()=>this.draw()).catch(()=>{});this.drawTime();if(k==='speed')this.after(false);});
    inp.addEventListener('input',()=>{
     let v=inp.type==='checkbox'?inp.checked:inp.type==='range'||inp.type==='number'?Number(inp.value):inp.value;
     if(inp.type==='number'&&!Number.isFinite(v))return;
     if(u!=='raw')v=conv[u][1](v);
-    if(k==='speed')setSpeed(v);else if(k==='duckdb'){c.duck={db:-edClamp(v,3,30)};this._dk=null;}else if(k.startsWith('crop'))c.crop={...(c.crop||{}),[k.slice(4)]:edClamp(v,0,.45)};else if(k.startsWith('adj_'))c.adj={...(c.adj||{}),[k.slice(4)]:v};
+    if(k==='speed')setSpeed(v);else if(k==='duckdb'){c.duck={db:-edClamp(v,3,30)};this._dk=null;}
+    else if(k.startsWith('key_'))c.key={color:'#00b140',sim:25,smooth:10,spill:50,...(c.key||{}),[k.slice(4)]:v};
+    else if(k.startsWith('mask_'))c.mask={...(c.mask||{shape:'rect'}),[k.slice(5)]:v};else if(k.startsWith('crop'))c.crop={...(c.crop||{}),[k.slice(4)]:edClamp(v,0,.45)};else if(k.startsWith('adj_'))c.adj={...(c.adj||{}),[k.slice(4)]:v};
     else if(ED_KFKEYS.has(k))this.setVal(c,k,v);else c[k]=v;
     el.querySelectorAll(`[data-k="${k}"]`).forEach(o=>{if(o!==inp&&o.type!=='checkbox')o.value=conv[u][0](v);});
     if(k==='speed'||k==='text'){this.drawTimeline();this.drawTime();}
@@ -189,13 +204,16 @@ Object.assign(Ed,{
   el.querySelectorAll('[data-reshape]').forEach(b=>b.onclick=()=>{this.snapshot();c.sticker={...c.sticker,shape:b.dataset.reshape};this.after(true);});
   el.querySelectorAll('[data-reemoji]').forEach(b=>b.onclick=()=>{this.snapshot();c.sticker={...c.sticker,emoji:b.dataset.reemoji};this.after(true);});
   el.querySelectorAll('[data-reset]').forEach(b=>b.onclick=()=>{this.snapshot();const r=b.dataset.reset;
-   if(r==='transform'){Object.assign(c,{scale:1,x:0,y:0,rotate:0,flipH:false,flipV:false});if(c.kf){for(const k of ['scale','x','y','rotate'])delete c.kf[k];}}else if(r==='crop')delete c.crop;else if(r==='adjust')delete c.adj;else setSpeed(1);this.after(true);});
+   if(r==='transform'){Object.assign(c,{scale:1,x:0,y:0,rotate:0,flipH:false,flipV:false});if(c.kf){for(const k of ['scale','x','y','rotate'])delete c.kf[k];}}else if(r==='crop')delete c.crop;else if(r==='mask')delete c.mask;else if(r==='adjust')delete c.adj;else setSpeed(1);this.after(true);});
   const det=$('[data-detach]',el);if(det)det.onclick=()=>this.detach(c);
   const busy=b=>{b.disabled=true;b.innerHTML='<span class="spin"></span> Measuring…';};
   const ld=$('[data-loud]',el);if(ld)ld.onclick=()=>{busy(ld);this.matchLoudness([c]).finally(()=>this.drawProps());};
   const la=$('[data-loud-all]',el);if(la)la.onclick=()=>{busy(la);this.matchLoudness(this.p.clips.filter(x=>x.media&&!(x.detached&&!x.asAudio)&&this.mediaOf(x)?.type!=='image')).finally(()=>this.drawProps());};
   const lr=$('[data-loud-reset]',el);if(lr)lr.onclick=()=>{this.snapshot();delete c.gainDb;this.after(true);};
   const dk=$('[data-duck]',el);if(dk)dk.onchange=()=>this.setDuck(c,dk.checked);
+  el.querySelectorAll('[data-mask]').forEach(b=>b.onclick=()=>{this.snapshot();const v=b.dataset.mask;if(v==='none')delete c.mask;else c.mask={w:.8,h:.8,x:0,y:0,feather:0,...(c.mask||{}),shape:v};this.after(true);});
+  el.querySelectorAll('[data-ease]').forEach(b=>b.onclick=()=>this.setKfEase(c,b.dataset.ease));
+  const kp=$('[data-key-pick]',el);if(kp)kp.onclick=()=>{this.picking=this.picking===c.id?null:c.id;this.dom.frame?.classList.toggle('picking',!!this.picking);this.drawProps();this.draw();};
   $('[data-remove]',el).onclick=()=>this.remove();
  },
  fit(){const st=this.dom.stage,wrap=this.dom.frame;if(!st||!wrap)return;const [W,H]=this.base(),r=st.getBoundingClientRect(),s=Math.min((r.width-16)/W,(r.height-16)/H);wrap.style.width=Math.max(10,W*s)+'px';wrap.style.height=Math.max(10,H*s)+'px';},
@@ -429,6 +447,9 @@ function edWireTimeline(){
 function edWirePreview(){
  const cv=Ed.dom.canvas;
  cv.onpointerdown=e=>{
+  if(Ed.picking){const c=Ed.clip(Ed.picking);const [W,H]=Ed.size(),r=cv.getBoundingClientRect(),px=Math.floor((e.clientX-r.left)*W/r.width),py=Math.floor((e.clientY-r.top)*H/r.height);
+   Ed.draw();const d=cv.getContext('2d').getImageData(px,py,1,1).data,hex='#'+[d[0],d[1],d[2]].map(v=>v.toString(16).padStart(2,'0')).join('');
+   Ed.picking=null;Ed.dom.frame?.classList.remove('picking');if(c){Ed.snapshot();c.key={sim:25,smooth:10,spill:50,...(c.key||{}),on:true,color:hex};Ed.after(true);toast('Colour picked: '+hex);}return;}
   const [W,H]=Ed.size(),r=cv.getBoundingClientRect(),sx=W/r.width,sy=H/r.height,px=(e.clientX-r.left)*sx,py=(e.clientY-r.top)*sy,g=cv.getContext('2d');
   const hit=[...Ed.visible(Ed.time)].reverse().find(c=>{if(Ed.trackOf(c)?.locked)return false;const b=Ed.box(g,c,W,H);return Math.abs(px-b.cx)<=b.w/2&&Math.abs(py-b.cy)<=b.h/2;});
   if(!hit){if(Ed.sels.size)Ed.select(null);return;}

@@ -17,6 +17,12 @@ const ED_EMOJI=['😀','😂','😍','🔥','👍','🎉','⭐','❤️','✅','
 const ED_TRACKS0=()=>[{id:'text',kind:'text'},{id:'video',kind:'video',main:true},{id:'audio',kind:'audio'}];
 const edClamp=(v,a,b)=>Math.min(b,Math.max(a,v));
 const edEase=u=>u<.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2;
+/** How a keyframe moves to the next one. Smooth is the default (and what older projects had). */
+const ED_EASES=[['smooth','Smooth'],['linear','Linear'],['in','Ease in'],['out','Ease out'],['hold','Hold']];
+const edEaseFn={smooth:edEase,linear:u=>u,in:u=>u*u*u,out:u=>1-Math.pow(1-u,3),hold:()=>0};
+const ED_BLENDS=[['normal','Normal'],['multiply','Multiply'],['screen','Screen'],['overlay','Overlay'],['darken','Darken'],['lighten','Lighten'],['color-dodge','Colour dodge'],['color-burn','Colour burn'],
+ ['hard-light','Hard light'],['soft-light','Soft light'],['difference','Difference'],['exclusion','Exclusion'],['hue','Hue'],['saturation','Saturation'],['color','Colour'],['luminosity','Luminosity']];
+const ED_MASKS=[['none','None'],['rect','Rectangle'],['circle','Ellipse'],['linear','Linear']];
 const Ed={
  p:null,media:[],urls:{},els:{},imgs:{},time:0,playing:false,sel:null,sels:new Set(),junction:null,zoom:40,snap:true,tab:'media',ptab:null,
  past:[],future:[],dom:{},ready:null,exporting:null,clipboard:null,guides:false,recording:null,
@@ -207,7 +213,7 @@ const Ed={
  },
  /** Cuts one clip in two at time t (no undo step); returns the second part. */
  splitClip(c,t){const first=t-c.start,b={...c,id:this.uid(),start:t,in:(c.in||0)+first*(c.speed||1),dur:c.dur-first};delete b.trans;
-  if(c.kf){b.kf={};c.kf=Object.fromEntries(Object.entries(c.kf).map(([k,f])=>{b.kf[k]=f.filter(x=>x.t>=first).map(x=>({t:x.t-first,v:x.v}));return [k,f.filter(x=>x.t<=first)];}));}
+  if(c.kf){b.kf={};c.kf=Object.fromEntries(Object.entries(c.kf).map(([k,f])=>{b.kf[k]=f.filter(x=>x.t>=first).map(x=>({...x,t:x.t-first}));return [k,f.filter(x=>x.t<=first)];}));}
   c.dur=first;c.fadeOut=0;b.fadeIn=0;this.p.clips.push(b);return b;},
  /** Moves every clip on a track that starts at or after `from` by d seconds (negative = left). */
  shiftTrack(trackId,from,d,except){for(const o of this.p.clips)if(o.track===trackId&&o.start>=from-.001&&o!==except)o.start=Math.max(0,o.start+d);},
@@ -235,7 +241,7 @@ const Ed={
   this.snapshot();let back=null;
   for(const c of list){const sp=c.speed||1,end=c.start+c.dur;
    if(side==='start'){const d=t-c.start;c.in=(c.in||0)+(c.media?d*sp:0);c.dur-=d;delete c.trans;
-    if(c.kf)for(const k of Object.keys(c.kf)){const f=c.kf[k];const v0=this.val({...c,dur:c.dur+d,kf:{[k]:f}},k,t);c.kf[k]=[{t:0,v:v0},...f.filter(x=>x.t>d).map(x=>({t:x.t-d,v:x.v}))];}
+    if(c.kf)for(const k of Object.keys(c.kf)){const f=c.kf[k];const v0=this.val({...c,dur:c.dur+d,kf:{[k]:f}},k,t);c.kf[k]=[{t:0,v:v0},...f.filter(x=>x.t>d).map(x=>({...x,t:x.t-d}))];}
     this.shiftTrack(c.track,end,-d,c);back=back??c.start;}
    else{const d=end-t;c.dur-=d;this.shiftTrack(c.track,end,-d,c);}
    c.fadeIn=Math.min(c.fadeIn||0,c.dur/2);c.fadeOut=Math.min(c.fadeOut||0,c.dur/2);}
@@ -308,7 +314,10 @@ const Ed={
  transAll(type,dur){this.snapshot();for(const c of this.p.clips.filter(c=>this.kindOf(c)==='video'))if(this.prevOf(c)){if(type==='none')delete c.trans;else c.trans={type,dur};}this.after(true);},
  // ---------- keyframes: per property, at times from the clip's start ----------
  val(c,k,t=this.time){const d={scale:1,opacity:1,volume:1}[k]??0,f=c.kf?.[k];if(!f?.length)return c[k]??d;const lt=edClamp(t-c.start,0,c.dur);
-  if(lt<=f[0].t)return f[0].v;const last=f[f.length-1];if(lt>=last.t)return last.v;const i=f.findIndex(x=>x.t>lt),a=f[i-1],b=f[i];return a.v+(b.v-a.v)*edEase((lt-a.t)/(b.t-a.t||1));},
+  if(lt<=f[0].t)return f[0].v;const last=f[f.length-1];if(lt>=last.t)return last.v;const i=f.findIndex(x=>x.t>lt),a=f[i-1],b=f[i];return a.v+(b.v-a.v)*(edEaseFn[a.e]||edEase)((lt-a.t)/(b.t-a.t||1));},
+ /** The easing of the keyframes at the playhead (all properties of the clip), or null. */
+ kfEaseAt(c){let e=null;for(const f of Object.values(c.kf||{})){const x=f.find(x=>Math.abs(x.t-(this.time-c.start))<1/60);if(x){e=x.e||'smooth';break;}}return e;},
+ setKfEase(c,e){this.snapshot();for(const f of Object.values(c.kf||{}))for(const x of f)if(Math.abs(x.t-(this.time-c.start))<1/60){if(e==='smooth')delete x.e;else x.e=e;}this.after(true);},
  kfAt(c,k){const lt=this.time-c.start;return (c.kf?.[k]||[]).findIndex(x=>Math.abs(x.t-lt)<1/60);},
  toggleKf(c,k){const lt=edClamp(this.time-c.start,0,c.dur);this.snapshot();c.kf=c.kf||{};const f=c.kf[k]=c.kf[k]||[];const i=this.kfAt(c,k);
   if(i>=0)f.splice(i,1);else{f.push({t:lt,v:this.val(c,k)});f.sort((a,b)=>a.t-b.t);}if(!f.length)delete c.kf[k];this.after(true);},
@@ -417,7 +426,29 @@ const Ed={
   if(a.brightness)f.push(`brightness(${1+a.brightness/100})`);if(a.contrast)f.push(`contrast(${1+a.contrast/100})`);if(a.saturation)f.push(`saturate(${1+a.saturation/100})`);if(a.hue)f.push(`hue-rotate(${a.hue}deg)`);
   const bl=(a.blur||0)+(extra||0);if(bl)f.push(`blur(${bl*k}px)`);return f.join(' ')||'none';},
  /** One picture, sticker or text at time t, with what a transition adds (alpha, offset, zoom, wipe, blur). */
+ /** Does this clip need its own layer (blend mode, green screen or mask)? */
+ layered(c){return (c.blend&&c.blend!=='normal')||c.key?.on||(c.mask&&c.mask.shape&&c.mask.shape!=='none');},
+ /** Draws the clip alone on a layer, keys out its colour, cuts it with its mask, then blends the layer onto the frame. */
+ drawLayered(g,c,t,o){
+  const [W,H]=this.size(),L=this._layer||(this._layer=document.createElement('canvas'));if(L.width!==W||L.height!==H){L.width=W;L.height=H;}
+  const lg=L.getContext('2d',{willReadFrequently:true});lg.setTransform(1,0,0,1,0,0);lg.globalCompositeOperation='source-over';lg.globalAlpha=1;lg.filter='none';lg.clearRect(0,0,W,H);
+  this.drawClip(lg,c,t,{...o,flat:true});
+  const b=this.box(lg,c,W,H,t),rot=this.val(c,'rotate',t)*Math.PI/180,k=(o.k||1),cx=b.cx+(o.dx||0),cy=b.cy+(o.dy||0);
+  if(c.key?.on&&!this.picking){const hw=(Math.abs(Math.cos(rot))*b.w+Math.abs(Math.sin(rot))*b.h)*k/2,hh=(Math.abs(Math.sin(rot))*b.w+Math.abs(Math.cos(rot))*b.h)*k/2;
+   const x0=Math.max(0,Math.floor(cx-hw)),y0=Math.max(0,Math.floor(cy-hh)),x1=Math.min(W,Math.ceil(cx+hw)),y1=Math.min(H,Math.ceil(cy+hh));
+   if(x1>x0&&y1>y0){const im=lg.getImageData(x0,y0,x1-x0,y1-y0);edKey(im.data,c.key);lg.putImageData(im,x0,y0);}}
+  const mk=c.mask;
+  if(mk&&mk.shape&&mk.shape!=='none'){lg.save();lg.globalCompositeOperation=mk.invert?'destination-out':'destination-in';lg.translate(cx,cy);lg.rotate(rot);lg.scale(k,k);
+   const mw=b.w*(mk.w??.8),mh=b.h*(mk.h??.8),mx=b.w*(mk.x||0),my=b.h*(mk.y||0),fe=(mk.feather||0)*this.k();
+   if(mk.shape==='linear'){const a=(mk.angle||0)*Math.PI/180,R=Math.hypot(b.w,b.h),dx=Math.sin(a),dy=-Math.cos(a),half=Math.max(.5,fe);
+    const gr=lg.createLinearGradient(mx-dx*half,my-dy*half,mx+dx*half,my+dy*half);gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,'rgba(0,0,0,1)');lg.fillStyle=gr;lg.fillRect(-R,-R,2*R,2*R);}
+   else{if(fe)lg.filter=`blur(${fe}px)`;lg.fillStyle='#000';lg.beginPath();
+    if(mk.shape==='circle')lg.ellipse(mx,my,mw/2,mh/2,0,0,Math.PI*2);else lg.roundRect(mx-mw/2,my-mh/2,mw,mh,Math.min(mw,mh)/2*(mk.round||0));lg.fill();}
+   lg.restore();}
+  g.save();g.globalCompositeOperation=c.blend&&c.blend!=='normal'?c.blend:'source-over';g.drawImage(L,0,0);g.restore();
+ },
  drawClip(g,c,t,o={}){
+  if(!o.flat&&this.layered(c))return this.drawLayered(g,c,t,o);
   const [W,H]=this.size();
   if(c.text!==undefined)return this.drawText(g,c,W,H,t,o);
   if(c.sticker)return this.drawSticker(g,c,W,H,t,o);
@@ -758,6 +789,17 @@ async function edUnzip(file){
   const start=lo+30+lh.getUint16(26,true)+lh.getUint16(28,true);out.set(name,file.slice(start,start+cs));p+=46+nl+xl+cl;
  }
  return out;
+}
+// ---------- green screen ----------
+/** Keys out a colour (in place, RGBA): distance in the colour plane (Cb/Cr) gives transparency; spill takes the
+ *  key colour's tint off the edges. Similarity, smoothness and spill are 0-100 as in the panel. */
+function edKey(d,k){
+ const hex=String(k.color||'#00b140'),kr=parseInt(hex.slice(1,3),16),kg=parseInt(hex.slice(3,5),16),kb=parseInt(hex.slice(5,7),16);
+ const cb=(r,g,b)=>-.168736*r-.331264*g+.5*b,cr=(r,g,b)=>.5*r-.418688*g-.081312*b,kcb=cb(kr,kg,kb),kcr=cr(kr,kg,kb);
+ const sim=(k.sim??25)/100*120,smooth=Math.max(1,(k.smooth??10)/100*120),spill=(k.spill??50)/100,ch=kg>=kr&&kg>=kb?1:kb>=kr?2:0;
+ for(let i=0;i<d.length;i+=4){if(!d[i+3])continue;const r=d[i],g=d[i+1],b=d[i+2],dist=Math.hypot(cb(r,g,b)-kcb,cr(r,g,b)-kcr),a=Math.min(1,Math.max(0,(dist-sim)/smooth));
+  if(a<1)d[i+3]=d[i+3]*a;
+  if(spill&&a<1.0001){const o1=d[i+(ch+1)%3],o2=d[i+(ch+2)%3],lim=Math.max(o1,o2),v=d[i+ch];if(v>lim)d[i+ch]=v-(v-lim)*spill*(1-a*.5);}}
 }
 // ---------- sound helpers ----------
 const edDb=db=>Math.pow(10,db/20);
