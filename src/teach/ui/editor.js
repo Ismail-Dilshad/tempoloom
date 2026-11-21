@@ -128,7 +128,7 @@ const Ed={
   if(!Array.isArray(p.tracks)||!p.tracks.length)p.tracks=ED_TRACKS0();
   if(!p.tracks.some(t=>t.main&&t.kind==='video'))(p.tracks.find(t=>t.kind==='video')||p.tracks[p.tracks.push({id:'video',kind:'video'})-1]).main=true;
   const ids=new Set(this.media.map(m=>m.id));
-  p.clips=(p.clips||[]).filter(c=>c.text!==undefined||c.sticker||ids.has(c.media));
+  p.clips=(p.clips||[]).filter(c=>c.text!==undefined||c.sticker||c.adjustment||ids.has(c.media));
   for(const c of p.clips)if(!p.tracks.some(t=>t.id===c.track)){const kind=c.text!==undefined?'text':c.sticker?'sticker':this.media.find(m=>m.id===c.media)?.type==='audio'||c.asAudio?'audio':'video';c.track=(p.tracks.find(t=>t.kind===kind)||this.addTrackTo(p,kind)).id;}
   if(p.magnet===undefined)p.magnet=true;p.markers=(p.markers||[]).map(m=>typeof m==='number'?{t:m}:m);p.bgMode=p.bgMode||'color';p.v=3;return p;
  },
@@ -375,6 +375,9 @@ const Ed={
   c.kf=c.kf||{};const fx=thin(xs);if(fx.length>1)c.kf.x=fx;else{delete c.kf.x;c.x=fx[0]?.v||0;}
   if(maxY>0.001){const fy=thin(ys);if(fy.length>1)c.kf.y=fy;else{delete c.kf.y;c.y=fy[0]?.v||0;}}else{delete c.kf.y;c.y=0;}
   if(!Object.keys(c.kf).length)delete c.kf;this.after(true);toast('Reframed: the picture follows the face');},
+ /** An adjustment layer: applies its adjustments, grade, mask and effects to everything under it. */
+ addAdjustment(){this.snapshot();const c={id:this.uid(),adjustment:true,start:this.time,dur:5,opacity:1,scale:1,x:0,y:0,rotate:0,fadeIn:0,fadeOut:0,adj:{contrast:15,saturation:10}};
+  c.track=this.place('video',c.start,c.dur);this.p.clips.push(c);this.pick(c.id);this.ptab='adjust';this.after(true);toast('Adjustment layer added: it changes everything under it');},
  /** Paste attributes (as in Premiere): the copied clip's settings, by group, onto every selected clip of a kind that has them. */
  pasteAttributes(groups){const src=this.clipboard?.[0];if(!src)return toast('Copy a clip first (Ctrl+C).');const list=this.picked().filter(c=>c.id!==src.id);if(!list.length)return toast('Select the clips to paste onto.');
   this.snapshot();const cp=v=>v===undefined?undefined:JSON.parse(JSON.stringify(v));let n=0;
@@ -514,7 +517,7 @@ const Ed={
  base(){return ED_RATIOS[this.p.ratio];},
  size(){const b=this.base(),k=this.exporting?.scale||1;return [Math.round(b[0]*k/2)*2,Math.round(b[1]*k/2)*2];},
  k(){return this.size()[0]/this.base()[0];},
- src(c){const m=this.mediaOf(c),w=m?.w||1,h=m?.h||1,cr=c.crop||{},l=cr.l||0,t=cr.t||0,r=cr.r||0,b=cr.b||0;return {sx:l*w,sy:t*h,sw:Math.max(1,w*(1-l-r)),sh:Math.max(1,h*(1-t-b))};},
+ src(c){if(c.adjustment){const [W,H]=this.size();return {sx:0,sy:0,sw:W,sh:H};}const m=this.mediaOf(c),w=m?.w||1,h=m?.h||1,cr=c.crop||{},l=cr.l||0,t=cr.t||0,r=cr.r||0,b=cr.b||0;return {sx:l*w,sy:t*h,sw:Math.max(1,w*(1-l-r)),sh:Math.max(1,h*(1-t-b))};},
  rect(c,W,H,t=this.time){
   if(c.sticker){const s=220*this.k()*this.val(c,'scale',t),line=c.sticker.type==='shape'&&c.sticker.shape==='line';return {w:line?s*1.4:s,h:line?s*.2:s,cx:W/2+this.val(c,'x',t)*W,cy:H/2+this.val(c,'y',t)*H};}
   const s=this.src(c),fit=Math.min(W/s.sw,H/s.sh)*this.val(c,'scale',t);return {w:s.sw*fit,h:s.sh*fit,cx:W/2+this.val(c,'x',t)*W,cy:H/2+this.val(c,'y',t)*H};},
@@ -527,17 +530,20 @@ const Ed={
   const bl=(a.blur||0)+(extra||0);if(bl)f.push(`blur(${bl*k}px)`);return f.join(' ')||'none';},
  /** One picture, sticker or text at time t, with what a transition adds (alpha, offset, zoom, wipe, blur). */
  /** Does this clip need its own layer (blend mode, green screen or mask)? */
- layered(c){return (c.blend&&c.blend!=='normal')||c.key?.on||(c.mask&&c.mask.shape&&c.mask.shape!=='none')||edGraded(c.grade);},
+ layered(c){return !!(c.fx&&(c.fx.glow||c.fx.sharpen||c.fx.grain))||(c.blend&&c.blend!=='normal')||c.key?.on||(c.mask&&c.mask.shape&&c.mask.shape!=='none')||edGraded(c.grade);},
  /** Draws the clip alone on a layer, keys out its colour, cuts it with its mask, then blends the layer onto the frame. */
  drawLayered(g,c,t,o){
   const [W,H]=this.size(),L=this._layer||(this._layer=document.createElement('canvas'));if(L.width!==W||L.height!==H){L.width=W;L.height=H;}
+  if(c.adjustment){const S=this._adjSnap||(this._adjSnap=document.createElement('canvas'));if(S.width!==W||S.height!==H){S.width=W;S.height=H;}const sg=S.getContext('2d');sg.clearRect(0,0,W,H);sg.drawImage(g.canvas,0,0);this._adjFrame=S;}
   const lg=L.getContext('2d',{willReadFrequently:true});lg.setTransform(1,0,0,1,0,0);lg.globalCompositeOperation='source-over';lg.globalAlpha=1;lg.filter='none';lg.clearRect(0,0,W,H);
   this.drawClip(lg,c,t,{...o,flat:true});
   const b=this.box(lg,c,W,H,t),rot=this.val(c,'rotate',t)*Math.PI/180,k=(o.k||1),cx=b.cx+(o.dx||0),cy=b.cy+(o.dy||0);
   if(c.key?.on&&!this.picking){const hw=(Math.abs(Math.cos(rot))*b.w+Math.abs(Math.sin(rot))*b.h)*k/2,hh=(Math.abs(Math.sin(rot))*b.w+Math.abs(Math.cos(rot))*b.h)*k/2;
    const x0=Math.max(0,Math.floor(cx-hw)),y0=Math.max(0,Math.floor(cy-hh)),x1=Math.min(W,Math.ceil(cx+hw)),y1=Math.min(H,Math.ceil(cy+hh));
    if(x1>x0&&y1>y0){const im=lg.getImageData(x0,y0,x1-x0,y1-y0);edKey(im.data,c.key);lg.putImageData(im,x0,y0);}}
+  if(c.adjustment)this._adjFrame=this._adjFrame;// (the frame was kept before the layer was cleared)
   if(edGraded(c.grade)){const lut=this.gradeLut(c.grade);if(lut){const out=EdGL.apply(L,lut);if(out){lg.save();lg.setTransform(1,0,0,1,0,0);lg.globalCompositeOperation='copy';lg.drawImage(out,0,0);lg.restore();}}}
+  if(c.fx&&(c.fx.glow||c.fx.sharpen||c.fx.grain))edLayerFx(L,lg,c.fx,t,this.k());
   const mk=c.mask;
   if(mk&&mk.shape&&mk.shape!=='none'){lg.save();lg.globalCompositeOperation=mk.invert?'destination-out':'destination-in';lg.translate(cx,cy);lg.rotate(rot);lg.scale(k,k);
    const mw=b.w*(mk.w??.8),mh=b.h*(mk.h??.8),mx=b.w*(mk.x||0),my=b.h*(mk.y||0),fe=(mk.feather||0)*this.k();
@@ -553,12 +559,20 @@ const Ed={
   const [W,H]=this.size();
   if(c.text!==undefined)return this.drawText(g,c,W,H,t,o);
   if(c.sticker)return this.drawSticker(g,c,W,H,t,o);
-  const m=this.mediaOf(c);if(!m)return;const src=m.type==='image'?this.image(m):this.element(c);
-  if(!src||(m.type==='video'&&src.readyState<2)||(m.type==='image'&&!src.complete))return;
+  // an adjustment layer's picture is everything drawn under it so far
+  if(c.adjustment&&!o.flat){const S=this._adjSnap||(this._adjSnap=document.createElement('canvas'));if(S.width!==W||S.height!==H){S.width=W;S.height=H;}const sg=S.getContext('2d');sg.clearRect(0,0,W,H);sg.drawImage(g.canvas,0,0);this._adjFrame=S;}
+  const m=this.mediaOf(c);if(!m&&!c.adjustment)return;const src=c.adjustment?this._adjFrame:m.type==='image'?this.image(m):this.element(c);
+  if(!src||(m&&m.type==='video'&&src.readyState<2)||(m&&m.type==='image'&&!src.complete))return;
   const r=this.rect(c,W,H,t),s=this.src(c),a=this.val(c,'opacity',t)*this.fade(c,t)*(o.alpha??1);if(a<=0)return;
+  const fx=c.fx||{},sh=edShake(fx,t,W),rad=(fx.radius||0)/100*Math.min(r.w,r.h)/2,kk=this.k();
   g.save();if(o.clipX!=null){g.beginPath();g.rect(0,0,o.clipX,H);g.clip();}
-  g.globalAlpha=edClamp(a,0,1);g.translate(r.cx+(o.dx||0),r.cy+(o.dy||0));g.rotate(this.val(c,'rotate',t)*Math.PI/180);g.scale((c.flipH?-1:1)*(o.k||1),(c.flipV?-1:1)*(o.k||1));
-  g.filter=this.filterOf(c,o.blur);g.drawImage(src,s.sx,s.sy,s.sw,s.sh,-r.w/2,-r.h/2,r.w,r.h);g.filter='none';
+  g.globalAlpha=edClamp(a,0,1);g.translate(r.cx+(o.dx||0)+sh[0],r.cy+(o.dy||0)+sh[1]);g.rotate(this.val(c,'rotate',t)*Math.PI/180+sh[2]);g.scale((c.flipH?-1:1)*(o.k||1),(c.flipV?-1:1)*(o.k||1));
+  // shadow: under a rounded box, or (no rounding) following the picture's own outline, so a cut-out casts its shape
+  if(fx.shadow&&rad){g.save();g.shadowColor=`rgba(0,0,0,${.25+fx.shadow/200})`;g.shadowBlur=fx.shadow/100*40*kk;g.shadowOffsetY=fx.shadow/100*14*kk;g.fillStyle='#000';g.beginPath();g.roundRect(-r.w/2,-r.h/2,r.w,r.h,rad);g.fill();g.restore();}
+  if(rad){g.beginPath();g.roundRect(-r.w/2,-r.h/2,r.w,r.h,rad);g.clip();}
+  if(fx.shadow&&!rad){g.shadowColor=`rgba(0,0,0,${.25+fx.shadow/200})`;g.shadowBlur=fx.shadow/100*40*kk;g.shadowOffsetY=fx.shadow/100*14*kk;}
+  g.filter=this.filterOf(c,o.blur);g.drawImage(src,s.sx,s.sy,s.sw,s.sh,-r.w/2,-r.h/2,r.w,r.h);g.filter='none';g.shadowColor='transparent';
+  if(fx.border){g.lineWidth=fx.border*kk*2;g.strokeStyle=fx.borderColor||'#ffffff';g.beginPath();g.roundRect(-r.w/2,-r.h/2,r.w,r.h,rad);g.stroke();}
   const adj=c.adj||{};
   if(adj.temperature){g.globalCompositeOperation='soft-light';g.fillStyle=adj.temperature>0?`rgba(255,140,30,${adj.temperature/100*.7})`:`rgba(30,130,255,${-adj.temperature/100*.7})`;g.fillRect(-r.w/2,-r.h/2,r.w,r.h);g.globalCompositeOperation='source-over';}
   if(adj.vignette){const gr=g.createRadialGradient(0,0,Math.min(r.w,r.h)*.3,0,0,Math.hypot(r.w,r.h)/2);gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,`rgba(0,0,0,${adj.vignette/100*.85})`);g.fillStyle=gr;g.fillRect(-r.w/2,-r.h/2,r.w,r.h);}
@@ -1032,6 +1046,25 @@ function edParseSubs(raw){const txt=String(raw).replace(/^\uFEFF/,'').replace(/\
  for(const block of txt.split(/\n{2,}/)){const ls=block.split('\n'),k=ls.findIndex(l=>l.includes('-->'));if(k<0)continue;const [a,b]=ls[k].split('-->'),s=tm(a),e=tm(b);
   const text=ls.slice(k+1).join(' ').replace(/<[^>]+>/g,'').replace(/\{\\[^}]*\}/g,'').trim();if(isFinite(s)&&isFinite(e)&&e>s&&text)out.push({s,e,text});}
  return out;}
+// ---------- clip effects: shake, glow, sharpen, grain ----------
+/** Camera shake: a smooth, repeatable wobble (the same at the same time, so preview and export match). */
+function edShake(fx,t,W){const a=(fx?.shake||0)/100;if(!a)return [0,0,0];const A=a*.025*W;
+ return [A*(Math.sin(t*13.1)+.6*Math.sin(t*29.3+1.3))/1.6,A*(Math.sin(t*11.7+2.1)+.6*Math.sin(t*23.9+.4))/1.6,a*.02*Math.sin(t*9.7+.7)];}
+let edNoise=null;
+/** Glow (a blurred copy screened on top), sharpen (unsharp mask on the graphics card) and film grain (noise that
+ *  changes 24 times a second, mixed in only where the clip is). */
+function edLayerFx(L,lg,fx,t,k){const W=L.width,H=L.height;
+ if(fx.sharpen){const out=EdGL.sharpen(L,fx.sharpen/100*1.5);if(out){lg.save();lg.setTransform(1,0,0,1,0,0);lg.globalCompositeOperation='copy';lg.drawImage(out,0,0);lg.restore();}}
+ if(fx.glow){const T=edTmp(W,H),tg=T.getContext('2d');tg.clearRect(0,0,W,H);tg.filter=`blur(${Math.round(6+fx.glow/100*24)*k}px) brightness(1.2)`;tg.drawImage(L,0,0);tg.filter='none';
+  lg.save();lg.setTransform(1,0,0,1,0,0);lg.globalCompositeOperation='screen';lg.globalAlpha=fx.glow/100*.85;lg.drawImage(T,0,0);lg.restore();}
+ if(fx.grain){if(!edNoise){edNoise=document.createElement('canvas');edNoise.width=edNoise.height=256;const ng=edNoise.getContext('2d'),im=ng.createImageData(256,256);let s=12345;
+   for(let i=0;i<im.data.length;i+=4){s=(s*16807)%2147483647;const v=96+(s%64);im.data[i]=im.data[i+1]=im.data[i+2]=v;im.data[i+3]=255;}ng.putImageData(im,0,0);}
+  const T=edTmp(W,H),tg=T.getContext('2d'),f=Math.floor(t*24);tg.globalCompositeOperation='source-over';tg.clearRect(0,0,W,H);tg.drawImage(L,0,0);
+  tg.globalCompositeOperation='overlay';tg.globalAlpha=Math.min(1,fx.grain/100*1.2);tg.fillStyle=tg.createPattern(edNoise,'repeat');tg.save();tg.translate(-((f*97)%256),-((f*61)%256));tg.fillRect(0,0,W+256,H+256);tg.restore();
+  tg.globalAlpha=1;tg.globalCompositeOperation='destination-in';tg.drawImage(L,0,0);
+  lg.save();lg.setTransform(1,0,0,1,0,0);lg.globalCompositeOperation='copy';lg.drawImage(T,0,0);lg.restore();}}
+let edTmpC=null;function edTmp(W,H){if(!edTmpC)edTmpC=document.createElement('canvas');if(edTmpC.width!==W||edTmpC.height!==H){edTmpC.width=W;edTmpC.height=H;}
+ const g=edTmpC.getContext('2d');g.setTransform(1,0,0,1,0,0);g.globalCompositeOperation='source-over';g.globalAlpha=1;g.filter='none';return edTmpC;}// a clean state for every use
 // ---------- sound effects: equaliser (low, mid, high), compressor, reverb ----------
 /** One clip's chain: low shelf (120 Hz), mid bell (1.2 kHz), high shelf (6 kHz), a compressor, and a reverb
  *  (a made-up room, mixed in). set(afx) applies {low,mid,high in dB, comp 0-100, reverb 0-100}. Works in an
@@ -1088,6 +1121,16 @@ const EdGL={
    this.reorder(lut));this.lutRef=lut;}
   gl.useProgram(this.prog);gl.uniform1f(this.uN,lut.n);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,this.img);gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,this.lut);
   gl.viewport(0,0,src.width,src.height);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);return this.canvas;}catch{return null;}},
+ sharpen(src,amount){try{const gl=this.ctx(src.width,src.height);if(!gl)return null;
+  if(!this.sp){const sh=(t,s)=>{const x=gl.createShader(t);gl.shaderSource(x,s);gl.compileShader(x);return x;},p=this.sp=gl.createProgram();
+   gl.attachShader(p,sh(gl.VERTEX_SHADER,'attribute vec2 a;varying vec2 uv;void main(){uv=(a+1.)/2.;gl_Position=vec4(a,0.,1.);}'));
+   gl.attachShader(p,sh(gl.FRAGMENT_SHADER,`precision highp float;uniform sampler2D img;uniform vec2 px;uniform float amt;varying vec2 uv;
+    void main(){vec4 c=texture2D(img,uv);vec4 b=(texture2D(img,uv+vec2(px.x,0.))+texture2D(img,uv-vec2(px.x,0.))+texture2D(img,uv+vec2(0.,px.y))+texture2D(img,uv-vec2(0.,px.y)))*.25;
+     vec3 o=clamp(c.rgb+(c.rgb-b.rgb)*amt,0.,1.);gl_FragColor=vec4(o*c.a,c.a);}`));gl.linkProgram(p);this.spA=gl.getAttribLocation(p,'a');this.spPx=gl.getUniformLocation(p,'px');this.spAmt=gl.getUniformLocation(p,'amt');}
+  gl.useProgram(this.sp);gl.enableVertexAttribArray(this.spA);gl.vertexAttribPointer(this.spA,2,gl.FLOAT,false,0,0);
+  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,this.img);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,src);
+  gl.uniform1i(gl.getUniformLocation(this.sp,'img'),0);gl.uniform2f(this.spPx,1/src.width,1/src.height);gl.uniform1f(this.spAmt,amount*3);
+  gl.viewport(0,0,src.width,src.height);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);gl.useProgram(this.prog);return this.canvas;}catch{return null;}},
  reorder(l){const n=l.n,o=new Uint8Array(n*n*n*4);for(let b=0;b<n;b++)for(let g=0;g<n;g++)for(let r=0;r<n;r++){const s=((b*n+g)*n+r)*4,d=(g*n*n+b*n+r)*4;o[d]=l.data[s];o[d+1]=l.data[s+1];o[d+2]=l.data[s+2];o[d+3]=255;}return o;},
  ctx(w,h){if(!this.canvas){const c=this.canvas=document.createElement('canvas');const gl=this.gl=c.getContext('webgl',{premultipliedAlpha:true,preserveDrawingBuffer:true});if(!gl)return null;
    const sh=(t,s)=>{const x=gl.createShader(t);gl.shaderSource(x,s);gl.compileShader(x);return x;},p=this.prog=gl.createProgram();

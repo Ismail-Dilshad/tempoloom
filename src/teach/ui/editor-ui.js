@@ -32,7 +32,7 @@ Object.assign(Ed,{
    <div class="ed-text-presets">${ED_TEXTS.map(([l,size,weight,box],i)=>`<button type="button" class="ed-text-preset${box?' box':''}" data-text="${i}"><span style="font-size:${Math.round(size/2.4)}px;font-weight:${weight}">${l}</span><i>${I.add}</i></button>`).join('')}</div>`;}
   else if(this.tab==='stickers')body=`<div class="ed-sub">Shapes</div><div class="ed-stickers">${ED_SHAPES.map(([s,l])=>`<button type="button" class="ed-sticker" data-shape="${s}" aria-label="${l}" title="${l}"><svg viewBox="0 0 40 40">${edShapeSvg(s)}</svg></button>`).join('')}</div>
    <div class="ed-sub">Emoji</div><div class="ed-stickers">${ED_EMOJI.map(e=>`<button type="button" class="ed-sticker emoji" data-emoji="${e}">${e}</button>`).join('')}</div>`;
-  else if(this.tab==='effects')body=`<div class="ed-sub">${visual?'Filters for the selected clip':'Select a video or photo, then choose a filter'}</div><div class="ed-filters">${ED_FILTERS.map(([id,l,a])=>`<button type="button" class="ed-filter" data-filter="${id}" ${visual?'':'disabled'} aria-pressed="${visual?JSON.stringify(sel.adj||{})===JSON.stringify(a):false}"><span class="ed-filter-swatch" style="filter:${edCssFilter(a)}"></span><span>${l}</span></button>`).join('')}</div>`;
+  else if(this.tab==='effects')body=`<button type="button" class="btn small ed-wide" data-adjlayer>${I.layers} Add an adjustment layer</button><div class="ed-sub">${visual?'Filters for the selected clip':'Select a video or photo, then choose a filter'}</div><div class="ed-filters">${ED_FILTERS.map(([id,l,a])=>`<button type="button" class="ed-filter" data-filter="${id}" ${visual?'':'disabled'} aria-pressed="${visual?JSON.stringify(sel.adj||{})===JSON.stringify(a):false}"><span class="ed-filter-swatch" style="filter:${edCssFilter(a)}"></span><span>${l}</span></button>`).join('')}</div>`;
   else if(this.tab==='trans')body=`<div class="ed-sub">Click the ◆ between two clips on a track, then choose one. Or set one for every cut:</div>
    <div class="ed-filters">${ED_TRANS.map(([id,l])=>`<button type="button" class="ed-filter" data-trans-all="${id}"><span class="ed-trans-swatch t-${id}"></span><span>${l}</span></button>`).join('')}</div>
    <button type="button" class="btn small ghost ed-wide" data-trans-all="none">${I.x} Remove all transitions</button>`;
@@ -49,6 +49,7 @@ Object.assign(Ed,{
   el.querySelectorAll('[data-emoji]').forEach(b=>b.onclick=()=>this.addSticker({type:'emoji',emoji:b.dataset.emoji}));
   el.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{const c=this.sel&&this.clip(this.sel);if(!c)return;this.snapshot();const a=ED_FILTERS.find(f=>f[0]===b.dataset.filter)[2];if(Object.keys(a).length)c.adj={...a};else delete c.adj;this.after(true);this.drawLib();});
   el.querySelectorAll('[data-trans-all]').forEach(b=>b.onclick=()=>{const t=b.dataset.transAll;this.transAll(t,.6);toast(t==='none'?'Transitions removed':'Transition set on every cut');});
+  const al=$('[data-adjlayer]',el);if(al)al.onclick=()=>this.addAdjustment();
   const cap=$('[data-captions]',el);if(cap)cap.onclick=()=>this.captions();
   const cl=$('[data-cap-lang]',el);if(cl)cl.onchange=()=>{this.p.capLang=cl.value;this.save();};
   const ck=$('[data-cap-look]',el);if(ck)ck.onchange=()=>{this.p.capLook=ck.value;this.save();};
@@ -148,7 +149,8 @@ Object.assign(Ed,{
  clipHtml(c){
   const m=this.mediaOf(c),w=c.dur*this.zoom,sel=this.sels.has(c.id),kind=this.kindOf(c);
   let inner='';
-  if(c.text!==undefined)inner=`${c.words?.some(w=>w.alt)?`<b class="ed-tocheck" title="Words to check">${I.flag}</b>`:''}<span class="ed-clip-label">${c.group?`<b class="ed-linked" title="Grouped">${I.link}</b>`:''}${I.text}${esc(c.text||'Text')}</span>`;
+  if(c.adjustment)inner=`<span class="ed-clip-label">${I.layers}Adjustment layer</span>`;
+  else if(c.text!==undefined)inner=`${c.words?.some(w=>w.alt)?`<b class="ed-tocheck" title="Words to check">${I.flag}</b>`:''}<span class="ed-clip-label">${c.group?`<b class="ed-linked" title="Grouped">${I.link}</b>`:''}${I.text}${esc(c.text||'Text')}</span>`;
   else if(c.sticker)inner=`<span class="ed-clip-label">${c.group?`<b class="ed-linked" title="Grouped">${I.link}</b>`:''}${c.sticker.type==='emoji'?c.sticker.emoji:I.shapes}${esc(c.sticker.type==='emoji'?'Sticker':ED_SHAPES.find(s=>s[0]===c.sticker.shape)?.[1]||'Shape')}</span>`;
   else if(kind==='audio'){const pk=m?.peaks||[],from=(c.in||0)/(m?.dur||1),to=((c.in||0)+c.dur*(c.speed||1))/(m?.dur||1),part=pk.slice(Math.floor(from*pk.length),Math.ceil(to*pk.length)),v=edClamp(c.volume??1,0,2);
    inner=`<svg class="ed-wave" viewBox="0 0 ${Math.max(1,part.length)} 100" preserveAspectRatio="none">${part.map((x,i)=>`<rect x="${i}" y="${50-x*46*Math.min(1,v)}" width=".6" height="${Math.max(2,x*92*Math.min(1,v))}"/>`).join('')}</svg>
@@ -183,8 +185,8 @@ Object.assign(Ed,{
     <span class="ed-num"><input type="number" id="ed-${key}" data-k="${key}" data-u="${unit}" min="${min}" max="${max}" step="${step}" value="${show(val)}">${suffix?`<i>${suffix}</i>`:''}</span>${kfBtn(key)}</div></div>`;};
   const sec=(title,body,reset)=>`<section class="ed-sec"><header><h4>${title}</h4>${reset?`<button type="button" class="iconbtn sm" data-reset="${reset}" aria-label="Reset ${title}" data-tooltip="Reset">${I.refresh}</button>`:''}</header>${body}</section>`;
   const seg=(attr,list,val)=>`<div class="ed-seg">${list.map(([v,l])=>`<button type="button" data-${attr}="${v}" aria-pressed="${val===v}">${l}</button>`).join('')}</div>`;
-  const kind=!c?'':c.text!==undefined?'text':c.sticker?'sticker':this.kindOf(c)==='audio'?'audio':m?.type||'video';
-  const tabs=!c?[['details','Details']]:kind==='text'?[['text','Text'],['anim','Animation'],['basic','Basic']]:kind==='sticker'?[['sticker','Sticker'],['anim','Animation'],['basic','Basic']]:kind==='audio'?[['audio','Audio'],['speed','Speed']]:kind==='image'?[['basic','Basic'],['adjust','Adjust'],['colour','Colour'],['mask','Mask']]:[['basic','Basic'],['adjust','Adjust'],['colour','Colour'],['mask','Mask'],['audio','Audio'],['speed','Speed']];
+  const kind=!c?'':c.adjustment?'adjustment':c.text!==undefined?'text':c.sticker?'sticker':this.kindOf(c)==='audio'?'audio':m?.type||'video';
+  const tabs=!c?[['details','Details']]:kind==='text'?[['text','Text'],['anim','Animation'],['basic','Basic']]:kind==='sticker'?[['sticker','Sticker'],['anim','Animation'],['basic','Basic']]:kind==='audio'?[['audio','Audio'],['speed','Speed']]:kind==='adjustment'?[['adjust','Adjust'],['colour','Colour'],['effects','Effects'],['mask','Mask'],['basic','Basic']]:kind==='image'?[['basic','Basic'],['adjust','Adjust'],['colour','Colour'],['effects','Effects'],['mask','Mask']]:[['basic','Basic'],['adjust','Adjust'],['colour','Colour'],['effects','Effects'],['mask','Mask'],['audio','Audio'],['speed','Speed']];
   if(!tabs.some(([id])=>id===this.ptab))this.ptab=tabs[0][0];
   const t=this.ptab,locked=c&&this.trackOf(c)?.locked;let body='';
   const fades=()=>sec('Fade',`${row('fadeIn','Fade in',c.fadeIn||0,{min:0,max:Math.min(5,+(c.dur/2).toFixed(1)),step:.1,suffix:'s'})}${row('fadeOut','Fade out',c.fadeOut||0,{min:0,max:Math.min(5,+(c.dur/2).toFixed(1)),step:.1,suffix:'s'})}`);
@@ -225,6 +227,11 @@ Object.assign(Ed,{
     sec('Green screen',`<div class="ed-row"><label>Remove a colour</label><div class="ed-ctl"><input type="checkbox" role="switch" data-k="key_on" ${c.key?.on?'checked':''} aria-label="Green screen"><button type="button" class="ed-tool" data-key-pick aria-pressed="${this.picking===c.id}">${I.wand} ${this.picking===c.id?'Click the picture…':'Pick from picture'}</button></div></div>
      ${c.key?.on?`<div class="ed-row"><label>Colour</label><div class="ed-ctl"><input type="color" data-k="key_color" value="${esc(c.key.color||'#00b140')}" aria-label="Key colour"></div></div>
       ${row('key_sim','Similarity',c.key.sim??25,{min:0,max:100})}${row('key_smooth','Smoothness',c.key.smooth??10,{min:0,max:100})}${row('key_spill','Spill',c.key.spill??50,{min:0,max:100})}`:''}`);}
+  else if(t==='effects'){const fx=c.fx||{};
+   body=sec('Look',`${row('fx_sharpen','Sharpen',fx.sharpen||0,{min:0,max:100})}${row('fx_glow','Glow',fx.glow||0,{min:0,max:100})}${row('fx_grain','Film grain',fx.grain||0,{min:0,max:100})}${row('fx_shake','Camera shake',fx.shake||0,{min:0,max:100})}`,'fx')+
+    (kind!=='adjustment'?sec('Frame',`${row('fx_radius','Round corners',fx.radius||0,{min:0,max:100,suffix:'%'})}${row('fx_border','Border',fx.border||0,{min:0,max:20,suffix:'px'})}
+     <div class="ed-row"><label>Border colour</label><div class="ed-ctl"><input type="color" data-k="fx_borderColor" value="${esc(fx.borderColor||'#ffffff')}" aria-label="Border colour"></div></div>${row('fx_shadow','Shadow',fx.shadow||0,{min:0,max:100})}
+     <p class="ed-hint">Without rounded corners, the shadow follows the picture's own outline (good on cut-outs).</p>`):'');}
   else if(t==='colour'){const g=c.grade||{},ch=this.curveCh||'m',luts=this.lutList||[];
    body=sec('Colour wheels',`<div class="ed-wheels">${[['lift','Shadows'],['gamma','Midtones'],['gain','Highlights']].map(([k,l])=>`<div class="ed-wheel" data-wheel="${k}"><b>${l}</b>${edWheelSvg(g[k])}
      <input type="range" min="-100" max="100" step="1" value="${Math.round((g[k]?.l||0)*100)}" data-wl="${k}" aria-label="${l} brightness"><button type="button" class="ed-link" data-wreset="${k}">Reset</button></div>`).join('')}</div>
@@ -280,7 +287,8 @@ Object.assign(Ed,{
     let v=inp.type==='checkbox'?inp.checked:inp.type==='range'||inp.type==='number'?Number(inp.value):inp.value;
     if(inp.type==='number'&&!Number.isFinite(v))return;
     if(u!=='raw')v=conv[u][1](v);
-    if(k.startsWith('afx_')){c.afx={...(c.afx||{}),[k.slice(4)]:v};if(!Object.values(c.afx).some(Boolean))delete c.afx;}
+    if(k.startsWith('fx_')){c.fx={...(c.fx||{}),[k.slice(3)]:v};if(!Object.entries(c.fx).some(([kk,vv])=>kk!=='borderColor'&&vv))delete c.fx;}
+    else if(k.startsWith('afx_')){c.afx={...(c.afx||{}),[k.slice(4)]:v};if(!Object.values(c.afx).some(Boolean))delete c.afx;}
     else if(k==='lutmix'){c.grade={...(c.grade||{}),lut:{...(c.grade?.lut||{}),mix:v}};}
     else if(k==='text'&&c.words?.length){c.text=v;this.retime(c,v);}else if(k==='speed')setSpeed(v);else if(k==='duckdb'){c.duck={db:-edClamp(v,3,30)};this._dk=null;}
     else if(k.startsWith('key_'))c.key={color:'#00b140',sim:25,smooth:10,spill:50,...(c.key||{}),[k.slice(4)]:v};
@@ -303,7 +311,7 @@ Object.assign(Ed,{
   el.querySelectorAll('[data-reshape]').forEach(b=>b.onclick=()=>{this.snapshot();c.sticker={...c.sticker,shape:b.dataset.reshape};this.after(true);});
   el.querySelectorAll('[data-reemoji]').forEach(b=>b.onclick=()=>{this.snapshot();c.sticker={...c.sticker,emoji:b.dataset.reemoji};this.after(true);});
   el.querySelectorAll('[data-reset]').forEach(b=>b.onclick=()=>{this.snapshot();const r=b.dataset.reset;
-   if(r==='transform'){Object.assign(c,{scale:1,x:0,y:0,rotate:0,flipH:false,flipV:false});if(c.kf){for(const k of ['scale','x','y','rotate'])delete c.kf[k];}}else if(r==='crop')delete c.crop;else if(r==='mask')delete c.mask;else if(r==='afx')delete c.afx;else if(r==='grade')delete c.grade;else if(r==='adjust')delete c.adj;else setSpeed(1);this.after(true);});
+   if(r==='transform'){Object.assign(c,{scale:1,x:0,y:0,rotate:0,flipH:false,flipV:false});if(c.kf){for(const k of ['scale','x','y','rotate'])delete c.kf[k];}}else if(r==='crop')delete c.crop;else if(r==='mask')delete c.mask;else if(r==='afx')delete c.afx;else if(r==='fx')delete c.fx;else if(r==='grade')delete c.grade;else if(r==='adjust')delete c.adj;else setSpeed(1);this.after(true);});
   const det=$('[data-detach]',el);if(det)det.onclick=()=>this.detach(c);
   const busy=b=>{b.disabled=true;b.innerHTML='<span class="spin"></span> Measuring…';};
   const ld=$('[data-loud]',el);if(ld)ld.onclick=()=>{busy(ld);this.matchLoudness([c]).finally(()=>this.drawProps());};
@@ -616,7 +624,7 @@ function edWirePreview(){
    Ed.draw();const d=cv.getContext('2d').getImageData(px,py,1,1).data,hex='#'+[d[0],d[1],d[2]].map(v=>v.toString(16).padStart(2,'0')).join('');
    Ed.picking=null;Ed.dom.frame?.classList.remove('picking');if(c){Ed.snapshot();c.key={sim:25,smooth:10,spill:50,...(c.key||{}),on:true,color:hex};Ed.after(true);toast('Colour picked: '+hex);}return;}
   const [W,H]=Ed.size(),r=cv.getBoundingClientRect(),sx=W/r.width,sy=H/r.height,px=(e.clientX-r.left)*sx,py=(e.clientY-r.top)*sy,g=cv.getContext('2d');
-  const hit=[...Ed.visible(Ed.time)].reverse().find(c=>{if(Ed.trackOf(c)?.locked)return false;const b=Ed.box(g,c,W,H);return Math.abs(px-b.cx)<=b.w/2&&Math.abs(py-b.cy)<=b.h/2;});
+  const hit=[...Ed.visible(Ed.time)].reverse().find(c=>{if(Ed.trackOf(c)?.locked||c.adjustment)return false;const b=Ed.box(g,c,W,H);return Math.abs(px-b.cx)<=b.w/2&&Math.abs(py-b.cy)<=b.h/2;});
   if(!hit){if(Ed.sels.size)Ed.select(null);return;}
   if(!Ed.sels.has(hit.id)||Ed.sels.size>1)Ed.select(hit.id);
   const x0=Ed.val(hit,'x'),y0=Ed.val(hit,'y');let moved=false;cv.setPointerCapture(e.pointerId);

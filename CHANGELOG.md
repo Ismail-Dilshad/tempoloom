@@ -27,6 +27,11 @@
   **Clean voice** removes noise, mains hum and rumble (the studio's voice cleaner; the clean copy
   replaces the clip). **Beat markers** put a marker on every beat of music (bars labelled), so clips
   snap to the beat.
+- **Adjustment layers** (Effects in the library): a clip on an upper track that applies its
+  adjustments, grade, mask and effects to everything under it, with its own opacity and fades.
+- **Effects tab** (CapCut-style): sharpen (on the graphics card), glow, film grain (changing 24 times a
+  second), camera shake (repeatable, so the export matches), rounded corners, a border, and a drop
+  shadow that follows a cut-out's outline.
 - **Paste attributes** (Ctrl+Alt+V, or the clip menu): the copied clip's transform, opacity and
   blend, colour, key and mask, speed, sound or text style onto the selected clips, by group.
 
