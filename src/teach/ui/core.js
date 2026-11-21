@@ -385,10 +385,11 @@ document.addEventListener('loadedmetadata',e=>{const v=e.target;if(v.tagName!=='
 /** The rail: five places in Flow's order, with dividers around Library. */
 const PLACES=[
  {id:'create',label:'Studio',icon:'spark',count:h=>[h.studio.jobs,h.studio.waitingForYou]},// Create holds the projects too (the Projects place was merged into it)
+ {id:'editor',label:'Editor',icon:'cut'},
  '-',// Library was folded in: looks are cards on Studio, locked scenes live in their project, Tidy is in Tools
  {id:'brain',label:'Brain',icon:'brain',count:h=>[h.teach.lessons,0]}];
 /** Public address -> the screen that draws it. Longer addresses first. */
-const ROUTES=[['create','create'],['learn','teach/library'],// Learn: what the studio learned from, beside Create
+const ROUTES=[['create','create'],['editor','editor'],['learn','teach/library'],// Learn: what the studio learned from, beside Create
  ['projects','studio/videos'],['videos','made-video'],// projects/NAME: one project; the list is on Create
  ['brain/taste','taste'],['brain/worked','studio/scores'],['brain','brain-home'],
  ['settings/history','history'],['settings/backup','backup'],['settings/appearance','appearance'],['settings','settings'],['trash','trash']];
@@ -398,7 +399,7 @@ const REDIRECTS=[['tools','create'],['home','create'],['studio/new','create'],['
  ['brain/lessons','brain'],['teach/lessons','brain'],['teach/patterns','brain'],['brain/patterns','brain'],['brain/teach','learn'],['library/looks','create'],['library/scenes','create'],['library/tidy','create'],['settings/tidy','create'],['looks','create'],['scenes','create'],['find','create'],['history','settings/history'],['backup','settings/backup']];
 /** Tabs inside a place. */
 const TABS={
- settings:[['settings','Models and keys'],['settings/appearance','Sidebar'],['settings/history','History'],['settings/backup','Backup and move']]};
+ settings:[['settings','Models and keys'],['settings/history','History'],['settings/backup','Backup and move']]};
 const longest=list=>[...list].sort((a,b)=>b[0].length-a[0].length);
 function resolveRoute(h){
  if(h==='library')return {redirect:'create'};// Library was folded into Studio
@@ -459,6 +460,7 @@ const App={
   document.title=(this.home.you.length?`(${this.home.you.length}) `:'')+title+' · Tempoloom';
   this.side();const view=$('#view');
   // Learn's grid sits in Create's frame (same padding, backdrop and cursors), so switching between them moves nothing.
+  $('#app').toggleAttribute('data-focus',this.route==='editor'&&!!this.arg);
   view.dataset.screen=(this.route==='teach/library'&&!this.arg)||this.route==='brain-home'?'create':this.route;s.render(view,this.arg,routeChanged);
   // Every page: tabs of its place, then a title, a line of explanation and its actions.
   const lone=view.children.length===1&&view.firstElementChild.classList.contains('empty'),own=!!view.querySelector('.teach-workspace,.teach-upload,.no-head');

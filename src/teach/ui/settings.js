@@ -16,7 +16,7 @@ function modelSelect(attr,list,cur,services,blank){
 }
 function serviceRow(s){
  const caps=s.models?Object.entries(SetUI.CAN).filter(([k])=>s.models[k]).map(([k,l])=>`${s.models[k]} ${l}`).join(', '):'';
- const status=s.error?`<span class="badge bad">not working</span>`:s.connected?`<span class="badge good">connected</span>`:'<span class="badge st">not connected</span>';
+ const status=s.error?`<span class="badge bad">not working</span>`:s.connected?`<span class="badge good">connected</span>`:'';
  return `<div class="service ${s.connected?'on':''}"><div class="service-main"><div class="row" style="gap:8px"><b>${esc(s.name)}</b>${status}${s.hint?`<span class="muted small">key ${esc(s.hint)}${s.stored==='keychain'?', in your keychain':s.stored==='env-file'?', in .env':s.stored==='environment'?', from your environment':''}</span>`:''}</div>
   <p class="muted small">${esc(s.about)}</p>
   ${s.error?`<p class="small" style="color:var(--bad)">${esc(s.error)}</p>`:''}
@@ -36,28 +36,14 @@ App.register('settings',{
    return `<label class="teach-setting"><span><b>${label}</b><small class="muted">${note}</small></span><select data-maker="${kind}" aria-label="${label}"><option value="off">Off: find it or draw it with code</option>${ok.map(x=>`<option value="${x.id}" ${s.makers[kind]===x.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select></label>`;};
   const tile=(group,v,name,about,icon,cur)=>`<button type="button" class="teach-mode" aria-pressed="${cur===v}" onclick="setPatch({${group}:'${v}'})"><span class="teach-mode-icon">${I[icon]}</span><span><b>${name}</b><small>${about}</small></span></button>`;
   el.innerHTML=`${d.warnings.length?`<div class="banner warn">${d.warnings.map(esc).join('<br>')}</div>`:''}
-  <section class="card"><div class="teach-section-head"><h3>Who works on new videos</h3></div>
-   <div class="teach-modes">${tile('driver','terminal','Your terminal agent','Claude Code, Codex or Gemini CLI, when you tell it to. No key needed.','menu',s.driver)}${tile('driver','browser','This page','Starts at once with the main model below, within your budgets.','play',s.driver)}${tile('driver','ask','Ask each time','You choose when you send each video.','star',s.driver)}</div>
-</section>
-  ${SetUI.GROUPS.map(([g,label])=>{const list=svc.filter(x=>x.group===g);return `<section class="card"><div class="teach-section-head"><h3>${label}</h3><span class="muted small">${list.filter(x=>x.connected).length} of ${list.length} connected</span></div>
+  ${SetUI.GROUPS.map(([g,label])=>{const list=svc.filter(x=>x.group===g);return `<section class="card"><div class="teach-section-head"><h3>${label}</h3>${list.some(x=>x.connected)?`<span class="badge good">${list.filter(x=>x.connected).length} connected</span>`:''}</div>
    ${list.map(serviceRow).join('')||'<p class="muted small">No model server added yet.</p>'}
    ${g==='local'?`<div class="row" style="margin-top:12px">${d.presets.map(p=>`<button class="btn small" onclick="setAddLocal('${esc(p.name)}','${esc(p.baseURL)}')">Add ${esc(p.name)}</button>`).join('')}<button class="btn small ghost" onclick="setAddLocal()">Another server</button></div>`:''}</section>`;}).join('')}
-  <section class="card teach-settings"><div class="teach-section-head"><h3>Models for the team</h3><span class="muted small">${d.agents.length} models can run agents</span></div>
-   ${d.agents.length?`<label class="teach-setting"><span><b>Main model</b><small class="muted">Every role uses it unless you choose another below.</small></span>${modelSelect('data-model="main" aria-label="Main model"',d.agents,s.model,svc,'Choose a model')}</label>
-   <details class="teach-focus"><summary>A different model for some roles<span class="muted">${Object.keys(s.roleModels).length} set</span></summary>
-    ${d.roles.map(r=>`<label class="teach-setting"><span><b>${esc(r.title)}</b>${r.id==='reviewer'?'<small class="muted">Give it a different model from the producer, so its review is independent.</small>':''}</span>${modelSelect(`data-role="${r.id}" aria-label="Model for ${esc(r.title)}"`,d.agents,s.roleModels[r.id],svc,'Same as the main model')}</label>`).join('')}</details>`
-   :`<p class="muted small">Connect Claude, OpenAI, Gemini, OpenRouter or a local model server below, then choose the model here.</p>`}</section>
-  <section class="card teach-settings"><div class="teach-section-head"><h3>Who makes what</h3></div>
-   ${maker('images','Images',['images'],'Backgrounds, objects, product shots.')}${maker('video','Video clips',['video'],'Costly; leave off unless you need them.')}${maker('music','Music',['music'],'Only when you ask for music.')}${maker('sfx','Sound effects',['sound'],'Whooshes, clicks and hits on the motion.')}
-   <label class="teach-setting"><span><b>Voice</b><small class="muted">Only when you ask for a voice-over.</small></span><select data-maker="voice" aria-label="Voice"><option value="elevenlabs" ${s.makers.voice==='elevenlabs'?'selected':''}>ElevenLabs</option><option value="off" ${s.makers.voice==='off'?'selected':''}>Off: captions only</option></select></label></section>
-  <section class="card teach-settings"><div class="teach-section-head"><h3>Budgets</h3><span class="muted small">US dollars</span></div>
-   <div class="budget-row">${[['perJob','Per video'],['perDay','Per day'],['askAbove','Ask me before one step over']].map(([k,l])=>`<label class="f">${l}<input type="number" min="0" step="0.5" data-budget="${k}" value="${s.budget[k]}"></label>`).join('')}<button class="btn" onclick="setBudget()">Save budgets</button></div></section>
-  <section class="card teach-settings"><div class="teach-section-head"><h3>Where your vertical videos go</h3></div>
+  <section class="card teach-settings"><div class="teach-section-head"><h3>Platforms</h3></div>
    ${[['tiktok','TikTok'],['reels','Instagram Reels'],['shorts','YouTube Shorts']].map(([id,l])=>`<label class="teach-setting"><span><b>${l}</b></span><input type="checkbox" role="switch" data-platform="${id}" ${(s.platforms||['tiktok','reels','shorts']).includes(id)?'checked':''}></label>`).join('')}</section>
-  <section class="card"><div class="teach-section-head"><h3>What may leave this computer</h3></div>
-   <div class="teach-modes four">${tile('share','frames','Frames only','Pictures from your video, not the video.','eye',s.share)}${tile('share','clips','Short clips','A few seconds at a time.','film',s.share)}${tile('share','full','Full videos','For models that watch a whole video.','play',s.share)}${tile('share','local','Nothing','Local models and free sources only.','home',s.share)}</div></section>
 `;
-  el.querySelectorAll('[data-model],[data-role]').forEach(x=>x.onchange=()=>{const v=x.value?{provider:x.value.split('|')[0],model:x.value.split('|').slice(1).join('|')}:null;setPatch(x.dataset.model?{model:v}:{roleModels:{[x.dataset.role]:v}});});
+  el.querySelectorAll('[data-model],[data-role]').forEach(x=>x.onchange=()=>{const v=x.value?{provider:x.value.split('|')[0],model:x.value.split('|').slice(1).join('|')}:null;setPatch(x.dataset.model?{model:v,...(v?{driver:'browser'}:{})}:{roleModels:{[x.dataset.role]:v}});});
+  if(s.model&&s.driver!=='browser')api('/api/settings',{method:'PATCH',body:JSON.stringify({driver:'browser'})}).catch(()=>{});
   el.querySelectorAll('[data-maker]').forEach(x=>x.onchange=()=>setPatch({makers:{[x.dataset.maker]:x.value}}));
   el.querySelectorAll('[data-platform]').forEach(x=>x.onchange=()=>{const on=[...el.querySelectorAll('[data-platform]:checked')].map(c=>c.dataset.platform);if(!on.length){x.checked=true;return toast('Keep at least one platform',true);}setPatch({platforms:on});});
  }
@@ -68,20 +54,27 @@ window.setTest=id=>act(async()=>{const r=await api('/api/settings/test/'+id,{met
 window.setRemoveKey=async id=>{const s=App.screens.settings.data.services.find(x=>x.id===id);if(await ask(`Remove the ${s.name} key?`,'Tempoloom stops using this service. You can connect it again any time.','Remove',true))act(()=>api('/api/settings/keys/'+id,{method:'DELETE'}),'Removed');};
 window.setRemoveLocal=async id=>{if(await ask('Remove this server?','Roles that used its models go back to the main model.','Remove',true))act(()=>api('/api/settings/local/'+id,{method:'DELETE'}),'Removed');};
 window.setConnect=id=>{const s=App.screens.settings.data.services.find(x=>x.id===id);
- dialog(`<h2>Connect ${esc(s.name)}</h2><p class="muted">${esc(s.about)} <a href="${esc(s.signup)}" target="_blank" rel="noopener noreferrer">Get a key</a>.</p>
-  <form id="keyform"><label class="f" for="keyin">The key</label><input id="keyin" type="password" autocomplete="off" spellcheck="false" placeholder="Paste it here" required>
-  <p class="muted small" style="margin-top:8px">It is saved in your system's keychain, or in .env when there is none, and never shown again. Tempoloom checks it now by reading the service's model list.</p>
-  <div class="row" style="justify-content:flex-end;margin-top:16px"><button type="button" class="btn ghost" data-no>Cancel</button><button class="btn primary" type="submit">Save and check</button></div></form>`);
+ dialog(`<form id="keyform" class="connect-card">
+  <span class="connect-badge" aria-hidden="true">${I.key}</span>
+  <h2>Connect ${esc(s.name)}</h2><p class="connect-sub">${esc(s.about)}</p>
+  <label class="connect-field"><span class="sr-only">API key</span><input id="keyin" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your API key" required><button type="button" class="connect-eye" aria-label="Show the key" aria-pressed="false">${I.eye}</button></label>
+  <p class="connect-note">${I.lock} Kept on this computer, never shown again.${s.signup?` <a href="${esc(s.signup)}" target="_blank" rel="noopener noreferrer">Get a key</a>`:''}</p>
+  <div class="connect-actions"><button type="button" class="btn ghost" data-no>Cancel</button><button class="btn primary" type="submit">Connect</button></div></form>`);
+ const eye=$('#keyform .connect-eye');eye.onclick=()=>{const k=$('#keyin'),show=k.type==='password';k.type=show?'text':'password';eye.setAttribute('aria-pressed',String(show));eye.setAttribute('aria-label',show?'Hide the key':'Show the key');};
+ $('#keyin').focus();
  $('#modal [data-no]').onclick=()=>closeDialog();
  $('#keyform').onsubmit=async e=>{e.preventDefault();const b=$('#keyform button[type=submit]');b.disabled=true;b.innerHTML='<span class="spin"></span> Checking';
   try{const r=await api('/api/settings/keys/'+id,{method:'POST',body:JSON.stringify({key:$('#keyin').value})});closeDialog(true);
-   r.test.ok?toast(`${s.name} is connected: ${r.test.count} model${r.test.count===1?'':'s'}${r.test.note?'. '+r.test.note:''}`):toast(`Saved, but the check failed: ${r.test.error}`,true);}
-  catch(err){toast(err.message,true);b.disabled=false;b.textContent='Save and check';return;}
+   r.test.ok?toast(`${s.name} is connected${r.test.main?`. Main model: ${r.test.main}`:''}`):toast(`Saved, but the check failed: ${r.test.error}`,true);}
+  catch(err){toast(err.message,true);b.disabled=false;b.textContent='Connect';return;}
   App.refresh(true);};};
 window.setAddLocal=(name,baseURL)=>{
- dialog(`<h2>Add a model server</h2><p class="muted">Start an OpenAI-compatible server before connecting.</p>
-  <form id="localform"><label class="f" for="ln">Name</label><input id="ln" type="text" value="${esc(name||'')}" required maxlength="60"><label class="f" for="lu" style="margin-top:10px">Address</label><input id="lu" type="url" value="${esc(baseURL||'http://localhost:11434/v1')}" required>
-  <div class="row" style="justify-content:flex-end;margin-top:16px"><button type="button" class="btn ghost" data-no>Cancel</button><button class="btn primary" type="submit">Add and check</button></div></form>`);
+ dialog(`<form id="localform" class="connect-card">
+  <span class="connect-badge" aria-hidden="true">${I.monitor}</span>
+  <h2>Add a model server</h2><p class="connect-sub">An OpenAI-compatible server on this computer or your network.</p>
+  <label class="connect-field"><span class="sr-only">Name</span><input id="ln" type="text" value="${esc(name||'')}" placeholder="Name" required maxlength="60"></label>
+  <label class="connect-field"><span class="sr-only">Address</span><input id="lu" type="url" value="${esc(baseURL||'http://localhost:11434/v1')}" placeholder="http://localhost:11434/v1" required></label>
+  <div class="connect-actions"><button type="button" class="btn ghost" data-no>Cancel</button><button class="btn primary" type="submit">Add server</button></div></form>`);
  $('#modal [data-no]').onclick=()=>closeDialog();
  $('#localform').onsubmit=async e=>{e.preventDefault();try{const r=await api('/api/settings/local',{method:'POST',body:JSON.stringify({name:$('#ln').value,baseURL:$('#lu').value})});closeDialog(true);
-  r.test.ok?toast(`${r.added.name}: ${r.test.count} model${r.test.count===1?'':'s'}`):toast(`Added, but it did not answer: ${r.test.error}`,true);}catch(err){toast(err.message,true);return;}App.refresh(true);};};
+  r.test.ok?toast(`${r.added.name} is connected${r.test.main?`. Main model: ${r.test.main}`:''}`):toast(`Added, but it did not answer: ${r.test.error}`,true);}catch(err){toast(err.message,true);return;}App.refresh(true);};};

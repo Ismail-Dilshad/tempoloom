@@ -11,9 +11,8 @@ App.register('backup',{
   const d=this.data,p=Bk.preview,rows=p?p.changes.filter(c=>c.add+c.update+c.same+c.keep):[],nothing=!!p&&rows.every(c=>!c.add&&!c.update);
   const kind=k=>({manual:'made by you',auto:'weekly, automatic','before restore':'saved before a restore'}[k]||k);
   el.innerHTML=`<section class="card"><div class="teach-section-head"><h3>Make a backup</h3></div>
-   <ul class="backup-what">${WHAT.map(w=>`<li>${esc(w)}</li>`).join('')}</ul>
    <div class="row" style="margin-top:14px"><a class="btn primary" href="${withKey('/api/backups/download')}" download>${I.down} Download a backup</a><button class="btn" onclick="bkSave()">Save one in the backups folder</button></div></section>
-  <section class="card"><div class="teach-section-head"><h3>Restore, or move from another computer</h3></div>
+  <section class="card"><div class="teach-section-head"><h3>Restore</h3></div>
    <div class="pickfile"><button class="btn" onclick="$('#bkfile').click()">${I.box} Choose a backup file</button>${Bk.file?`<span class="muted small" dir="auto">${esc(Bk.file.name)}</span>`:''}${Bk.busy?'<span class="spin"></span>':''}<input id="bkfile" type="file" accept=".zip,application/zip" hidden></div>
    ${p?`<p class="small" style="margin:14px 0 4px">Made ${esc(new Date(p.manifest.created).toLocaleString())} by Tempoloom ${esc(p.manifest.app)}: ${p.manifest.counts.lessons} lessons, ${p.manifest.counts.taught} taught videos, ${p.manifest.counts.profiles} taste profile${p.manifest.counts.profiles===1?'':'s'}, ${p.manifest.counts.studioJobs} studio job${p.manifest.counts.studioJobs===1?'':'s'}.</p>
     <fieldset class="teach-example" style="margin-top:12px"><legend>How to restore</legend><div class="example-choices">
@@ -24,7 +23,7 @@ App.register('backup',{
     ${nothing?`<div class="banner">Everything in this backup is already here${Bk.mode==='merge'?', or newer here':''}. Nothing would change.</div>`:''}
     <div class="row"><button class="btn primary" onclick="bkRestore()" ${Bk.busy||nothing?'disabled':''}>Restore</button><button class="btn ghost" onclick="Bk.file=null;Bk.preview=null;App.show(false)">Cancel</button></div>`
    :''}</section>
-  <section class="card"><div class="teach-section-head"><h3>Your backups</h3><span class="muted small">${d.backups.length}</span></div><p class="muted small bk-folder" dir="ltr">${esc(d.folder)}</p>
+  <section class="card"><div class="teach-section-head"><h3>Your backups</h3><span class="badge st">${d.backups.length}</span></div>
    ${d.backups.length?d.backups.map(b=>`<div class="service"><div class="service-main"><b dir="auto">${esc(b.name)}</b><p class="muted small">${esc(kind(b.kind))}, ${mb(b.bytes)}, ${ago(b.at)}</p></div><div class="row service-actions"><a class="btn small" href="${withKey('/api/backups/file/'+encodeURIComponent(b.name))}" download>${I.down} Download</a></div></div>`).join('')
    :'<p class="muted small">None yet.</p>'}
 </section>`;

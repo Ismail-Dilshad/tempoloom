@@ -100,8 +100,17 @@ export async function test(id:string,f:typeof fetch=fetch){
  try{
   const r=local?await testLocal(local.baseURL,keyOf(localKeyName(id))||undefined,f):await (async()=>{const p=providerById(id),k=keyOf(p.env);if(!k)throw new Error('No key saved for '+p.name);return p.test(k,f);})();
   const c:Cached={at:new Date().toISOString(),models:r.models.sort((a,b)=>a.id.localeCompare(b.id)),...(r.note?{note:r.note}:{})};cache(id,c);
-  return {ok:true,count:c.models.length,note:r.note??null};
+  return {ok:true,count:c.models.length,note:r.note??null,main:autoMain(id,c.models)};
  }catch(e){const prev=cachedModels(id);cache(id,{at:new Date().toISOString(),models:prev?.models??[],error:(e as Error).message});return {ok:false,error:(e as Error).message};}
+}
+/** With no main model chosen yet, the first service that works gives one, and the page's own
+ *  agents take the work: a strong general model where the list has one, else its first agent model. */
+const STRONG=[/claude-(opus|sonnet)/i,/^gpt-5(?!.*(mini|nano))/i,/^gpt-4\.1(?!.*(mini|nano))/i,/^gpt-4o(?!.*mini)/i,/gemini-[\d.]+-pro/i,/grok-4/i,/mistral-large/i,/deepseek-(chat|v3)/i,/(llama|qwen)/i];
+function autoMain(id:string,models:Model[]):string|null{
+ if(readSettings().model)return null;
+ const agents=models.filter(m=>m.can.agents);if(!agents.length)return null;
+ const best=STRONG.map(re=>agents.filter(m=>re.test(m.id)).sort((a,b)=>b.id.localeCompare(a.id))[0]).find(Boolean)??agents[0]!;
+ try{update({model:{provider:id,model:best.id},driver:'browser'});return best.name??best.id;}catch{return null;}
 }
 export const localKeyName=(id:string)=>id.toUpperCase().replace(/-/g,'_')+'_API_KEY';
 const summary=(ms:Model[])=>{const n=(k:keyof Can)=>ms.filter(m=>m.can[k]).length;return {total:ms.length,agents:n('agents'),vision:n('vision'),images:n('images'),video:n('video'),speech:n('speech')};};

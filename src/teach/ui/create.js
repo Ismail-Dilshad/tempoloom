@@ -191,10 +191,12 @@ function videoCard(v){
 window.madeVideoMenu=(btn,id)=>{
  const v=madeVideo(id);if(!v)return;
  const menu=Pop.open(btn,`<button type="button" class="pop-item" role="menuitem" data-open>${I.play||I.film}<span>Open</span></button>
+  <button type="button" class="pop-item" role="menuitem" data-edit>${I.cut}<span>Edit in Editor</span></button>
   <a class="pop-item" role="menuitem" href="${esc(withKey('/gallery/file/'+v.id))}&dl=1" download>${I.down}<span>Download</span></a>
   <button type="button" class="pop-item danger" role="menuitem" data-delete>${I.trash}<span>Delete</span></button>`,{align:'end',label:'Video options'});
  if(!menu)return;
  $('[data-open]',menu).onclick=()=>{Pop.close(true);location.hash='#/videos/'+encodeURIComponent(v.id);};
+ $('[data-edit]',menu).onclick=()=>{Pop.close(true);openInEditor(withKey('/gallery/file/'+v.id),v.title||v.name);};
  $('[data-delete]',menu).onclick=()=>{Pop.close(true);deleteMadeVideo(v.id);};
 };
 /** Deletes a video from your computer for good, wherever it is, and from everywhere it shows:

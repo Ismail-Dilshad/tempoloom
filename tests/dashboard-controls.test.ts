@@ -38,7 +38,7 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
    if(url.pathname==='/api/state')return route.fulfill({json:{videos:[],topics:[],can:{maxMB:2048,speech:false}}});
    if(url.pathname==='/logo.svg')return route.fulfill({body:await fs.readFile('assets/brand/logo/svg/tempoloom-wordmark-for-dark.svg'),contentType:'image/svg+xml'});
    const name=url.pathname==='/'?'index.html':path.basename(url.pathname);
-   if(!['index.html','tokens.css','app.css','shell.css','core.js','shell.js','icons.js','create.js','learn.js','brain.js','places.js','teach.js','studio.js','settings.js'].includes(name))return route.fulfill({status:204});
+   if(!['index.html','tokens.css','app.css','shell.css','core.js','shell.js','icons.js','create.js','learn.js','brain.js','editor.js','editor-ui.js','places.js','teach.js','studio.js','settings.js'].includes(name))return route.fulfill({status:204});
    return route.fulfill({body:await fs.readFile(path.resolve('src/teach/ui',name)),contentType:name.endsWith('.js')?'text/javascript':name.endsWith('.css')?'text/css':'text/html'});
   });
   await page.goto('http://dashboard.test/#/studio/new');
@@ -66,7 +66,7 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
   expect(navigation!.y).toBeGreaterThanOrEqual(header!.y+header!.height);
   expect(footer!.y+footer!.height).toBeCloseTo(1000,0);
   // The rail: four places (Projects lives on Create) in order, Trash and Collapse at its foot.
-  expect(await page.locator('.rail-body .navlink .lbl').allInnerTexts()).toEqual(['Studio','Brain']);
+  expect(await page.locator('.rail-body .navlink .lbl').allInnerTexts()).toEqual(['Studio','Editor','Brain']);
   await page.getByRole('button',{name:'Collapse',exact:true}).click();
   expect(await page.locator('#app').getAttribute('data-rail')).toBe('collapsed');
   const brainIcon=page.locator('.rail-body a[href="#/brain"]');
@@ -356,11 +356,10 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
   await page.getByRole('menuitem',{name:'Second carousel video'}).click();
   await expect.poll(()=>confirmedLink).toMatchObject({url:postUrl,confirm:true,previewToken:'test-preview',selection:{id:'second',item:2}});
   await page.evaluate(()=>{location.hash='/settings';});
-  const budget=page.getByRole('spinbutton',{name:'Per video',exact:true});await budget.waitFor();
-  await page.getByRole('button',{name:'Increase Per video',exact:true}).click();
-  expect(await budget.inputValue()).toBe('5.5');
-  await page.getByRole('button',{name:'Save budgets',exact:true}).click();
-  await expect.poll(()=>settings.settings.budget.perJob).toBe(5.5);
+  // Settings keeps to models and keys: no budgets, privacy or sidebar tab.
+  await page.getByRole('heading',{name:/Models for the agents/}).waitFor();
+  expect(await page.getByRole('heading',{name:/Budgets|Privacy/}).count()).toBe(0);
+  expect(await page.locator('nav.tabs a',{hasText:'Sidebar'}).count()).toBe(0);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   const uploads:string[]=[];
   let notes:string|undefined;

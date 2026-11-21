@@ -284,7 +284,7 @@ function startTabFills(){
 const Shell={
  busy(){return !!(Pop.el||Overlay.el||$('#panel').contains(document.activeElement)&&/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName));},
  icons(h){
-  const waiting=h.you.length+(h.agent.length?1:0);
+  const waiting=h.you.length;
   // The bell sits in the sidebar's footer: a count beside it, or a dot on it when the sidebar is narrow.
   const bell=$('#rail-bell');
   if(!bell)return;
@@ -296,10 +296,15 @@ const Shell={
   if(n.textContent!==String(waiting))n.textContent=dot.textContent=String(waiting);
  },
  bell(btn){
-  const h=App.home,you=h.you,agent=h.agent;
-  Pop.open(btn,`<div class="pop-head">Waiting for you</div>
-   ${you.length?you.map(j=>`<a class="pop-item" href="#/projects/${encodeURIComponent(j.job)}">${I.film}<span><span dir="auto">${esc(j.title)}</span><small>Needs your look or approval</small></span></a>`).join(''):'<div class="pop-empty">Nothing is waiting for you.</div>'}
-   ${agent.length?`<hr><div class="pop-head">Your agent has work</div>${agent.map(x=>`<div style="padding:4px 12px 8px"><div class="small muted">${esc(x.why)}. Tell it:</div><div class="say-line"><span dir="auto">“${esc(x.say)}”</span><button class="iconbtn sm" aria-label="Copy the command ${esc(x.command)}" onclick="copyText('${esc(x.command)}')">${I.copy}</button></div></div>`).join('')}`:''}`,{align:'end',label:'Waiting for you'});
+  const you=App.home?.you||[];
+  Pop.open(btn,`<div class="notif">
+   <div class="notif-head"><b>Notifications</b>${you.length?`<span>${you.length}</span>`:''}</div>
+   ${you.length?`<div class="notif-list">${you.map(j=>`<a class="notif-item" href="#/projects/${encodeURIComponent(j.job)}" data-close>
+     <span class="notif-icon" aria-hidden="true">${I.film}</span>
+     <span class="notif-text"><b dir="auto">${esc(j.title)}</b><small>Waiting for your approval</small></span>
+     <span class="notif-go" aria-hidden="true">${I.chevron}</span></a>`).join('')}</div>`
+    :`<div class="notif-empty"><span class="notif-icon" aria-hidden="true">${I.bell}</span><b>You're all caught up</b></div>`}
+  </div>`,{align:'end',label:'Notifications'});
  },
  start(){
   startTabFills();

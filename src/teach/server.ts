@@ -42,7 +42,7 @@ const MAX_MB=Number(process.env.TEACH_MAX_MB||'2048');
 const runCover=promisify(execFile);
 const uploadKind=z.enum(R.FILE_KINDS);
 const uploadName=z.string().min(1).max(160);
-const UI=new Set(['tokens.css','shell.css','shell.js','create.js','learn.js','brain.js','places.js','icons.js','app.css','core.js','taste.js','teach.js','learned.js','studio.js','gallery.js','live.js','settings.js','backup.js','script.js','ideas.js','history.js','text.js','find.js']);
+const UI=new Set(['tokens.css','shell.css','shell.js','create.js','learn.js','brain.js','editor.js','editor-ui.js','places.js','icons.js','app.css','core.js','taste.js','teach.js','learned.js','studio.js','gallery.js','live.js','settings.js','backup.js','script.js','ideas.js','history.js','text.js','find.js']);
 const TYPES:Record<string,string>={'.js':'text/javascript; charset=utf-8','.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.mp4':'video/mp4','.jpg':'image/jpeg','.svg':'image/svg+xml','.ttf':'font/ttf','.json':'application/json; charset=utf-8',
  '.png':'image/png','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.webm':'video/webm','.mov':'video/quicktime','.m4v':'video/mp4','.mp3':'audio/mpeg','.wav':'audio/wav','.m4a':'audio/mp4'};
 class HttpError extends Error{constructor(public status:number,message:string){super(message);}}
@@ -106,7 +106,7 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
    if(given.length!==want.length||!timingSafeEqual(given,want))throw new HttpError(403,'Open the Teach page with the link from the terminal (pnpm tempoloom teach open)');
    res.setHeader('x-content-type-options','nosniff');res.setHeader('referrer-policy','no-referrer');
 
-   if(m==='GET'&&p==='/'){res.setHeader('content-security-policy',"default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' blob: https:; frame-src https://www.youtube-nocookie.com https://www.instagram.com https://www.tiktok.com https://player.vimeo.com; frame-ancestors 'none'");return await file(req,res,path.join(here,'ui','index.html'));}
+   if(m==='GET'&&p==='/'){res.setHeader('content-security-policy',"default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: https:; frame-src https://www.youtube-nocookie.com https://www.instagram.com https://www.tiktok.com https://player.vimeo.com; frame-ancestors 'none'");return await file(req,res,path.join(here,'ui','index.html'));}
    if(m==='GET'&&p==='/api/home')return json(res,home());
    // ---------- the page's places: tools from the registry, your library, scenes across projects ----------
    if(m==='GET'&&p==='/api/tools'){const {readRegistry}=await import('../cli/tools-registry.js'),TR=await import('./tool-runner.js'),fm=TR.forms();return json(res,{tools:(await readRegistry()).tools.filter(t=>t.page&&t.status==='ready').map(t=>({id:t.id,command:t.command,description:t.description,whenToUse:t.whenToUse,inputs:t.inputs,...t.page,form:fm[t.id]??null}))});}
@@ -118,6 +118,34 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
     if(m==='GET'&&toolRun[2]==='runs')return json(res,{runs:TR.recentRuns(toolRun[1]!)});}
    const rr=/^\/api\/tool-runs\/([a-f0-9]{12})(\/stop)?$/.exec(p);
    if(rr){const TR=await import('./tool-runner.js');try{return json(res,m==='POST'&&rr[2]?TR.stopRun(rr[1]!):TR.getRun(rr[1]!));}catch(e){throw new HttpError(404,(e as Error).message);}}
+   // The editor's auto captions: the words said in a video or sound file, with their times (ElevenLabs).
+   if(m==='POST'&&p==='/api/editor/captions'){
+    if(!hasApiKey())throw new HttpError(400,'Auto captions need your ElevenLabs key: add it in Settings, Models and keys.');
+    const ext=(/\.[a-z0-9]{2,5}$/i.exec(url.searchParams.get('name')||'')?.[0]||'.webm').toLowerCase();
+    const dir=path.join(ROOT,process.env.VIDEO_WORKSPACE||'workspace','cache','editor-captions',randomUUID());await fsp.mkdir(dir,{recursive:true});
+    const src=path.join(dir,'source'+ext);let size=0;
+    const limit=new Transform({transform(c:Buffer,_e,cb){size+=c.length;size>MAX_MB*1048576?cb(new HttpError(413,`The file is over ${MAX_MB} MB`)):cb(null,c);}});
+    try{await pipeline(req,limit,fs.createWriteStream(src));if(!size)throw new HttpError(400,'The upload was empty');
+     const {transcribe}=await import('../engine/transcribe.js');const t=await transcribe(src,{});
+     return json(res,{language:t.language,words:t.words.filter(w=>w.type==='word').map(w=>({text:w.text,start:w.start,end:w.end}))});}
+    catch(e){throw e instanceof HttpError?e:new HttpError(500,'Could not read the speech: '+(e as Error).message.slice(0,200));}
+    finally{await fsp.rm(dir,{recursive:true,force:true}).catch(()=>{});}
+   }
+   // The editor records its video in the page (WebM); this turns it into an MP4 with ffmpeg and sends it back.
+   if(m==='POST'&&p==='/api/editor/mp4'){
+    const fps=Math.min(60,Math.max(12,Number(url.searchParams.get('fps'))||30));
+    const dir=path.join(ROOT,process.env.VIDEO_WORKSPACE||'workspace','cache','editor-export',randomUUID());await fsp.mkdir(dir,{recursive:true});
+    const src=path.join(dir,'in.webm'),out=path.join(dir,'out.mp4');let size=0;
+    const limit=new Transform({transform(c:Buffer,_e,cb){size+=c.length;size>MAX_MB*1048576?cb(new HttpError(413,`The video is over ${MAX_MB} MB`)):cb(null,c);}});
+    try{
+     await pipeline(req,limit,fs.createWriteStream(src));if(!size)throw new HttpError(400,'The upload was empty');
+     await promisify(execFile)(ffmpeg,['-y','-hide_banner','-loglevel','error','-i',src,'-c:v','libx264','-preset','veryfast','-crf','19','-pix_fmt','yuv420p','-r',String(fps),'-c:a','aac','-b:a','192k','-movflags','+faststart',out],{maxBuffer:1<<24,windowsHide:true});
+     const st=await fsp.stat(out);res.writeHead(200,{'content-type':'video/mp4','content-length':String(st.size),'cache-control':'no-store'});
+     await pipeline(fs.createReadStream(out),res);
+    }catch(e){if(!res.headersSent)throw e instanceof HttpError?e:new HttpError(500,'Could not make the MP4: '+(e as Error).message.slice(0,200));}
+    finally{await fsp.rm(dir,{recursive:true,force:true}).catch(()=>{});}
+    return;
+   }
    if(m==='GET'&&p==='/api/tool-results'){const TR=await import('./tool-runner.js');return json(res,{results:TR.results(),active:TR.activeRuns()});}
    const tres=/^\/api\/tool-results\/([a-f0-9]{12})$/.exec(p);
    if(m==='DELETE'&&tres){const TR=await import('./tool-runner.js');try{return json(res,await TR.deleteResult(tres[1]!));}catch(e){throw new HttpError(404,(e as Error).message);}}
@@ -289,7 +317,7 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
    if(m==='POST'&&lesson){const b=await body(req),action=String(b.action);if(!['keep','remove','edit','both'].includes(action))throw new HttpError(400,'Unknown action');
     return json(res,T.review(lesson[1]!,action as 'keep',{...(typeof b.title==='string'?{title:b.title}:{}),...(typeof b.body==='string'?{body:b.body}:{})}));}
    // ---------- the Studio page ----------
-   if(m==='GET'&&p==='/studio'){res.setHeader('content-security-policy',"default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' blob: https:; frame-src https://www.youtube-nocookie.com https://www.instagram.com https://www.tiktok.com https://player.vimeo.com; frame-ancestors 'none'");return await file(req,res,path.join(here,'ui','index.html'));}
+   if(m==='GET'&&p==='/studio'){res.setHeader('content-security-policy',"default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: https:; frame-src https://www.youtube-nocookie.com https://www.instagram.com https://www.tiktok.com https://player.vimeo.com; frame-ancestors 'none'");return await file(req,res,path.join(here,'ui','index.html'));}
    if(m==='GET'&&p==='/api/studio/state')return json(res,{...R.overview(),taught:T.videos().filter(v=>v.status==='learned').map(v=>({id:v.id,title:v.title,palette:(v.measured?.color?.palette??[]).slice(0,4).map(c=>c.hex)})),looks:(await (await import('../engine/looks.js')).listLooks()).map(l=>({name:l.name,summary:l.summary.slice(0,2).join(', '),colors:{bgHue:l.measured.backgroundHue,bgSat:l.measured.backgroundSaturation,light:l.measured.brightness,accentHue:l.measured.accentHue}})),profiles:Taste.profiles(),can:{maxMB:MAX_MB,fileLimits:R.fileLimits}});
    if(m==='POST'&&p==='/api/studio/trash/empty'){
     const input=z.object({projects:z.array(z.string().regex(/^[a-z0-9-]+$/)),uploads:z.array(z.object({request:z.string().regex(/^r-[a-f0-9]{8}$/),trashId:z.string().regex(/^[a-f0-9]{24}$/)}))}).strict().parse(await body(req));
