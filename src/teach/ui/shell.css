@@ -2149,6 +2149,13 @@ button.video-back{border:0;background:transparent;font:var(--type-small)}
 .ed-sec .ed-seg{margin-top:2px}
 .ed-seg.wrap{grid-auto-flow:row;grid-template-columns:repeat(auto-fit,minmax(74px,1fr))}
 .ed-frame.picking canvas{cursor:crosshair}
+.ed-curve{margin-top:8px;border-radius:6px;background:var(--ed-field);padding:4px}
+.ed-curve-svg{display:block;width:100%;height:auto;touch-action:none;cursor:copy}
+.ed-curve-svg line{stroke:color-mix(in srgb,var(--text) 12%,transparent);stroke-width:1}.ed-curve-svg line.one{stroke:color-mix(in srgb,var(--text) 30%,transparent);stroke-dasharray:3 3}
+.ed-curve-svg text{font-size:8px;fill:var(--text-3)}
+.ed-curve-svg polyline{fill:none;stroke:var(--accent);stroke-width:2}
+.ed-curve-svg circle{fill:#fff;stroke:var(--accent);stroke-width:2;cursor:grab}
+.ed-linked{display:inline-flex;margin-right:3px;opacity:.85}.ed-linked svg{width:11px;height:11px}
 .editor .ed-ctl.two{grid-template-columns:1fr 1fr auto}
 
 /* ---------- Editor, batch 3: resizable panels, right-click menus, shortcuts ---------- */

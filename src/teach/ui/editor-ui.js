@@ -81,13 +81,13 @@ Object.assign(Ed,{
  clipHtml(c){
   const m=this.mediaOf(c),w=c.dur*this.zoom,sel=this.sels.has(c.id),kind=this.kindOf(c);
   let inner='';
-  if(c.text!==undefined)inner=`<span class="ed-clip-label">${I.text}${esc(c.text||'Text')}</span>`;
-  else if(c.sticker)inner=`<span class="ed-clip-label">${c.sticker.type==='emoji'?c.sticker.emoji:I.shapes}${esc(c.sticker.type==='emoji'?'Sticker':ED_SHAPES.find(s=>s[0]===c.sticker.shape)?.[1]||'Shape')}</span>`;
+  if(c.text!==undefined)inner=`<span class="ed-clip-label">${c.group?`<b class="ed-linked" title="Grouped">${I.link}</b>`:''}${I.text}${esc(c.text||'Text')}</span>`;
+  else if(c.sticker)inner=`<span class="ed-clip-label">${c.group?`<b class="ed-linked" title="Grouped">${I.link}</b>`:''}${c.sticker.type==='emoji'?c.sticker.emoji:I.shapes}${esc(c.sticker.type==='emoji'?'Sticker':ED_SHAPES.find(s=>s[0]===c.sticker.shape)?.[1]||'Shape')}</span>`;
   else if(kind==='audio'){const pk=m?.peaks||[],from=(c.in||0)/(m?.dur||1),to=((c.in||0)+c.dur*(c.speed||1))/(m?.dur||1),part=pk.slice(Math.floor(from*pk.length),Math.ceil(to*pk.length)),v=edClamp(c.volume??1,0,2);
    inner=`<svg class="ed-wave" viewBox="0 0 ${Math.max(1,part.length)} 100" preserveAspectRatio="none">${part.map((x,i)=>`<rect x="${i}" y="${50-x*46*Math.min(1,v)}" width=".6" height="${Math.max(2,x*92*Math.min(1,v))}"/>`).join('')}</svg>
-    <i class="ed-vol" style="top:${16+(1-v/2)*(this.laneH({kind:'audio'})-20)}px" title="Volume ${Math.round(v*100)}%"></i><span class="ed-clip-label">${I.music}${esc(m?.name||'')}${c.speed&&c.speed!==1?` · ${c.speed}×`:''}</span>`;}
+    <i class="ed-vol" style="top:${16+(1-v/2)*(this.laneH({kind:'audio'})-20)}px" title="Volume ${Math.round(v*100)}%"></i><span class="ed-clip-label">${c.group?`<b class="ed-linked" title="Grouped">${I.link}</b>`:''}${I.music}${esc(m?.name||'')}${c.speed&&c.speed!==1?` · ${c.speed}×`:''}</span>`;}
   else if(m){const th=m.thumbs||[],n=Math.max(1,Math.ceil(w/56));inner=`<div class="ed-strip">${Array.from({length:n},(_,i)=>{const src=th.length?th[Math.min(th.length-1,Math.floor(((c.in||0)+(i+.5)/n*c.dur*(c.speed||1))/(m.dur||c.dur)*th.length))]:'';return src?`<img src="${src}" alt="" style="filter:${edCssFilter(c.adj||{})}">`:'<i></i>';}).join('')}</div>
-   <span class="ed-clip-label">${c.detached?I.mute:''}${esc(m.name)}${c.speed&&c.speed!==1?` · ${c.speed}×`:''}</span>`;}
+   <span class="ed-clip-label">${c.group?`<b class="ed-linked" title="Grouped">${I.link}</b>`:''}${c.detached?I.mute:''}${esc(m.name)}${c.speed&&c.speed!==1?` · ${c.speed}×`:''}</span>`;}
   const kts=sel&&c.kf?[...new Set(Object.values(c.kf).flat().map(x=>Math.round(x.t*100)/100))]:[];
   const fi=(c.fadeIn||0)*this.zoom,fo=(c.fadeOut||0)*this.zoom,fades=c.media&&w>40?`${fi?`<i class="ed-fz l" style="width:${fi}px"></i>`:''}${fo?`<i class="ed-fz r" style="width:${fo}px"></i>`:''}<i class="ed-fh" data-fh="in" style="left:${Math.max(10,fi)}px" title="Fade in ${(c.fadeIn||0).toFixed(1)} s: drag"></i><i class="ed-fh" data-fh="out" style="left:${Math.min(w-10,w-fo)}px" title="Fade out ${(c.fadeOut||0).toFixed(1)} s: drag"></i>`:'';
   return `<div class="ed-clip ${kind}${sel?' sel':''}" data-cid="${c.id}" style="left:${c.start*this.zoom}px;width:${w}px">${inner}${fades}${kts.map(t=>`<i class="ed-kf" style="left:${t*this.zoom}px"></i>`).join('')}<i class="ed-h l" data-h="l"></i><i class="ed-h r" data-h="r"></i></div>`;
@@ -135,7 +135,7 @@ Object.assign(Ed,{
      <div class="ed-row"><label>Background</label><div class="ed-ctl"><input type="checkbox" role="switch" data-k="box" ${c.box?'checked':''} aria-label="Background box">${c.box?`<input type="color" data-k="boxColor" value="${esc(c.boxColor||'#000000')}" aria-label="Box colour">`:''}</div></div>`);
   else if(t==='sticker')body=c.sticker.type==='shape'?sec('Colour',`<div class="ed-row"><label>Fill</label><div class="ed-ctl"><input type="color" data-k="color" value="${esc(c.color||'#ffd23f')}" aria-label="Fill colour"></div></div>`)+sec('Shape',`<div class="ed-stickers small">${ED_SHAPES.map(([s,l])=>`<button type="button" class="ed-sticker" data-reshape="${s}" aria-pressed="${c.sticker.shape===s}" title="${l}"><svg viewBox="0 0 40 40">${edShapeSvg(s)}</svg></button>`).join('')}</div>`)
     :sec('Emoji',`<div class="ed-stickers small">${ED_EMOJI.map(e=>`<button type="button" class="ed-sticker emoji" data-reemoji="${e}" aria-pressed="${c.sticker.emoji===e}">${e}</button>`).join('')}</div>`);
-  else if(t==='anim')body=sec('In',seg('animIn',ED_ANIMS,c.animIn||'none'))+sec('Out',seg('animOut',ED_ANIMS.filter(a=>a[0]!=='type'),c.animOut||'none'))+sec('Speed',row('animDur','Length',c.animDur||.5,{min:.1,max:2,step:.1,suffix:'s'}));
+  else if(t==='anim')body=sec('In',seg('animIn',ED_ANIMS,c.animIn||'none'))+sec('Out',seg('animOut',ED_ANIMS.filter(a=>a[0]!=='type'&&a[0]!=='words'),c.animOut||'none'))+sec('Speed',row('animDur','Length',c.animDur||.5,{min:.1,max:2,step:.1,suffix:'s'}));
   else if(t==='basic'){const cr=c.crop||{},media=kind!=='text'&&kind!=='sticker';
    body=sec('Transform',`${kind!=='text'?row('scale','Scale',cur('scale'),{min:10,max:300,unit:'pct',suffix:'%'}):row('scale','Scale',cur('scale'),{min:20,max:300,unit:'pct',suffix:'%'})}
      <div class="ed-row"><label>Position</label><div class="ed-ctl two"><span class="ed-num"><b>X</b><input type="number" data-k="x" data-u="pxx" step="1" value="${Math.round(cur('x')*W)}" aria-label="Position X"></span><span class="ed-num"><b>Y</b><input type="number" data-k="y" data-u="pxy" step="1" value="${Math.round(cur('y')*H)}" aria-label="Position Y"></span>${kfBtn('x')}</div></div>
@@ -166,7 +166,9 @@ Object.assign(Ed,{
    body=(kind==='video'?sec('Sound',c.detached?`<div class="ed-note">${I.detach} The sound is on its own audio track.</div>`:`${row('volume','Volume',cur('volume'),{min:0,max:200,unit:'pct',suffix:'%'})}<div class="ed-row"><label></label><div class="ed-ctl"><button type="button" class="ed-tool" data-detach>${I.detach} Detach audio</button></div></div>`)
     :sec('Volume',row('volume','Volume',cur('volume'),{min:0,max:200,unit:'pct',suffix:'%'})))+(snd?loud:'')+duck+(kind==='audio'?fades():'');}
   else if(t==='speed')body=sec('Speed',`${row('speed','Speed',c.speed||1,{min:.25,max:4,step:.05,suffix:'×'})}<div class="ed-chips">${[.5,1,1.5,2,3].map(s=>`<button type="button" data-speed="${s}" aria-pressed="${(c.speed||1)===s}">${s}×</button>`).join('')}</div>
-     <div class="ed-row"><label>Length</label><div class="ed-ctl"><span class="ed-val">${edFmt(c.dur)}</span></div></div>`,'speed');
+     <div class="ed-row"><label>Length</label><div class="ed-ctl"><span class="ed-val">${edFmt(c.dur)}</span></div></div>`,'speed')+
+    sec('Speed curve',`<div class="ed-seg wrap">${[['none','None'],...ED_RAMPS.map(r=>[r[0],r[1]]),...(c.rampName==='custom'?[['custom','Custom']]:[])].map(([id,l])=>`<button type="button" data-ramp="${id}" aria-pressed="${(c.ramp?(c.rampName||'custom'):'none')===id}">${l}</button>`).join('')}</div>
+     ${c.ramp?`<div class="ed-curve">${edCurveSvg(c.ramp)}</div><p class="ed-hint">Drag a point up for faster, down for slower. Click the line to add a point; double-click one to remove it.</p>`:'<p class="ed-hint">A curve changes the speed within the clip: fast, then slow motion, then fast. The sound keeps its pitch.</p>'}`);
   const ke=c&&(t==='basic'||t==='audio')&&c.kf?this.kfEaseAt(c):null;
   if(ke)body=sec('Keyframe at the playhead',`<div class="ed-row"><label>To the next</label><div class="ed-ctl"><div class="ed-seg wrap">${ED_EASES.map(([v,l])=>`<button type="button" data-ease="${v}" aria-pressed="${ke===v}">${l}</button>`).join('')}</div></div></div>`)+body;
   el.innerHTML=`<nav class="ed-ptabs" role="tablist">${tabs.map(([id,l])=>`<button type="button" role="tab" aria-selected="${t===id}" data-ptab="${id}">${l}</button>`).join('')}
@@ -178,7 +180,7 @@ Object.assign(Ed,{
    const bg=$('[data-bg]',el);if(bg){bg.onfocus=()=>this.snapshot();bg.oninput=()=>{this.p.bg=bg.value;this.save();this.draw();};}
    const cm=$('[data-clear-markers]',el);if(cm)cm.onclick=()=>{this.snapshot();this.p.markers=[];this.after(true);};return;
   }
-  const setSpeed=v=>{const mm=this.mediaOf(c),max=mm?.dur&&mm.type!=='image'?((mm.dur-(c.in||0))/v):Infinity;c.dur=Math.max(.1,Math.min(c.dur*(c.speed||1)/v,max));c.speed=v;};
+  const setSpeed=v=>{const mm=this.mediaOf(c),max=mm?.dur&&mm.type!=='image'?((mm.dur-(c.in||0))/(v*(c.ramp?edRampAvg(c.ramp):1))):Infinity;c.dur=Math.max(.1,Math.min(c.dur*(c.speed||1)/v,max));c.speed=v;};
   el.querySelectorAll('[data-k]').forEach(inp=>{
    const k=inp.dataset.k,u=inp.dataset.u||'raw';
    const snap=()=>{if(!inp._snap){this.snapshot();inp._snap=true;}};inp.addEventListener('focus',snap);inp.addEventListener('pointerdown',snap);
@@ -199,6 +201,8 @@ Object.assign(Ed,{
   for(const [attr,key] of Object.entries(segs))el.querySelectorAll(`[data-${attr}]`).forEach(b=>b.onclick=()=>{this.snapshot();c[key]=b.dataset[attr];this.save();this.drawProps();this.draw();});
   el.querySelectorAll('[data-flip]').forEach(b=>b.onclick=()=>{this.snapshot();c[b.dataset.flip]=!c[b.dataset.flip];this.save();this.drawProps();this.draw();});
   el.querySelectorAll('[data-speed]').forEach(b=>b.onclick=()=>{this.snapshot();setSpeed(Number(b.dataset.speed));this.after(true);});
+  el.querySelectorAll('[data-ramp]').forEach(b=>b.onclick=()=>{const id=b.dataset.ramp;if(id==='custom')return;const r=ED_RAMPS.find(x=>x[0]===id);this.setRamp(c,r?r[2].map(x=>[...x]):null);if(r)c.rampName=id;else delete c.rampName;this.save();this.drawProps();});
+  const cs=$('.ed-curve svg',el);if(cs)edCurveWire(cs,c);
   el.querySelectorAll('[data-kf]').forEach(b=>b.onclick=()=>{const k=b.dataset.kf;if(k==='x'){this.toggleKf(c,'x');this.toggleKf(c,'y');this.past.splice(-1,1);}else this.toggleKf(c,k);});
   el.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{this.snapshot();const a=ED_FILTERS.find(f=>f[0]===b.dataset.filter)[2];if(Object.keys(a).length)c.adj={...a};else delete c.adj;this.after(true);});
   el.querySelectorAll('[data-reshape]').forEach(b=>b.onclick=()=>{this.snapshot();c.sticker={...c.sticker,shape:b.dataset.reshape};this.after(true);});
@@ -313,7 +317,7 @@ function edBuild(el){
    <div class="ed-stage"><div class="ed-frame"><canvas aria-label="Preview"></canvas><div class="ed-guides" aria-hidden="true"><i class="g-top"></i><i class="g-right"></i><i class="g-bottom"></i></div></div>
     <div class="ed-export" hidden><span class="spin"></span><b>Recording…</b><span>Keep this tab open.</span><button type="button" class="btn small" data-cancel-export>Cancel</button></div></div>
    <div class="ed-controls"><span class="ed-time"></span><button type="button" class="ed-play" data-play></button>
-    <span class="ed-ctl-right"><canvas class="ed-meter" width="72" height="14" role="img" aria-label="Sound level"></canvas><button type="button" class="iconbtn sm" data-guides aria-pressed="${Ed.guides}" aria-label="Safe areas" data-tooltip="Safe areas for TikTok and Reels">${I.safe}</button><button type="button" class="iconbtn sm" data-full aria-label="Full screen" data-tooltip="Full screen">${I.expand}</button></span></div>
+    <span class="ed-ctl-right"><canvas class="ed-meter" width="72" height="14" role="img" aria-label="Sound level"></canvas><button type="button" class="iconbtn sm" data-frame aria-label="Save frame" data-tooltip="Save this frame as a picture · Shift+E">${I.image}</button><button type="button" class="iconbtn sm" data-guides aria-pressed="${Ed.guides}" aria-label="Safe areas" data-tooltip="Safe areas for TikTok and Reels">${I.safe}</button><button type="button" class="iconbtn sm" data-full aria-label="Full screen" data-tooltip="Full screen">${I.expand}</button></span></div>
   </section>
   <section class="ed-panel ed-props" aria-label="Properties"></section>
   <section class="ed-panel ed-tl" aria-label="Timeline">
@@ -360,6 +364,7 @@ function edBuild(el){
  q('[data-magnet]').onclick=()=>{Ed.snapshot();Ed.p.magnet=!Ed.p.magnet;Ed.after(false);toast(Ed.p.magnet?'Main track magnet on: no gaps':'Main track magnet off');};
  q('[data-track-add]').onclick=e=>{const b=e.currentTarget,pop=Pop.open(b,Object.entries(ED_KINDS).map(([k,v])=>`<button class="pop-item" data-k="${k}">${I[v.icon]}<span>${k==='video'?'Overlay video track':v.label+' track'}</span></button>`).join(''),{label:'Add a track'});
   if(pop)pop.querySelectorAll('[data-k]').forEach(x=>x.onclick=()=>{Pop.close();Ed.snapshot();Ed.addTrack(x.dataset.k);Ed.drawTimeline();});};
+ q('[data-frame]').onclick=()=>Ed.saveFrame();
  q('[data-guides]').onclick=e=>{Ed.guides=!Ed.guides;e.currentTarget.setAttribute('aria-pressed',String(Ed.guides));Ed.dom.frame.classList.toggle('guides',Ed.guides);};
  Ed.dom.frame.classList.toggle('guides',Ed.guides);
  q('[data-full]').onclick=()=>{const st=Ed.dom.stage;document.fullscreenElement?document.exitFullscreen():st.requestFullscreen?.().catch(()=>{});};
@@ -410,8 +415,9 @@ function edWireTimeline(){
    window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);return;}
   const c=Ed.clip(clip.dataset.cid);if(!c)return;e.preventDefault();
   if(Ed.trackOf(c)?.locked)return toast('This track is locked.');
-  if(e.shiftKey||e.ctrlKey||e.metaKey){Ed.select(c.id,true);return;}
-  if(!Ed.sels.has(c.id))Ed.select(c.id);else{Ed.sel=c.id;Ed.drawProps();}
+  Ed.solo=e.altKey;
+  if(e.shiftKey||e.ctrlKey||e.metaKey){Ed.select(c.id,true);Ed.solo=false;return;}
+  if(!Ed.sels.has(c.id)||(e.altKey&&Ed.sels.size>1))Ed.select(c.id);else{Ed.sel=c.id;Ed.drawProps();}Ed.solo=false;
   if(e.target.dataset.fh){const key=e.target.dataset.fh==='in'?'fadeIn':'fadeOut',left=clip.getBoundingClientRect().left;let snapped=false;
    const mv=ev=>{if(!snapped){Ed.snapshot();snapped=true;}const x=(ev.clientX-left)/Ed.zoom;c[key]=Math.round(edClamp(key==='fadeIn'?x:c.dur-x,0,Math.min(5,c.dur/2))*10)/10;Ed.drawTimeline();Ed.sync();Ed.draw();};
    const up=()=>{window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);if(snapped)Ed.after(true);};
@@ -430,9 +436,10 @@ function edWireTimeline(){
      if(lane?.classList.contains('ed-lane-new')){lane.classList.add('on');newLane=lane.dataset.new;}
      else if(lane&&lane.dataset.kind===kind&&!lane.classList.contains('locked')&&lane.dataset.track!==c.track){c.track=lane.dataset.track;const node=Ed.dom.tracks.querySelector(`[data-cid="${c.id}"]`);if(node)lane.append(node);}}
    }
-   else if(mode==='l'){let s=snapT(o.start+dt);const sp=o.speed||1;if(c.media)s=Math.max(s,o.start-(o.in||0)/sp);s=Math.max(0,Math.min(s,o.start+o.dur-.1));const d=s-o.start;c.start=s;c.dur=o.dur-d;if(c.media)c.in=(o.in||0)+d*sp;
+   else if(mode==='l'){let s=snapT(o.start+dt);const sp=o.speed||1;if(c.media)s=Math.max(s,o.ramp?o.start:o.start-(o.in||0)/sp);s=Math.max(0,Math.min(s,o.start+o.dur-.1));const d=s-o.start;c.start=s;c.dur=o.dur-d;
+    if(o.ramp){c.in=Ed.srcAt(o,s);c.ramp=d>.001?edRampSplit(o.ramp,d/o.dur)[1]:o.ramp;}else if(c.media)c.in=(o.in||0)+d*sp;
     if(c.kf)for(const f of Object.values(c.kf))for(const x of f)x.t=Math.max(0,x.t-(d-(c._kfd||0)));c._kfd=d;}
-   else{let e2=snapT(o.start+o.dur+dt);const sp=o.speed||1;e2=Math.min(e2,o.start+(srcDur-(o.in||0))/sp);c.dur=Math.max(.1,e2-o.start);}
+   else{let e2=snapT(o.start+o.dur+dt);const sp=o.speed||1;e2=Math.min(e2,o.ramp?o.start+o.dur:o.start+(srcDur-(o.in||0))/sp);c.dur=Math.max(.1,e2-o.start);if(o.ramp)c.ramp=c.dur<o.dur-.001?edRampSplit(o.ramp,c.dur/o.dur)[0]:o.ramp;}
    for(const g of group){const node=Ed.dom.tracks.querySelector(`[data-cid="${g.id}"]`);if(node){node.style.left=g.start*Ed.zoom+'px';node.style.width=g.dur*Ed.zoom+'px';}}
    Ed.sync();Ed.draw();Ed.drawTime();};
   const up=()=>{window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);delete c._kfd;
@@ -486,6 +493,9 @@ window.addEventListener('keydown',e=>{
  else if(mod&&k==='x')Ed.copy(true);
  else if(mod&&k==='v')Ed.paste();
  else if(mod&&k==='a')Ed.selectAll();
+ else if(mod&&k==='g'&&e.shiftKey)Ed.ungroup();
+ else if(mod&&k==='g')Ed.group();
+ else if(!mod&&!e.altKey&&k==='e'&&e.shiftKey)Ed.saveFrame();
  else if(!mod&&k==='m')Ed.toggleMarker();
  else if(e.key==='?')edKeys();
  else if(k==='arrowleft')Ed.seek(Ed.time-(e.shiftKey?1:1/30));
@@ -509,7 +519,8 @@ function edMenu(x,y,items){
 function edClipMenu(x,y,c){
  const m=Ed.mediaOf(c),many=Ed.sels.size>1,video=m?.type==='video'&&!c.asAudio,visual=Ed.kindOf(c)!=='audio';
  edMenu(x,y,[['Split at playhead','split',()=>Ed.split(),false,false,'Ctrl+B'],['Copy','copy',()=>Ed.copy(),false,false,'Ctrl+C'],['Cut','cut',()=>Ed.copy(true),false,false,'Ctrl+X'],
-  [`Paste${Ed.clipboard?.length?` (${Ed.clipboard.length})`:''}`,'copy',()=>Ed.paste(),!Ed.clipboard?.length,false,'Ctrl+V'],['Duplicate','layers',()=>Ed.duplicate(),false,false,'Ctrl+D'],'-',
+  [`Paste${Ed.clipboard?.length?` (${Ed.clipboard.length})`:''}`,'copy',()=>Ed.paste(),!Ed.clipboard?.length,false,'Ctrl+V'],['Duplicate','layers',()=>Ed.duplicate(),false,false,'Ctrl+D'],
+  ...(many?[['Group','link',()=>Ed.group(),false,false,'Ctrl+G']]:[]),...(Ed.picked().some(x=>x.group)?[['Ungroup','link',()=>Ed.ungroup(),false,false,'Ctrl+Shift+G']]:[]),'-',
   ...(video&&!many?[[c.detached?'Audio is detached':'Detach audio','detach',()=>Ed.detach(c),!!c.detached]]:[]),
   ...(!many&&c.media&&m?.type!=='image'?[['Speed 0.5×','sliders',()=>edSpeed(c,.5)],['Speed 1×','sliders',()=>edSpeed(c,1)],['Speed 2×','sliders',()=>edSpeed(c,2)]]:[]),
   ...(!many&&video?[['Freeze frame','freeze',()=>{Ed.seek(edClamp(Ed.time,c.start,c.start+c.dur-.04));Ed.freeze();},false,false,'Shift+F']]:[]),
@@ -524,7 +535,28 @@ function edReplace(x,y,c){
   inp.onchange=async()=>{const [m]=await Ed.importFiles(inp.files);if(m)Ed.replaceClip(Ed.clip(c.id),m.id);};inp.click();};
  setTimeout(()=>edMenu(x,y,[...list.map(m=>[esc(m.name),m.type==='image'?'image':m.type==='audio'?'music':'film',()=>Ed.replaceClip(Ed.clip(c.id),m.id)]),...(list.length?['-']:[]),['Import a file…','upload',pick]]),0);
 }
-function edSpeed(c,v){Ed.snapshot();const m=Ed.mediaOf(c),max=m?.dur?((m.dur-(c.in||0))/v):Infinity;c.dur=Math.max(.1,Math.min(c.dur*(c.speed||1)/v,max));c.speed=v;Ed.after(true);}
+// ---------- the speed curve editor: position across, speed up and down (0.1x to 10x, log scale) ----------
+const ED_CW=260,ED_CH=120,edCy=v=>6+(1-(Math.log10(v)+1)/2)*(ED_CH-12),edCv=y=>Math.pow(10,(1-(y-6)/(ED_CH-12))*2-1);
+function edCurveSvg(r){
+ const grid=[.25,.5,1,2,4,8].map(v=>`<line x1="0" x2="${ED_CW}" y1="${edCy(v)}" y2="${edCy(v)}" class="${v===1?'one':''}"/><text x="3" y="${edCy(v)-2}">${v}×</text>`).join('');
+ const pts=r.map(([p,v])=>`${p*ED_CW},${edCy(v)}`).join(' ');
+ return `<svg viewBox="0 0 ${ED_CW} ${ED_CH}" class="ed-curve-svg" role="img" aria-label="Speed curve">${grid}<polyline points="${pts}"/>${r.map(([p,v],i)=>`<circle data-pt="${i}" cx="${p*ED_CW}" cy="${edCy(v)}" r="5"><title>${v.toFixed(2)}×</title></circle>`).join('')}</svg>`;
+}
+function edCurveWire(svg,c){
+ const at=e=>{const b=svg.getBoundingClientRect();return [edClamp((e.clientX-b.left)/b.width,0,1),edClamp(edCv((e.clientY-b.top)/b.height*ED_CH),.1,10)];};
+ const redraw=()=>{svg.outerHTML=edCurveSvg(c.ramp);const n=Ed.dom.props?.querySelector('.ed-curve svg');if(n)edCurveWire(n,c);Ed.drawTimeline();Ed.sync();Ed.draw();};
+ svg.onpointerdown=e=>{e.preventDefault();const pt=e.target.closest('[data-pt]');Ed.snapshot();
+  let i=pt?Number(pt.dataset.pt):-1;const pts=c.ramp.map(x=>[...x]);
+  if(i<0){const [p,v]=at(e);i=pts.findIndex(x=>x[0]>p);if(i<=0)return;pts.splice(i,0,[p,v]);}
+  c.rampName='custom';
+  const mv=ev=>{const [p,v]=at(ev);const lo=i>0?pts[i-1][0]+.02:0,hi=i<pts.length-1?pts[i+1][0]-.02:1;pts[i]=[i===0?0:i===pts.length-1?1:edClamp(p,lo,hi),Math.round(v*100)/100];Ed.setRamp(c,pts,true);redraw();};
+  const up=()=>{window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);Ed.setRamp(c,pts,true);Ed.after(true);};
+  if(!pt){Ed.setRamp(c,pts,true);redraw();}
+  window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);};
+ svg.ondblclick=e=>{const pt=e.target.closest('[data-pt]');if(!pt)return;const i=Number(pt.dataset.pt);if(i===0||i===c.ramp.length-1)return;
+  const pts=c.ramp.filter((_,j)=>j!==i);c.rampName='custom';Ed.setRamp(c,pts);};
+}
+function edSpeed(c,v){Ed.snapshot();const m=Ed.mediaOf(c),max=m?.dur?((m.dur-(c.in||0))/(v*(c.ramp?edRampAvg(c.ramp):1))):Infinity;c.dur=Math.max(.1,Math.min(c.dur*(c.speed||1)/v,max));c.speed=v;Ed.after(true);}
 // ---------- resizable panels: drag the lines between them; sizes are remembered ----------
 function edLayout(R){
  let L={};try{L=JSON.parse(localStorage.getItem('editor-layout')||'{}');}catch{}
@@ -543,7 +575,7 @@ function edLayout(R){
 }
 // ---------- the shortcuts sheet ----------
 function edKeys(){
- const rows=[['Space','Play or pause'],['Ctrl+B or S','Split at the playhead'],['Delete','Delete the selection'],['Shift+Delete','Ripple delete: close the space'],['Q / W','Delete left / right of the playhead'],['J / K / L','Play back, stop, play forward (again: faster)'],['I / O','Mark in / out'],['Shift+I / Shift+O','Go to in / out'],['Alt+X','Clear in and out'],['Shift+F','Freeze frame'],['Ctrl+Z / Ctrl+Shift+Z','Undo / redo'],['Ctrl+C / X / V','Copy, cut, paste at the playhead'],['Ctrl+D','Duplicate'],['Ctrl+A','Select every clip'],
+ const rows=[['Space','Play or pause'],['Ctrl+B or S','Split at the playhead'],['Delete','Delete the selection'],['Ctrl+G / Ctrl+Shift+G','Group / ungroup'],['Alt + click','One clip of a group'],['Shift+E','Save the frame as a picture'],['Shift+Delete','Ripple delete: close the space'],['Q / W','Delete left / right of the playhead'],['J / K / L','Play back, stop, play forward (again: faster)'],['I / O','Mark in / out'],['Shift+I / Shift+O','Go to in / out'],['Alt+X','Clear in and out'],['Shift+F','Freeze frame'],['Ctrl+Z / Ctrl+Shift+Z','Undo / redo'],['Ctrl+C / X / V','Copy, cut, paste at the playhead'],['Ctrl+D','Duplicate'],['Ctrl+A','Select every clip'],
   ['Shift or Ctrl + click','Add a clip to the selection'],['Drag on empty space','Select with a box'],['M','Add or remove a marker'],['← / →','One frame back / forward'],['Shift + ← / →','One second back / forward'],['Home / End','Start / end'],['Ctrl + wheel','Zoom the timeline'],['Right-click','Clip menu'],['Esc','Clear the selection'],['?','This sheet']];
  dialog(`<div class="ed-keys"><h2>Keyboard shortcuts</h2><dl>${rows.map(([k,d])=>`<dt>${k.split(' / ').map(x=>`<kbd>${esc(x)}</kbd>`).join(' / ')}</dt><dd>${esc(d)}</dd>`).join('')}</dl><div class="ed-xactions"><button type="button" class="btn primary" data-no>Done</button></div></div>`);
  $('.ed-keys [data-no]').onclick=()=>closeDialog();

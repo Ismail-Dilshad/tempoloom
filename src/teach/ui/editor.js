@@ -11,7 +11,17 @@ const ED_ADJ=[['brightness','Brightness',-100,100],['contrast','Contrast',-100,1
 const ED_FILTERS=[['none','Original',{}],['vivid','Vivid',{saturation:35,contrast:15}],['warm','Warm',{temperature:40,saturation:10}],['cool','Cool',{temperature:-40,saturation:5}],['bw','Black & white',{saturation:-100,contrast:15}],
  ['vintage','Vintage',{saturation:-30,temperature:30,contrast:-10,vignette:45}],['faded','Faded',{contrast:-25,brightness:8,saturation:-15}],['drama','Dramatic',{contrast:35,saturation:-10,vignette:55,brightness:-5}]];
 const ED_FONTS=[['Tempoloom UI','Sans'],['Fredoka','Rounded'],['Vazirmatn','Kurdish & Arabic'],['Georgia','Serif'],['Impact','Impact'],['Courier New','Mono']];
-const ED_ANIMS=[['none','None'],['fade','Fade'],['pop','Pop'],['slide','Slide'],['type','Typewriter']];
+const ED_ANIMS=[['none','None'],['fade','Fade'],['pop','Pop'],['slide','Slide'],['zoom','Zoom'],['blur','Blur'],['type','Typewriter'],['words','Word by word']];
+/** Speed curves: [position in the clip 0..1, speed multiplier], straight lines between points. */
+const ED_RAMPS=[['montage','Montage',[[0,2.5],[.3,2.5],[.45,.5],[.55,.5],[.7,2.5],[1,2.5]]],['hero','Hero',[[0,1.5],[.4,1.5],[.5,.3],[.6,1.5],[1,1.5]]],
+ ['bullet','Bullet',[[0,2],[.35,2],[.5,.2],[.65,2],[1,2]]],['jump','Jump cut',[[0,1],[.45,1],[.5,6],[.55,1],[1,1]]],['flashin','Flash in',[[0,6],[.35,1],[1,1]]],['flashout','Flash out',[[0,1],[.65,1],[1,6]]]];
+const edRampAt=(r,p)=>{if(p<=r[0][0])return r[0][1];for(let i=1;i<r.length;i++)if(p<=r[i][0]){const [a,va]=r[i-1],[b,vb]=r[i];return va+(vb-va)*((p-a)/((b-a)||1));}return r[r.length-1][1];};
+/** The area under the curve from 0 to p (so source time = in + speed x length x this). */
+const edRampInt=(r,p)=>{let a=0;for(let i=1;i<r.length&&r[i-1][0]<p;i++){const x0=r[i-1][0],x1=Math.min(r[i][0],p);a+=(x1-x0)*(r[i-1][1]+edRampAt(r,x1))/2;}return a;};
+const edRampAvg=r=>edRampInt(r,1);
+/** The curve cut at p into the part before and the part after, each stretched back to 0..1. */
+const edRampSplit=(r,p)=>{p=Math.min(.999,Math.max(.001,p));const v=edRampAt(r,p);
+ return [[...r.filter(x=>x[0]<p).map(([q,s])=>[q/p,s]),[1,v]],[[0,v],...r.filter(x=>x[0]>p).map(([q,s])=>[(q-p)/(1-p),s])]];};
 const ED_SHAPES=[['rect','Square'],['round','Rounded'],['circle','Circle'],['triangle','Triangle'],['star','Star'],['arrow','Arrow'],['line','Line'],['heart','Heart']];
 const ED_EMOJI=['😀','😂','😍','🔥','👍','🎉','⭐','❤️','✅','❌','👉','💡','🚀','💯','👀','🎵'];
 const ED_TRACKS0=()=>[{id:'text',kind:'text'},{id:'video',kind:'video',main:true},{id:'audio',kind:'audio'}];
@@ -198,7 +208,13 @@ const Ed={
  addSticker(s){this.snapshot();const c={id:this.uid(),sticker:s,start:this.time,dur:3,color:'#ffd23f',scale:1,x:0,y:0,rotate:0,opacity:1,animIn:'pop',animOut:'none',animDur:.4};
   c.track=this.place('sticker',c.start,c.dur,this.p.tracks.find(t=>t.kind==='sticker')?.id);this.p.clips.push(c);this.pick(c.id);this.after(true);},
  // ---------- selecting ----------
- pick(id,add){this.junction=null;if(!id){this.sels.clear();this.sel=null;return;}if(add){if(this.sels.has(id)){this.sels.delete(id);this.sel=[...this.sels].pop()||null;}else{this.sels.add(id);this.sel=id;}}else{this.sels=new Set([id]);this.sel=id;}},
+ pick(id,add){this.junction=null;if(!id){this.sels.clear();this.sel=null;return;}
+  const c=this.clip(id),mates=c?.group&&!this.solo?this.p.clips.filter(o=>o.group===c.group).map(o=>o.id):[id];
+  if(add){if(this.sels.has(id)){for(const m of mates)this.sels.delete(m);this.sel=[...this.sels].pop()||null;}else{for(const m of mates)this.sels.add(m);this.sel=id;}}else{this.sels=new Set(mates);this.sel=id;}},
+ group(){const list=this.picked();if(list.length<2)return toast('Select two or more clips to group them.');this.snapshot();const g=this.uid();for(const c of list)c.group=g;this.after(true);toast(`Grouped ${list.length} clips`);},
+ ungroup(){const list=this.picked().filter(c=>c.group);if(!list.length)return toast('Nothing selected is grouped.');this.snapshot();for(const c of list)delete c.group;this.after(true);toast('Ungrouped');},
+ /** New copies get new group ids, so they do not join the group of what they were copied from. */
+ regroup(list){const map={};for(const c of list)if(c.group)c.group=map[c.group]||(map[c.group]=this.uid());},
  select(id,add){this.pick(id,add);this.drawTimeline();this.drawProps();this.draw();},
  selectJoin(id){this.sels.clear();this.sel=null;this.junction=id;this.drawTimeline();this.drawProps();this.draw();},
  // ---------- editing ----------
@@ -207,12 +223,21 @@ const Ed={
   let list=this.picked().filter(inside);
   if(!list.length){const c=this.p.clips.find(x=>x.track===this.main()?.id&&inside(x))||this.p.clips.find(inside);if(c)list=[c];}
   if(!list.length)return toast('Move the playhead over a clip to split it.');
-  this.snapshot();let last=null;
-  for(const c of list)last=this.splitClip(c,t).id;
+  this.snapshot();let last=null;const parts=[];
+  for(const c of list){const b=this.splitClip(c,t);parts.push(b);last=b.id;}this.regroup(parts);
   this.pick(last);this.after(true);
  },
+ // ---------- time map: where in the file a clip is at timeline time t (constant speed or a speed curve) ----------
+ srcAt(c,t){const lt=edClamp(t-c.start,0,c.dur),sp=c.speed||1;return (c.in||0)+(c.ramp?sp*c.dur*edRampInt(c.ramp,lt/(c.dur||1)):lt*sp);},
+ rateAt(c,t){const sp=c.speed||1;return c.ramp?sp*edRampAt(c.ramp,edClamp((t-c.start)/(c.dur||1),0,1)):sp;},
+ srcSpan(c){return this.srcAt(c,c.start+c.dur)-(c.in||0);},
+ /** A speed curve (null = none); the clip keeps the same part of the file, so its length changes. */
+ setRamp(c,pts,quiet){if(!quiet)this.snapshot();const S=this.srcSpan(c),sp=c.speed||1;
+  if(pts){c.ramp=pts.map(([p,v])=>[p,edClamp(v,.1,10)]);c.dur=Math.max(.1,S/(sp*edRampAvg(c.ramp)));}else{delete c.ramp;c.dur=Math.max(.1,S/sp);}
+  c.fadeIn=Math.min(c.fadeIn||0,c.dur/2);c.fadeOut=Math.min(c.fadeOut||0,c.dur/2);if(!quiet)this.after(true);},
  /** Cuts one clip in two at time t (no undo step); returns the second part. */
- splitClip(c,t){const first=t-c.start,b={...c,id:this.uid(),start:t,in:(c.in||0)+first*(c.speed||1),dur:c.dur-first};delete b.trans;
+ splitClip(c,t){const first=t-c.start,b={...c,id:this.uid(),start:t,in:this.srcAt(c,t),dur:c.dur-first};delete b.trans;
+  if(c.ramp){const [r1,r2]=edRampSplit(c.ramp,first/c.dur);c.ramp=r1;b.ramp=r2;}
   if(c.kf){b.kf={};c.kf=Object.fromEntries(Object.entries(c.kf).map(([k,f])=>{b.kf[k]=f.filter(x=>x.t>=first).map(x=>({...x,t:x.t-first}));return [k,f.filter(x=>x.t<=first)];}));}
   c.dur=first;c.fadeOut=0;b.fadeIn=0;this.p.clips.push(b);return b;},
  /** Moves every clip on a track that starts at or after `from` by d seconds (negative = left). */
@@ -240,10 +265,10 @@ const Ed={
   const t=this.time,list=this.underHead();if(!list.length)return toast('Move the playhead over a clip.');
   this.snapshot();let back=null;
   for(const c of list){const sp=c.speed||1,end=c.start+c.dur;
-   if(side==='start'){const d=t-c.start;c.in=(c.in||0)+(c.media?d*sp:0);c.dur-=d;delete c.trans;
+   if(side==='start'){const d=t-c.start;if(c.media)c.in=this.srcAt(c,t);if(c.ramp)c.ramp=edRampSplit(c.ramp,d/c.dur)[1];c.dur-=d;delete c.trans;
     if(c.kf)for(const k of Object.keys(c.kf)){const f=c.kf[k];const v0=this.val({...c,dur:c.dur+d,kf:{[k]:f}},k,t);c.kf[k]=[{t:0,v:v0},...f.filter(x=>x.t>d).map(x=>({...x,t:x.t-d}))];}
     this.shiftTrack(c.track,end,-d,c);back=back??c.start;}
-   else{const d=end-t;c.dur-=d;this.shiftTrack(c.track,end,-d,c);}
+   else{const d=end-t;if(c.ramp)c.ramp=edRampSplit(c.ramp,(c.dur-d)/c.dur)[0];c.dur-=d;this.shiftTrack(c.track,end,-d,c);}
    c.fadeIn=Math.min(c.fadeIn||0,c.dur/2);c.fadeOut=Math.min(c.fadeOut||0,c.dur/2);}
   this.after(true);if(back!==null)this.seek(back);
  },
@@ -291,16 +316,17 @@ const Ed={
   const list=this.picked().filter(c=>!this.trackOf(c)?.locked);if(!list.length)return;this.snapshot();const gone=new Set(list.map(c=>c.id));
   this.p.clips=this.p.clips.filter(x=>!gone.has(x.id));for(const id of gone){this.els[id]?.pause?.();delete this.els[id];}this.pick(null);this.after(true);},
  duplicate(){const list=this.picked();if(!list.length)return;this.snapshot();this.sels.clear();
-  for(const c of list){const start=c.start+c.dur,d={...JSON.parse(JSON.stringify(c)),id:this.uid(),start};d.track=this.place(this.kindOf(c),start,c.dur,c.track);this.p.clips.push(d);this.sels.add(d.id);this.sel=d.id;}this.after(true);},
+  const made=[];for(const c of list){const start=c.start+c.dur,d={...JSON.parse(JSON.stringify(c)),id:this.uid(),start};d.track=this.place(this.kindOf(c),start,c.dur,c.track);this.p.clips.push(d);made.push(d);this.sels.add(d.id);this.sel=d.id;}this.regroup(made);this.after(true);},
  copy(cut){const list=this.picked();if(!list.length)return;this.clipboard=JSON.parse(JSON.stringify(list.map(c=>({...c,kind:this.kindOf(c)}))));toast(cut?`Cut ${list.length}`:`Copied ${list.length}`);if(cut)this.remove();},
  paste(){const cb=this.clipboard;if(!cb?.length)return;this.snapshot();const min=Math.min(...cb.map(c=>c.start)),off=this.time-min;this.sels.clear();
-  for(const c0 of cb){const {kind,...c}=c0;const d={...JSON.parse(JSON.stringify(c)),id:this.uid(),start:c.start+off};d.track=this.place(kind,d.start,d.dur,this.p.tracks.some(t=>t.id===c.track)?c.track:undefined);this.p.clips.push(d);this.sels.add(d.id);this.sel=d.id;}
+  const made=[];for(const c0 of cb){const {kind,...c}=c0;const d={...JSON.parse(JSON.stringify(c)),id:this.uid(),start:c.start+off};d.track=this.place(kind,d.start,d.dur,this.p.tracks.some(t=>t.id===c.track)?c.track:undefined);this.p.clips.push(d);made.push(d);this.sels.add(d.id);this.sel=d.id;}this.regroup(made);
   this.after(true);},
  selectAll(){this.junction=null;this.sels=new Set(this.p.clips.filter(c=>!this.trackOf(c)?.locked).map(c=>c.id));this.sel=[...this.sels].pop()||null;this.drawTimeline();this.drawProps();this.draw();},
  async detach(c){
   const m=this.mediaOf(c);if(!m||m.type!=='video'||c.detached)return;
   this.snapshot();
-  const a={id:this.uid(),media:m.id,asAudio:true,start:c.start,in:c.in||0,dur:c.dur,speed:c.speed||1,volume:c.volume??1,fadeIn:0,fadeOut:0};
+  const g=c.group||this.uid();c.group=g;
+  const a={id:this.uid(),media:m.id,asAudio:true,start:c.start,in:c.in||0,dur:c.dur,speed:c.speed||1,volume:c.volume??1,fadeIn:0,fadeOut:0,group:g,...(c.ramp?{ramp:c.ramp.map(x=>[...x])}:{})};
   a.track=this.place('audio',a.start,a.dur);c.detached=true;this.p.clips.push(a);this.after(true);toast('The sound is on its own track now');
   if(!m.peaks){const b=await this.get(m.id).catch(()=>null);if(b){m.peaks=await edPeaks(b).catch(()=>null);this.save();this.drawTimeline();}}
  },
@@ -375,16 +401,16 @@ const Ed={
   for(const c of this.p.clips){
    if(c.text!==undefined||c.sticker)continue;const m=this.mediaOf(c);if(!m||m.type==='image')continue;
    const el=this.element(c);if(!el)continue;
-   const on=t>=c.start&&t<c.start+c.dur,want=(c.in||0)+(t-c.start)*(c.speed||1);
+   const on=t>=c.start&&t<c.start+c.dur,want=this.srcAt(c,t);
    if(on){
     const fwd=this.playing&&this.rate>0;
-    el.playbackRate=edClamp((c.speed||1)*(fwd?this.rate:1),.0625,16);const v=this.vol(c,t);if(el._gain){el.volume=1;el._gain.gain.value=v;}else el.volume=Math.min(1,v);
+    el.playbackRate=edClamp(this.rateAt(c,t)*(fwd?this.rate:1),.0625,16);const v=this.vol(c,t);if(el._gain){el.volume=1;el._gain.gain.value=v;}else el.volume=Math.min(1,v);
     if(fwd){if(el.paused){try{el.currentTime=want;}catch{}el.play().catch(()=>{});}else if(Math.abs(el.currentTime-want)>.3*Math.max(1,this.rate))el.currentTime=want;}
     else{if(!el.paused)el.pause();if(Math.abs(el.currentTime-want)>.03){try{el.currentTime=want;}catch{}}}
    }else{if(!el.paused)el.pause();
     // Just before or after its turn, a clip waits on its first or last frame (for transitions).
     const pre=c.start-t>0&&c.start-t<1.5,post=t-(c.start+c.dur)>=0&&t-(c.start+c.dur)<1.5;
-    if(pre||post){const w=pre?(c.in||0):(c.in||0)+c.dur*(c.speed||1)-.05;if(Math.abs(el.currentTime-w)>.06){try{el.currentTime=Math.max(0,w);}catch{}}}}
+    if(pre||post){const w=pre?(c.in||0):this.srcAt(c,c.start+c.dur)-.05;if(Math.abs(el.currentTime-w)>.06){try{el.currentTime=Math.max(0,w);}catch{}}}}
   }
  },
  rate:1,
@@ -492,8 +518,9 @@ const Ed={
  },
  /** How far a clip's in or out animation is (0 to 1, 1 = fully shown). */
  anim(c,t){const d=Math.max(.1,c.animDur||.5),lt=t-c.start,rt=c.start+c.dur-t;return {i:c.animIn&&c.animIn!=='none'?edClamp(lt/d,0,1):1,o:c.animOut&&c.animOut!=='none'?edClamp(rt/d,0,1):1};},
- animApply(c,t){const {i,o}=this.anim(c,t),r={alpha:1,k:1,dy:0,chars:1};
-  const one=(type,p)=>{if(p>=1)return;const e=edEase(p);if(type==='fade')r.alpha*=e;else if(type==='pop'){const b=1-Math.pow(1-p,3);r.k*=.5+.5*b+Math.sin(p*Math.PI)*.12;r.alpha*=Math.min(1,p*3);}else if(type==='slide'){r.dy+=(1-e)*.08;r.alpha*=e;}else if(type==='type')r.chars=Math.min(r.chars,p);};
+ animApply(c,t){const {i,o}=this.anim(c,t),r={alpha:1,k:1,dy:0,chars:1,blur:0,words:1};
+  const one=(type,p)=>{if(p>=1)return;const e=edEase(p);if(type==='fade')r.alpha*=e;else if(type==='pop'){const b=1-Math.pow(1-p,3);r.k*=.5+.5*b+Math.sin(p*Math.PI)*.12;r.alpha*=Math.min(1,p*3);}else if(type==='slide'){r.dy+=(1-e)*.08;r.alpha*=e;}else if(type==='type')r.chars=Math.min(r.chars,p);
+   else if(type==='zoom'){r.k*=1+(1-e)*.6;r.alpha*=e;}else if(type==='blur'){r.blur=Math.max(r.blur||0,(1-e)*24);r.alpha*=e;}else if(type==='words')r.words=p;};
   one(c.animIn,i);one(c.animOut,o);return r;},
  lines(g,c,W){const words=String(c.text||'').split(/\s+/);const out=[];let line='';for(const w of words){const next=line?line+' '+w:w;if(g.measureText(next).width>W*.86&&line){out.push(line);line=w;}else line=next;}if(line)out.push(line);return out.length?out:[''];},
  font(c,t){return `${c.weight||600} ${Math.round((c.size||40)*this.val(c,'scale',t)*this.k())}px "${c.font||'Tempoloom UI'}", "Tempoloom UI", system-ui, sans-serif`;},
@@ -501,19 +528,28 @@ const Ed={
   return {w,h,cx:W/2+this.val(c,'x',t)*W,cy:H/2+this.val(c,'y',t)*H,ls,lh};},
  drawText(g,c,W,H,t=this.time,o={}){
   const b=this.textBox(g,c,W,H,t),an=this.animApply(c,t),a=this.val(c,'opacity',t)*(o.alpha??1)*an.alpha;if(a<=0)return;
-  g.save();g.globalAlpha=a;g.translate(b.cx+(o.dx||0),b.cy+(o.dy||0)+an.dy*H);g.rotate(this.val(c,'rotate',t)*Math.PI/180);g.scale(an.k,an.k);g.font=this.font(c,t);g.letterSpacing=`${(c.spacing||0)*this.k()}px`;g.textBaseline='middle';
+  g.save();g.globalAlpha=a;g.translate(b.cx+(o.dx||0),b.cy+(o.dy||0)+an.dy*H);g.rotate(this.val(c,'rotate',t)*Math.PI/180);g.scale(an.k,an.k);if(an.blur)g.filter=`blur(${an.blur*this.k()}px)`;g.font=this.font(c,t);g.letterSpacing=`${(c.spacing||0)*this.k()}px`;g.textBaseline='middle';
   if(c.box){g.fillStyle=c.boxColor||'#000';g.globalAlpha=a*.72;g.beginPath();g.roundRect(-b.w/2,-b.h/2,b.w,b.h,b.lh*.25);g.fill();g.globalAlpha=a;}
   g.textAlign=c.align||'center';const x=c.align==='left'?-b.w/2+b.lh*.3:c.align==='right'?b.w/2-b.lh*.3:0;
   let ls=b.ls;if(an.chars<1){let n=Math.round(ls.join(' ').length*an.chars);ls=ls.map(l=>{const s=l.slice(0,Math.max(0,n));n-=l.length+1;return s;});}
-  ls.forEach((l,i)=>{const y=-b.h/2+b.lh*.15+b.lh*(i+.5);
+  const paint=(l,x,y)=>{
    if(c.shadow&&!c.box){g.shadowColor='rgba(0,0,0,.5)';g.shadowBlur=b.lh*.25;g.shadowOffsetY=b.lh*.05;}
    if(c.stroke){g.lineJoin='round';g.lineWidth=c.stroke*this.k()*2;g.strokeStyle=c.strokeColor||'#000';g.strokeText(l,x,y);g.shadowColor='transparent';}
-   g.fillStyle=c.color||'#fff';g.fillText(l,x,y);});
+   g.fillStyle=c.color||'#fff';g.fillText(l,x,y);};
+  if(an.words<1){// word by word: each whole word rises in after the one before (right to left for Arabic-script text)
+   const rtl=/[\u0590-\u08FF\uFB1D-\uFEFF]/.test(c.text||''),all=ls.map(l=>l.split(' ')),N=all.flat().length||1,sp=g.measureText(' ').width;let n=0;
+   g.textAlign='left';
+   all.forEach((ws,i)=>{const y=-b.h/2+b.lh*.15+b.lh*(i+.5),wd=ws.map(w=>g.measureText(w).width),lw=wd.reduce((a,v)=>a+v,0)+sp*(ws.length-1);
+    let xs=c.align==='left'?-b.w/2+b.lh*.3:c.align==='right'?b.w/2-b.lh*.3-lw:-lw/2;const pos=[];let cur=xs;for(const v of wd){pos.push(cur);cur+=v+sp;}
+    ws.forEach((w,j)=>{const at=rtl?xs+lw-(pos[j]-xs)-wd[j]:pos[j],k=n++,u=edClamp((an.words-k/N*.7)/.3,0,1),e=edEase(u);if(u<=0)return;
+     g.globalAlpha=a*e;paint(w,at,y+(1-e)*b.lh*.45);});});
+   g.globalAlpha=a;}
+  else ls.forEach((l,i)=>paint(l,x,-b.h/2+b.lh*.15+b.lh*(i+.5)));
   g.restore();
  },
  drawSticker(g,c,W,H,t=this.time,o={}){
   const r=this.rect(c,W,H,t),an=this.animApply(c,t),a=this.val(c,'opacity',t)*(o.alpha??1)*an.alpha;if(a<=0)return;
-  g.save();g.globalAlpha=a;g.translate(r.cx+(o.dx||0),r.cy+(o.dy||0)+an.dy*H);g.rotate(this.val(c,'rotate',t)*Math.PI/180);g.scale(an.k,an.k);
+  g.save();g.globalAlpha=a;g.translate(r.cx+(o.dx||0),r.cy+(o.dy||0)+an.dy*H);g.rotate(this.val(c,'rotate',t)*Math.PI/180);g.scale(an.k,an.k);if(an.blur)g.filter=`blur(${an.blur*this.k()}px)`;
   const s=c.sticker,w=r.w,h=r.h;
   if(s.type==='emoji'){g.font=`${Math.round(w*.85)}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;g.textAlign='center';g.textBaseline='middle';g.fillText(s.emoji,0,w*.04);}
   else{g.fillStyle=c.color||'#ffd23f';g.beginPath();const R=w/2;
@@ -582,9 +618,9 @@ const Ed={
   for(const c of this.p.clips){
    if(c.text!==undefined||c.sticker||c.asAudio)continue;const m=this.mediaOf(c);if(!m||m.type!=='video')continue;
    let want;
-   if(t>=c.start&&t<c.start+c.dur)want=(c.in||0)+(t-c.start)*(c.speed||1);
+   if(t>=c.start&&t<c.start+c.dur)want=this.srcAt(c,t);
    else if(c.start-t>0&&c.start-t<1.5)want=c.in||0;
-   else if(t-(c.start+c.dur)>=0&&t-(c.start+c.dur)<1.5)want=Math.max(0,(c.in||0)+c.dur*(c.speed||1)-.05);
+   else if(t-(c.start+c.dur)>=0&&t-(c.start+c.dur)<1.5)want=Math.max(0,this.srcAt(c,c.start+c.dur)-.05);
    else continue;
    const el=this.element(c);if(!el.paused)el.pause();
    if(Math.abs(el.currentTime-want)<.0005&&el.readyState>=2)continue;
@@ -602,8 +638,8 @@ const Ed={
    if(this.trackOf(c)?.muted||(c.detached&&!c.asAudio))continue;
    if(!bufs.has(m.id)){const b=await this.get(m.id).catch(()=>null);let buf=null;if(b){try{buf=await oc.decodeAudioData(await b.arrayBuffer());}catch{buf=null;}}bufs.set(m.id,buf);}
    const buf=bufs.get(m.id);if(!buf){silent.add(m.name);continue;} // a video without sound, or a file the browser cannot decode
-   const sp=c.speed||1,stretch=Math.abs(sp-1)>.001,n=oc.createBufferSource(),g=oc.createGain();
-   n.buffer=stretch?edStretch(oc,buf,c.in||0,c.dur*sp,sp):buf;
+   const sp=c.speed||1,stretch=!!c.ramp||Math.abs(sp-1)>.001,n=oc.createBufferSource(),g=oc.createGain();
+   n.buffer=stretch?edStretch(oc,buf,c.in||0,c.dur,x=>this.srcAt(c,c.start+x)-(c.in||0)):buf;
    // [s, e] is the part of the clip inside the export, in timeline time; `skip` is how far into the clip it starts.
    const len=e-s,skip=s-c.start,steps=Math.max(2,Math.ceil(len*120)),curve=new Float32Array(steps);
    for(let i=0;i<steps;i++)curve[i]=this.vol(c,s+Math.min(len*i/(steps-1),len-1e-4));
@@ -632,6 +668,12 @@ const Ed={
   this.drawExport('Recording…');this.pause();this.rate=1;this.seek(o.range?.s??0);
   setTimeout(()=>{rec.start(250);this.exporting.rec=rec;this.play();},400);
  },
+ /** The frame under the playhead as a PNG, at 1080 on the short side, without selection outlines. */
+ async saveFrame(){if(!this.p.clips.length||this.exporting)return;this.pause();const t=this.time;
+  this.exporting={scale:1080/Math.min(...this.base()),still:true};
+  try{await this.exportReady();await this.seekExact(t);this.time=t;this.draw();const blob=await new Promise(r=>this.dom.canvas.toBlob(r,'image/png'));
+   if(!blob)throw new Error('Could not make the picture');edSaveFile(blob,`${this.p.name} ${edFmt(t).replace(/:/g,'.')}.png`);toast('Frame saved');}
+  catch(e){toast(e.message,true);}finally{this.exporting=null;this.fit();this.draw();}},
  toStudio(blob,name){edSaveToStudio(blob,name).then(()=>toast('Saved to Studio')).catch(e=>toast(e.message,true));},
  finishExport(){const e=this.exporting;if(e?.rec&&e.rec.state!=='inactive')setTimeout(()=>e.rec.stop(),200);},
  cancelExport(){const e=this.exporting;if(!e)return;e.cancelled=true;if(e.offline){this.drawExport('Stopping…');return;}this.pause();if(e.rec&&e.rec.state!=='inactive')e.rec.stop();else{this.exporting=null;this.drawExport();this.fit();this.draw();}},
@@ -739,15 +781,16 @@ function edWav(b){
  return new Blob([d.buffer],{type:'audio/wav'});
 }
 /** Plays srcDur seconds from inT at `rate` without changing the pitch (WSOLA: overlapping windows, each placed where it
- *  best continues the last one). This is what the player does for a faster or slower clip. */
-function edStretch(oc,buf,inT,srcDur,rate){
- const sr=buf.sampleRate,ch=buf.numberOfChannels,a0=Math.min(buf.length-1,Math.max(0,Math.floor(inT*sr))),n=Math.max(1,Math.min(buf.length-a0,Math.floor(srcDur*sr)));
- const outN=Math.max(1,Math.round(n/rate)),out=oc.createBuffer(ch,outN,sr),N=2048,Hs=N/2,tol=512,win=new Float32Array(N);
+ * best continues the last one). `map` gives the file position (seconds after inT) for each output second, so a
+ *  constant speed and a speed curve both work. This is what the player does for a faster or slower clip. */
+function edStretch(oc,buf,inT,outDur,map){
+ const sr=buf.sampleRate,ch=buf.numberOfChannels,a0=Math.min(buf.length-1,Math.max(0,Math.floor(inT*sr))),n=Math.max(1,Math.min(buf.length-a0,Math.ceil(map(outDur)*sr)+2048));
+ const outN=Math.max(1,Math.round(outDur*sr)),out=oc.createBuffer(ch,outN,sr),N=2048,Hs=N/2,tol=512,win=new Float32Array(N);
  for(let i=0;i<N;i++)win[i]=.5-.5*Math.cos(2*Math.PI*i/N);
  const ins=[],outs=[];for(let k=0;k<ch;k++){ins.push(buf.getChannelData(k).subarray(a0,a0+n));outs.push(out.getChannelData(k));}
  const mono=ins[0];let prev=-1;
  for(let o=0,j=0;o<outN;o+=Hs,j++){
-  const nominal=Math.min(Math.max(0,n-N),Math.round(j*Hs*rate));let best=nominal;
+  const nominal=Math.min(Math.max(0,n-N),Math.round(map(o/sr)*sr));let best=nominal;
   if(prev>=0){const target=prev+Hs;let bc=-Infinity;
    for(let s=Math.max(0,nominal-tol);s<=Math.min(Math.max(0,n-N),nominal+tol);s+=8){let cc=0;for(let i=0;i<Hs;i+=4)cc+=mono[s+i]*(mono[target+i]||0);if(cc>bc){bc=cc;best=s;}}}
   for(let k=0;k<ch;k++){const I=ins[k],O=outs[k];for(let i=0;i<N&&o+i<outN;i++)O[o+i]+=(I[best+i]||0)*win[i];}

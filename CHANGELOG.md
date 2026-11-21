@@ -1,6 +1,6 @@
 # Changelog
 
-## 10.3.0: Editor export you can trust, room to save, timeline, sound and effect tools
+## 10.3.0: A fuller Editor: exact export, room to save, timeline, sound, effects and speed tools
 
 - **Frame-accurate export**: the Editor draws every frame at its exact time and encodes it in the
   page (WebCodecs, VP9 or VP8); nothing is dropped when the computer is busy, and it no longer has
@@ -32,6 +32,14 @@
   under Opacity. A Mask tab for pictures and videos: rectangle (round corners), ellipse or linear,
   with size, position, angle, feather and invert. Keyframes ease Smooth (as before), Linear, Ease in,
   Ease out or Hold, chosen at the playhead.
+- **Speed curves** (Speed tab): Montage, Hero, Bullet, Jump cut, Flash in and Flash out, or your
+  own curve (drag points, click to add, double-click to remove; 0.1x to 10x). The clip keeps the
+  same part of the file, split and trims keep the curve, and the sound keeps its pitch in export.
+- **Groups**: Ctrl+G groups clips so they select, move and delete together (Alt+click picks one),
+  Ctrl+Shift+G ungroups; Detach audio links the sound to its video. Copies get their own group.
+- **Save frame** (Shift+E, or the picture button by the player): the frame under the playhead as a
+  PNG, 1080 on the short side.
+- **Text animations**: Zoom, Blur and Word by word (whole words, right to left for Arabic-script text).
 
 ## 10.2.0: Sileo notifications
 
