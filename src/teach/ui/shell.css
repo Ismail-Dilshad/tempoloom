@@ -2017,6 +2017,9 @@ button.video-back{border:0;background:transparent;font:var(--type-small)}
 .ed-clip.text .ed-clip-label{top:0;bottom:0}.ed-clip-label svg{flex:none;width:11px;height:11px}
 .ed-h{position:absolute;top:0;bottom:0;width:8px;cursor:ew-resize;z-index:2}
 .ed-h.l{left:0}.ed-h.r{right:0}
+.ed-fz{position:absolute;top:0;bottom:0;background:rgb(0 0 0 / .42);pointer-events:none;z-index:1}.ed-fz.l{left:0;clip-path:polygon(0 0,100% 0,0 100%)}.ed-fz.r{right:0;clip-path:polygon(0 0,100% 0,100% 100%)}
+.ed-fh{position:absolute;top:3px;width:10px;height:10px;margin-left:-5px;border-radius:50%;background:#fff;box-shadow:0 0 0 2px var(--accent);cursor:ew-resize;z-index:3;opacity:0;transition:opacity .12s}
+.ed-clip:hover .ed-fh,.ed-clip.sel .ed-fh{opacity:1}
 .ed-clip.sel .ed-h{background:#fff}.ed-clip.sel .ed-h::after{content:'';position:absolute;top:50%;left:3px;width:2px;height:12px;margin-top:-6px;border-radius:1px;background:rgb(0 0 0 / .45)}
 .ed-playhead{position:absolute;top:0;bottom:0;left:0;width:0;z-index:3;pointer-events:none}
 .ed-playhead::before{content:'';position:absolute;top:0;bottom:0;left:-.5px;width:1.5px;background:var(--text)}
@@ -2067,7 +2070,7 @@ button.video-back{border:0;background:transparent;font:var(--type-small)}
 .ed-multi b{font:var(--type-body-strong)}.ed-multi small{font:var(--type-caption);color:var(--text-3)}
 .ed-multi-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:6px}
 /* player extras */
-.ed-ctl-right{justify-self:end;display:flex;gap:2px}.ed-ctl-right .iconbtn{color:var(--text-2)}.ed-ctl-right .iconbtn[aria-pressed=true]{color:var(--accent)}
+.ed-ctl-right{justify-self:end;display:flex;align-items:center;gap:2px}.ed-meter{width:72px;height:14px;margin-right:6px;border-radius:2px}.ed-ctl-right .iconbtn{color:var(--text-2)}.ed-ctl-right .iconbtn[aria-pressed=true]{color:var(--accent)}
 .ed-guides{position:absolute;inset:0;pointer-events:none;display:none}
 .ed-frame.guides .ed-guides{display:block}
 .ed-guides i{position:absolute;background:color-mix(in srgb,hsl(0 85% 60%) 22%,transparent);outline:1px dashed hsl(0 85% 65% / .8)}

@@ -1,6 +1,6 @@
 # Changelog
 
-## 10.3.0: Editor export you can trust, room to save, and timeline tools
+## 10.3.0: Editor export you can trust, room to save, timeline and sound tools
 
 - **Frame-accurate export**: the Editor draws every frame at its exact time and encodes it in the
   page (WebCodecs, VP9 or VP8); nothing is dropped when the computer is busy, and it no longer has
@@ -21,6 +21,12 @@
   Alt+X clears), shown on the ruler, and Export can make only that range; Freeze frame (Shift+F)
   holds the frame under the playhead for 2 seconds; Replace with... swaps a clip's media and keeps
   its place, length, effects and keyframes.
+- **Sound tools**: Even loudness matches a clip (or every clip) to -14 LUFS, measured the
+  BS.1770 way (K-weighting and gates; within 0.2 LU of ffmpeg's ebur128 in tests); clips can now
+  really go above 100%. Ducking lowers music while someone speaks in the other clips (3 to 30 dB,
+  default 12), easing in just before and out after. Fades are dragged straight on the clip in the
+  timeline. A stereo level meter (-60 to 0 dBFS, peak line) sits by the player. Playback and export
+  use the same volumes, so what you hear is what you export.
 
 ## 10.2.0: Sileo notifications
 
