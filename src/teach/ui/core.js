@@ -77,8 +77,17 @@ window.addEventListener('resize',()=>document.querySelectorAll('.toast').forEach
 /** Routine changes are visible in the refreshed screen; reserve notifications for errors. */
 async function act(fn,done){try{await fn();}catch(e){toast(e.message,true);}await App.refresh(true);}
 /** A question with two answers; resolves true for yes. */
-function ask(title,text,yes='Yes',danger=false){return new Promise(res=>{
- dialog(`<h2>${esc(title)}</h2><p class="muted">${esc(text)}</p><div class="row" style="justify-content:flex-end;margin-top:16px"><button class="btn ghost" data-no>Cancel</button><button class="btn ${danger?'':'primary'}" data-yes style="${danger?'background:var(--bad);border-color:var(--bad);color:var(--on-bad)':''}">${esc(yes)}</button></div>`,{onclose:()=>res(false)});
+// A danger question (delete, remove) gets one soft card everywhere: a trash badge, the question, a
+// short line, the thing it acts on when given (file: {name, meta, thumb}), and two equal buttons.
+function ask(title,text,yes='Yes',danger=false,{file}={}){return new Promise(res=>{
+ const body=danger?`<div class="confirm">
+   <span class="confirm-badge" aria-hidden="true">${typeof I!=='undefined'&&I.trash||''}</span>
+   <h2 class="confirm-title">${esc(title)}</h2><p class="confirm-text">${esc(text)}</p>
+   ${file?`<div class="confirm-file">${file.thumb?`<img src="${esc(file.thumb)}" alt="" onerror="this.remove()">`:''}<span class="confirm-file-name" dir="auto">${esc(file.name)}</span>${file.meta?`<span class="confirm-file-meta">${esc(file.meta)}</span>`:''}</div>`:''}
+   <div class="confirm-actions"><button class="btn ghost" data-no>Cancel</button><button class="btn confirm-danger" data-yes>${esc(yes)}</button></div></div>`
+  :`<h2>${esc(title)}</h2><p class="muted">${esc(text)}</p><div class="row" style="justify-content:flex-end;margin-top:16px"><button class="btn ghost" data-no>Cancel</button><button class="btn primary" data-yes>${esc(yes)}</button></div>`;
+ dialog(body,{onclose:()=>res(false)});
+ if(danger)$('#modal .dialog')?.classList.add('dialog-confirm');
  $('#modal [data-yes]').onclick=()=>{closeDialog(true);res(true);};$('#modal [data-no]').onclick=()=>closeDialog();$('#modal [data-'+(danger?'no':'yes')+']').focus();});}
 let dialogClose=null,lastFocus=null;
 function dialog(html,o={}){lastFocus=document.activeElement;dialogClose=o.onclose||null;
@@ -375,31 +384,24 @@ document.addEventListener('loadedmetadata',e=>{const v=e.target;if(v.tagName!=='
 // ---------- places, routes and the shell ----------
 /** The rail: five places in Flow's order, with dividers around Library. */
 const PLACES=[
- {id:'create',label:'Create',icon:'spark'},
- {id:'projects',label:'Projects',icon:'film',count:h=>[h.studio.jobs,h.studio.waitingForYou]},
- '-',
- {id:'library',label:'Library',icon:'folder',plus:{label:'Add to your library',run:'libraryAdd()'}},
- '-',
- {id:'tools',label:'Tools',icon:'tools'},
+ {id:'create',label:'Studio',icon:'spark',count:h=>[h.studio.jobs,h.studio.waitingForYou]},// Create holds the projects too (the Projects place was merged into it)
+ '-',// Library was folded in: looks are cards on Studio, locked scenes live in their project, Tidy is in Tools
  {id:'brain',label:'Brain',icon:'brain',count:h=>[h.teach.lessons,0]}];
 /** Public address -> the screen that draws it. Longer addresses first. */
-const ROUTES=[['create','create'],['projects/finished','studio/gallery'],['projects','studio/videos'],
- ['library/looks','looks'],['library/scenes','scenes'],['library/references','teach/library'],['library/teach','teach/add'],['library/tidy','find'],['library','library'],
- ['tools/text','studio/text'],['tools/trends','studio/ideas'],['tools','tools'],
- ['brain/taste','taste'],['brain/lessons','teach/lessons'],['brain/worked','studio/scores'],['brain','taste'],
+const ROUTES=[['create','create'],['learn','teach/library'],// Learn: what the studio learned from, beside Create
+ ['projects','studio/videos'],['videos','made-video'],// projects/NAME: one project; the list is on Create
+ ['brain/taste','taste'],['brain/worked','studio/scores'],['brain','brain-home'],
  ['settings/history','history'],['settings/backup','backup'],['settings/appearance','appearance'],['settings','settings'],['trash','trash']];
 /** Old addresses keep working: each opens its new place. */
-const REDIRECTS=[['home','create'],['studio/new','create'],['studio/ideas','tools/trends'],['studio/live','projects'],['studio/videos','projects'],['studio/gallery','projects/finished'],
- ['studio/scores','brain/worked'],['studio/text','tools/text'],['taste','brain/taste'],['teach/add','library/teach'],['teach/library','library/references'],
- ['teach/lessons','brain/lessons'],['teach/patterns','brain/lessons'],['brain/patterns','brain/lessons'],['brain/teach','library/teach'],['looks','library/looks'],['scenes','library/scenes'],['find','library/tidy'],['history','settings/history'],['backup','settings/backup']];
+const REDIRECTS=[['tools','create'],['home','create'],['studio/new','create'],['studio/ideas','create'],['studio/live','create'],['studio/videos','projects'],['studio/gallery','create'],['projects/finished','create'],
+ ['studio/scores','brain/worked'],['studio/text','create'],['taste','brain/taste'],['learn/new','learn'],['teach/add','learn'],['teach/library','learn'],['library/references','learn'],['library/teach','learn'],
+ ['brain/lessons','brain'],['teach/lessons','brain'],['teach/patterns','brain'],['brain/patterns','brain'],['brain/teach','learn'],['library/looks','create'],['library/scenes','create'],['library/tidy','create'],['settings/tidy','create'],['looks','create'],['scenes','create'],['find','create'],['history','settings/history'],['backup','settings/backup']];
 /** Tabs inside a place. */
-const TABS={projects:[['projects','All projects'],['projects/finished','Finished videos']],
- library:[['library','Your media'],['library/looks','Looks'],['library/scenes','Scenes'],['library/references','Taught videos'],['library/tidy','Find and tidy']],
- tools:[['tools','All tools'],['tools/text','Edit by text'],['tools/trends','Trend watch']],
- brain:[['brain/taste','Taste'],['brain/lessons','Lessons'],['brain/worked','What worked']],
+const TABS={
  settings:[['settings','Models and keys'],['settings/appearance','Sidebar'],['settings/history','History'],['settings/backup','Backup and move']]};
 const longest=list=>[...list].sort((a,b)=>b[0].length-a[0].length);
 function resolveRoute(h){
+ if(h==='library')return {redirect:'create'};// Library was folded into Studio
  for(const [old,now] of longest(REDIRECTS))if(h===old||h.startsWith(old+'/'))return {redirect:now+h.slice(old.length)};
  for(const [pub,view] of longest(ROUTES))if(h===pub||h.startsWith(pub+'/')){const rest=h.slice(pub.length+1);return {path:pub,view,arg:rest?decodeURIComponent(rest):null};}
  return {path:'create',view:'create',arg:null};
@@ -425,6 +427,8 @@ const App={
   $('#app').dataset.rail=store.get('rail','');
   $('#menu').innerHTML=I.menu;$('#menu').onclick=()=>{if(matchMedia('(max-width:767px)').matches)$('#app').classList.toggle('open');else this.collapse();this.side();};$('#scrim').onclick=()=>{$('#app').classList.remove('open');this.side();$('#menu').focus();};
   matchMedia('(max-width:767px)').addEventListener('change',()=>this.side());
+  // On a phone, tapping a place closes the sidebar, also when it is the page already open.
+  $('#side').addEventListener('click',e=>{if(e.target.closest('a.navlink,a.agent-chip')&&$('#app').classList.contains('open')){$('#app').classList.remove('open');this.side();}});
   window.addEventListener('hashchange',()=>{const before=this.path,previousArg=this.arg;this.parse();$('#app').classList.remove('open');if(before!==this.path||previousArg!==this.arg)Panel.close(true);Overlay.close(true);Pop.close();this.changed=true;const s=this.screens[this.route];if(s.load&&s.loadedArg!==this.arg)s.data=null;if(!s.load||s.data)this.show();else $('#view').replaceChildren();this.refresh(!!s.load&&!s.data);window.scrollTo(0,0);$('#view').focus({preventScroll:true});});
   this.parse();await this.refresh(true);
   setInterval(()=>{if(!document.hidden)this.refresh(false);},2500);
@@ -450,21 +454,25 @@ const App={
   const s=this.screens[this.route];if(!s||!this.home)return;
   if(s.load&&!s.data)return;
   routeChanged=routeChanged||this.changed;this.changed=false;
-  const y=window.scrollY,place=PLACES.find(p=>p.id===this.place),inside=!!this.arg&&this.place==='projects';
+  const y=window.scrollY,place=PLACES.find(p=>p.id===(['projects','videos','learn'].includes(this.place)?'create':this.place)),inside=!!this.arg&&['projects','videos'].includes(this.place)||this.place==='learn';
   const title=inside||!place?s.title(this.arg):place.label;
-  $('#title').textContent=title;
   document.title=(this.home.you.length?`(${this.home.you.length}) `:'')+title+' · Tempoloom';
-  this.side();const view=$('#view');view.dataset.screen=this.route;s.render(view,this.arg,routeChanged);
+  this.side();const view=$('#view');
+  // Learn's grid sits in Create's frame (same padding, backdrop and cursors), so switching between them moves nothing.
+  view.dataset.screen=(this.route==='teach/library'&&!this.arg)||this.route==='brain-home'?'create':this.route;s.render(view,this.arg,routeChanged);
   // Every page: tabs of its place, then a title, a line of explanation and its actions.
   const lone=view.children.length===1&&view.firstElementChild.classList.contains('empty'),own=!!view.querySelector('.teach-workspace,.teach-upload,.no-head');
   const head=!lone&&!own&&s.head?s.head(this.arg):null,actions=s.actions?s.actions(this.arg):'';
   if(head){const w=document.createElement('div');w.className='teach-workspace';
-   w.innerHTML=`<header class="teach-workspace-head"><div><h2 dir="auto">${esc(head.title)}</h2><p class="muted">${esc(head.text)}</p></div>${actions?`<div class="row head-actions">${actions}</div>`:''}</header>`;
+   w.innerHTML=`<header class="teach-workspace-head"><div><h2 dir="auto">${esc(head.title)}</h2>${head.text?`<p class="muted">${esc(head.text)}</p>`:''}</div>${actions?`<div class="row head-actions">${actions}</div>`:''}</header>`;
    while(view.firstChild)w.append(view.firstChild);view.append(w);}
   const tabs=TABS[this.place];
   if(tabs&&!(this.arg&&['projects','projects/finished'].includes(this.path))){const nav=document.createElement('nav');nav.className='tabs';nav.setAttribute('aria-label',(place?.label||'')+' sections');
    nav.innerHTML=tabs.map(([p,l])=>`<a href="#/${p}" ${this.path===p||(p==='brain/taste'&&this.path==='brain')?'aria-current="page"':''}>${esc(l)}</a>`).join('');view.prepend(nav);}
-  $('#actions').innerHTML=head||lone?'':actions;
+  // Taste and What worked are parts of the Brain page: each has a way back to it.
+  if(this.place==='brain'&&this.path!=='brain'){const back=document.createElement('nav');back.className='tool-back';back.innerHTML=`<a class="btn small ghost" href="#/brain">${I.back} Brain</a>`;view.prepend(back);}
+  // There is no top bar: a page's actions sit at the top of the page itself.
+  if(!head&&!lone&&actions){const bar=document.createElement('div');bar.className='row page-actions';bar.innerHTML=actions;const tabsNav=view.querySelector(':scope>.tabs');if(tabsNav)tabsNav.after(bar);else view.prepend(bar);}
   const emptyIcon=this.route==='studio/scores'?I.chart:this.route==='teach/lessons'?I.lesson:this.route==='teach/patterns'?I.pattern:this.route==='teach/library'?I.lib:I.film;
   view.querySelectorAll('.empty').forEach(el=>{
    if(!el.querySelector('.empty-art'))el.insertAdjacentHTML('afterbegin',`<div class="empty-art" aria-hidden="true"><div>${emptyIcon}</div></div>`);
@@ -478,15 +486,20 @@ const App={
   const h=this.home;if(!h)return;
   const mobile=matchMedia('(max-width:767px)').matches;
   const collapsed=$('#app').dataset.rail==='collapsed';
-  const railTip=label=>collapsed&&!mobile?`data-tooltip="${esc(label)}"`:'';
-  const links=PLACES.map(p=>{if(p==='-')return '<hr>';const c=p.count?p.count(h):null,here=this.place===p.id;
+  // The markup is the same open or collapsed (so nothing is rebuilt and the change animates);
+  // what differs (tooltips, the Collapse button's name) is set in place below.
+  const railTip=()=>'';
+  const links=PLACES.map(p=>{if(p==='-')return '<hr>';const c=p.count?p.count(h):null,here=this.place===p.id||(p.id==='create'&&['projects','videos','learn'].includes(this.place));
    return `<a class="navlink" href="#/${p.id}" ${here?'aria-current="page"':''} aria-label="${esc(p.label)}" ${railTip(p.label)}>${I[p.icon]}<span class="lbl">${p.label}</span>${c&&c[1]?`<span class="n hot" title="${c[1]} waiting for you">${c[1]}</span>`:''}${p.plus?`<span class="plus" role="button" tabindex="0" aria-label="${esc(p.plus.label)}" data-tooltip="${esc(p.plus.label)}" onclick="event.preventDefault();event.stopPropagation();${p.plus.run}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();${p.plus.run}}">${I.add}</span>`:''}</a>`;}).join('');
   const navScroll=$('.rail-body')?.scrollTop||0,m=h.mascot;
-  const markup=`<header class="rail-head side-header"><a class="logo" href="#/create" aria-label="Tempoloom, Create" ${railTip('Create')}><img class="business-mark" src="/mark.svg?v=10" alt="" width="48" height="48"><span class="brand-copy"><img class="logo-mark" src="/logo.svg?v=10" alt="Tempoloom" width="106" height="21"></span></a></header>
+  const markup=`<header class="rail-head side-header"><a class="logo" href="#/create" aria-label="Tempoloom, Studio" ${railTip('Studio')}><img class="business-mark" src="/mark.svg?v=10" alt="" width="48" height="48"><span class="brand-copy"><img class="logo-mark" src="/logo.svg?v=10" alt="Tempoloom" width="106" height="21"></span></a></header>
    <nav class="rail-body side-body" aria-label="Places">${links}</nav>
    <footer class="rail-foot side-footer">
     ${m?`<a class="agent-chip" href="${m.job?'#/projects/'+encodeURIComponent(m.job):'#/projects'}" title="${esc((m.who||'Your agent')+': '+(m.detail||FACE_LABEL[m.face]||''))}"><img src="/mascot/${esc(m.face)}.svg" alt="${esc(FACE_LABEL[m.face]||'')}" width="36" height="28"><span><b>${esc(m.who||'Your agent')}</b><small dir="auto">${esc(m.detail||FACE_LABEL[m.face]||'')}</small></span></a>`:''}
     <a class="navlink" href="#/trash" aria-label="Trash" ${railTip('Trash')} ${this.place==='trash'?'aria-current="page"':''}>${I.trash}<span class="lbl">Trash</span></a>
+    <button type="button" class="navlink bell" id="rail-bell" aria-haspopup="menu" aria-expanded="false" ${railTip('Notifications')} onclick="Shell.bell(this)">${I.bell}<span class="lbl">Notifications</span><span class="n hot" hidden></span><span class="dot" hidden></span></button>
+    <a class="navlink" id="rail-settings" href="#/settings" aria-label="Settings" ${railTip('Settings')} ${this.place==='settings'?'aria-current="page"':''}>${I.gear}<span class="lbl">Settings</span></a>
+    <button type="button" class="navlink collapse-btn" id="rail-collapse" aria-controls="side" onclick="App.collapse()">${I.collapse}<span class="lbl">Collapse</span></button>
     </footer>`;
   if(markup!==this.railMarkup){
    $('#side').innerHTML=markup;
@@ -497,7 +510,11 @@ const App={
   $('#menu').setAttribute('aria-controls','side');
   $('#menu').setAttribute('aria-expanded',String(mobile?$('#app').classList.contains('open'):!collapsed));
   $('.rail-body').scrollTop=navScroll;
+  // Collapsed on a computer: each place shows its name as a tooltip; the last button says Expand.
+  const tips=collapsed&&!mobile;
+  $('#side').querySelectorAll('.navlink[aria-label],.logo[aria-label]').forEach(el=>{if(el.id==='rail-bell')return;const name=el.id==='rail-collapse'?(collapsed?'Expand':'Collapse'):el.classList.contains('logo')?'Create':el.getAttribute('aria-label');if(tips)el.dataset.tooltip=name;else delete el.dataset.tooltip;});
+  const cb=$('#rail-collapse');if(cb){cb.setAttribute('aria-label',collapsed?'Expand':'Collapse');cb.setAttribute('aria-expanded',String(!collapsed));if(tips)cb.dataset.tooltip=collapsed?'Expand':'Collapse';}
   Shell.icons(h);
  },
- collapse(){const on=$('#app').dataset.rail!=='collapsed';$('#app').dataset.rail=on?'collapsed':'';store.set('rail',on?'collapsed':'');this.side();},
+ collapse(){const on=$('#app').dataset.rail!=='collapsed',focus=document.activeElement?.id==='rail-collapse';$('#app').dataset.rail=on?'collapsed':'';store.set('rail',on?'collapsed':'');this.side();if(focus)$('#rail-collapse')?.focus();},
 };

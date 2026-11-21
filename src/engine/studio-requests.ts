@@ -41,6 +41,8 @@ export const requestInput=z.object({
  same:z.boolean().default(false),
  /** Style mixer: two styles the user taught (looks, or taught videos by id), weight = the share of a. */
  mix:z.object({a:z.string().min(1).max(60),b:z.string().min(1).max(60),weight:z.number().min(0).max(1)}).strict().optional(),
+ /** One learned look (by name) as the style of this video. */
+ look:z.string().min(1).max(60).optional(),
  /** A video the user taught, to make this one in its spirit. */
  like:z.string().regex(/^[a-z0-9][a-z0-9-]{0,70}$/).optional(),
  /** The taste profile to follow (the main one when not given). */
@@ -153,7 +155,7 @@ export function editBrief(id:string,text:unknown){
 function saveBrief(r:StudioRequest,input:RequestInput){
  const i=requestInput.parse(input),files=r.files.filter(f=>!f.detached);
  if(i.mode==='motion'){
-  if(i.like&&i.mix||i.same&&(i.like||i.mix)&&files.some(f=>f.kind==='reference')){
+  if([i.like,i.mix,i.look].filter(Boolean).length>1||i.same&&(i.like||i.mix||i.look)&&files.some(f=>f.kind==='reference')){
    throw new Error('Choose one style approach: a reference style, a blend, or the same design');
   }
   if(i.mix&&i.mix.a===i.mix.b)throw new Error('Choose two different styles to blend');
@@ -195,6 +197,7 @@ export function brief(r:StudioRequest){
  else if(of('reference').length)lines.push(i.same?(i.mode==='motion'?`Same design, your content: recreate the design of ${of('reference').join(', ')} scene by scene (its timing, transitions, layout, type sizes, colour roles and motion) with the user's own script, logo and colours. Never its artwork, logo, footage or words.`
   :`Edit it the same way: give the user's footage the editing style of ${of('reference').join(', ')} (its cut pace, punch-ins, captions, colour grade and music). Only the style: the footage and words are the user's.`)
   :`Reference to study (never to copy): ${of('reference').join(', ')}`);
+ if(i.look)lines.push(`Style: the learned look "${i.look}" (pnpm tempoloom look show ${i.look})`);
  if(i.like)lines.push(`In the spirit of the video the user taught: ${i.like} (pnpm tempoloom teach show ${i.like})`);
  if(i.mix)lines.push(`Style: a mix of ${Math.round(i.mix.weight*100)}% "${i.mix.a}" and ${100-Math.round(i.mix.weight*100)}% "${i.mix.b}" (pnpm tempoloom look mix ${i.mix.a} ${i.mix.b} --weight ${i.mix.weight}, then make --like the mixed look).`);
  if(i.profile&&i.profile!=='main')lines.push(`Taste profile: ${i.profile} (pnpm tempoloom taste show ${i.profile})`);

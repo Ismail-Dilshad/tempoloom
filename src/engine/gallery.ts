@@ -30,8 +30,6 @@ export const outputRoot=()=>path.resolve(ROOT,process.env.VIDEO_OUTPUT||'mp2');
 const stateFile=()=>path.join(path.dirname(dbPath()),'gallery.json');
 type State={starred:string[];hidden:string[];ratings:Record<string,{rating:'good'|'ok'|'bad';note:string;at:string}>};
 const readState=():State=>{try{const s=JSON.parse(fs.readFileSync(stateFile(),'utf8')) as Partial<State>;return {starred:s.starred??[],hidden:s.hidden??[],ratings:s.ratings??{}};}catch{return {starred:[],hidden:[],ratings:{}};}};
-/** A file the gallery may delete: only inside the project's export folder or its workspace. */
-const deletable=(abs:string)=>[outputRoot(),path.resolve(ROOT,process.env.VIDEO_WORKSPACE||'workspace')].some(root=>{const r=path.relative(root,abs);return !!r&&!r.startsWith('..')&&!path.isAbsolute(r);});
 const writeState=(s:State)=>{fs.mkdirSync(path.dirname(stateFile()),{recursive:true});fs.writeFileSync(stateFile(),JSON.stringify(s)+'\n');};
 
 function plans():Plan[]{
@@ -55,7 +53,7 @@ export async function gallery(o:{hidden?:boolean}={}){
   const rank={final:3,preview:2,export:1} as const;
   if(cur&&rank[cur.kind]>=rank[x.kind])return;
   by.set(id,{id,file:rel(abs),name:path.basename(abs),mode:'unknown',made:st.mtime.toISOString(),bytes:st.size,job:null,step:null,rating:null,verdict:null,check:null,starred:starred.has(id),seconds:null,width:null,height:null,
-   category:'other',tags:[],brief:'',ratedHere:false,note:null,brainJob:null,canDelete:deletable(abs),shows:pics[id]?.text??null,...cur,...x});
+   category:'other',tags:[],brief:'',ratedHere:false,note:null,brainJob:null,canDelete:true,shows:pics[id]?.text??null,...cur,...x});
  };
  for(const p of plans())for(const t of p.tasks)for(const f of t.show??[]){
   const r=(p.ratings??[]).filter(x=>x.task===t.id).at(-1);
@@ -115,13 +113,15 @@ async function rateNow(i:{job:string|null;step:string|null;brainJob:string|null;
 export function clearRating(id:string){return change({kind:'ratings',title:'You cleared a rating in the gallery'},()=>{const s=readState();touch('gallery',id,()=>s.ratings[id]??null,'A video in the gallery');delete s.ratings[id];writeState(s);return {id,rating:null};});}
 // The change history reads and writes one gallery rating at a time (Undo).
 adapter('gallery',{read:id=>readState().ratings[id]??null,write:(id,v)=>{const s=readState();if(v===null)delete s.ratings[id];else s.ratings[id]=v as State['ratings'][string];writeState(s);},label:()=>'A video in the gallery'});
-/** Deletes a video the agent made, from the disk, for good. Only files inside the project's
- *  export folder or workspace can be deleted here; anything else can only be hidden. */
+/** Deletes a video from the disk for good, with its still, rating and star, so it leaves every list. */
 export async function deleteVideo(id:string){
  const g=await gallery({hidden:true}),i=g.items.find(x=>x.id===id);if(!i)throw new Error('No such video in the gallery');
+ // Wherever it is: only ever on your own say-so (the page asks first and shows the file).
  const abs=path.resolve(ROOT,i.file);
- if(!deletable(abs))throw new Error('This file is outside the project\'s export folder and workspace, so it is not deleted from here. Hide it instead.');
  await fsp.rm(abs,{force:true});
+ // The files an export writes beside itself (its asset list and thumbnails) go with it.
+ const stem=path.basename(abs).replace(VIDEO,''),dir=path.dirname(abs);
+ for(const side of [path.basename(abs)+'.assets.json',stem+'_thumbnail.jpg',stem+'_thumbnail.png'])await fsp.rm(path.join(dir,side),{force:true});
  const thumbs=path.join(path.dirname(dbPath()),'gallery-thumbs');for(const f of await fsp.readdir(thumbs).catch(()=>[] as string[]))if(f.startsWith(id+'-'))await fsp.rm(path.join(thumbs,f),{force:true});
  const s=readState();s.starred=s.starred.filter(x=>x!==id);s.hidden=s.hidden.filter(x=>x!==id);delete s.ratings[id];writeState(s);
  return {deleted:i.name,file:i.file};

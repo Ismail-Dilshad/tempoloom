@@ -7,12 +7,7 @@
    "videos": null,
    "off": [],
    "added": [],
-   "targets": {
-    "shot-length": {
-     "lo": 2.1,
-     "hi": 4.4
-    }
-   },
+   "targets": {},
    "notes": ""
   }
  ]

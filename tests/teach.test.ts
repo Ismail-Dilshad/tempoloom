@@ -60,9 +60,9 @@ describe('teach',()=>{
   expect(c.action).toBe('conflict');expect(c.with!.id).toBe('av-default-fades');
   expect(()=>T.learn(first,{text:'A lesson that names a topic that does not exist at all.',topics:['nonsense']})).toThrow(/Unknown topic/);
   const o=T.overview();expect(o.conflicts).toHaveLength(1);expect(o.videos.find(v=>v.id===first)!.dropped).toHaveLength(2);
-  // Everything is sorted by itself: lessons and videos into motion design, footage editing or storytelling.
-  expect(o.groups.map(g=>g.id)).toEqual(['motion','edit','story']);expect(o.lessons.find(l=>l.id===a.id)!.group).toBe('edit');
-  const fv=o.videos.find(v=>v.id===first)!;expect(['motion','edit','story']).toContain(fv.group);expect(Array.isArray(fv.style)).toBe(true);
+  // Everything is sorted by itself: lessons and videos into motion design or footage editing.
+  expect(o.groups.map(g=>g.id)).toEqual(['motion','edit']);expect(o.lessons.find(l=>l.id===a.id)!.group).toBe('edit');
+  const fv=o.videos.find(v=>v.id===first)!;expect(['motion','edit']).toContain(fv.group);expect(Array.isArray(fv.style)).toBe(true);
  });
 
  it('deletes the video when learning is finished and commits numbers only',async()=>{
@@ -71,6 +71,12 @@ describe('teach',()=>{
   const line=fs.readFileSync(path.join(env.TEMPOLOOM_BRAIN_DIR,'videos.jsonl'),'utf8').trim().split('\n');
   expect(line).toHaveLength(1);expect(JSON.parse(line[0]!)).toMatchObject({id:first,status:'learned',sheets:[]});
   await expect(T.finish(first)).rejects.toThrow(/learned/);
+  // Refine works without the video: it waits for the agent with the user's direction and its lessons.
+  expect(T.refine(first,'Focus on how the text enters')).toMatchObject({id:first,status:'waiting'});
+  const rn=T.next(first) as {refine?:{lessons:unknown[]};video:{prompt:string};how:string[]};
+  expect(rn.video.prompt).toBe('Focus on how the text enters');expect(rn.refine?.lessons.length).toBe(2);expect(rn.how[0]).toContain('refine');
+  await T.finish(first);expect(T.video(first)).toMatchObject({status:'learned',refine:false});
+  expect(()=>T.refine(first,'')).toThrow(/Say what to refine/);
  });
 
  it('finds what the good examples share, leaves the outlier out and contrasts the bad ones',async()=>{

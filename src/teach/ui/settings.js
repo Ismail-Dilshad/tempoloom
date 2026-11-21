@@ -29,7 +29,7 @@ function serviceRow(s){
 App.register('settings',{
  title:()=>'Models and keys',sub:()=>'Optional: the browser studio',
  async load(){const [o,agents,images]=await Promise.all([api('/api/settings'),api('/api/settings/models?can=agents'),api('/api/settings/models?can=images')]);return {...o,agents:agents.models,imageModels:images.models};},
- head:()=>({title:'Models and keys',text:'Connect the services the browser studio may use. Everything here is optional: with no key, your terminal agent does the work as before. Keys stay on this computer and are never shown again.'}),
+ head:()=>({title:'Models and keys'}),
  render(el){
   const d=this.data,s=d.settings,svc=d.services,conn=svc.filter(x=>x.connected);
   const maker=(kind,label,can,note)=>{const ok=svc.filter(x=>x.group!=='local'&&x.connected&&can.some(c=>x.can[c]));
@@ -38,7 +38,7 @@ App.register('settings',{
   el.innerHTML=`${d.warnings.length?`<div class="banner warn">${d.warnings.map(esc).join('<br>')}</div>`:''}
   <section class="card"><div class="teach-section-head"><h3>Who works on new videos</h3></div>
    <div class="teach-modes">${tile('driver','terminal','Your terminal agent','Claude Code, Codex or Gemini CLI, when you tell it to. No key needed.','menu',s.driver)}${tile('driver','browser','This page','Starts at once with the main model below, within your budgets.','play',s.driver)}${tile('driver','ask','Ask each time','You choose when you send each video.','star',s.driver)}</div>
-   <p class="muted small" style="margin:10px 0 0">Either way each video's page in <a href="#/studio/videos">Videos</a> shows the team at work, and only you approve, choose and rate. This page's agents run Tempoloom's own commands on this computer, stop at every approval, ask before a video spends past your amount, and stop at your budgets.${s.model?'':' Choose a main model first.'}</p></section>
+</section>
   ${SetUI.GROUPS.map(([g,label])=>{const list=svc.filter(x=>x.group===g);return `<section class="card"><div class="teach-section-head"><h3>${label}</h3><span class="muted small">${list.filter(x=>x.connected).length} of ${list.length} connected</span></div>
    ${list.map(serviceRow).join('')||'<p class="muted small">No model server added yet.</p>'}
    ${g==='local'?`<div class="row" style="margin-top:12px">${d.presets.map(p=>`<button class="btn small" onclick="setAddLocal('${esc(p.name)}','${esc(p.baseURL)}')">Add ${esc(p.name)}</button>`).join('')}<button class="btn small ghost" onclick="setAddLocal()">Another server</button></div>`:''}</section>`;}).join('')}
@@ -47,12 +47,12 @@ App.register('settings',{
    <details class="teach-focus"><summary>A different model for some roles<span class="muted">${Object.keys(s.roleModels).length} set</span></summary>
     ${d.roles.map(r=>`<label class="teach-setting"><span><b>${esc(r.title)}</b>${r.id==='reviewer'?'<small class="muted">Give it a different model from the producer, so its review is independent.</small>':''}</span>${modelSelect(`data-role="${r.id}" aria-label="Model for ${esc(r.title)}"`,d.agents,s.roleModels[r.id],svc,'Same as the main model')}</label>`).join('')}</details>`
    :`<p class="muted small">Connect Claude, OpenAI, Gemini, OpenRouter or a local model server below, then choose the model here.</p>`}</section>
-  <section class="card teach-settings"><div class="teach-section-head"><h3>Who makes what</h3></div><p class="muted small" style="margin:0 0 4px">Text in a video is always drawn by Tempoloom, in fonts that cover every Kurdish letter, never by an image model.</p>
+  <section class="card teach-settings"><div class="teach-section-head"><h3>Who makes what</h3></div>
    ${maker('images','Images',['images'],'Backgrounds, objects, product shots.')}${maker('video','Video clips',['video'],'Costly; leave off unless you need them.')}${maker('music','Music',['music'],'Only when you ask for music.')}${maker('sfx','Sound effects',['sound'],'Whooshes, clicks and hits on the motion.')}
    <label class="teach-setting"><span><b>Voice</b><small class="muted">Only when you ask for a voice-over.</small></span><select data-maker="voice" aria-label="Voice"><option value="elevenlabs" ${s.makers.voice==='elevenlabs'?'selected':''}>ElevenLabs</option><option value="off" ${s.makers.voice==='off'?'selected':''}>Off: captions only</option></select></label></section>
   <section class="card teach-settings"><div class="teach-section-head"><h3>Budgets</h3><span class="muted small">US dollars</span></div>
    <div class="budget-row">${[['perJob','Per video'],['perDay','Per day'],['askAbove','Ask me before one step over']].map(([k,l])=>`<label class="f">${l}<input type="number" min="0" step="0.5" data-budget="${k}" value="${s.budget[k]}"></label>`).join('')}<button class="btn" onclick="setBudget()">Save budgets</button></div></section>
-  <section class="card teach-settings"><div class="teach-section-head"><h3>Where your vertical videos go</h3><span class="muted small">their buttons and captions are kept clear</span></div>
+  <section class="card teach-settings"><div class="teach-section-head"><h3>Where your vertical videos go</h3></div>
    ${[['tiktok','TikTok'],['reels','Instagram Reels'],['shorts','YouTube Shorts']].map(([id,l])=>`<label class="teach-setting"><span><b>${l}</b></span><input type="checkbox" role="switch" data-platform="${id}" ${(s.platforms||['tiktok','reels','shorts']).includes(id)?'checked':''}></label>`).join('')}</section>
   <section class="card"><div class="teach-section-head"><h3>What may leave this computer</h3></div>
    <div class="teach-modes four">${tile('share','frames','Frames only','Pictures from your video, not the video.','eye',s.share)}${tile('share','clips','Short clips','A few seconds at a time.','film',s.share)}${tile('share','full','Full videos','For models that watch a whole video.','play',s.share)}${tile('share','local','Nothing','Local models and free sources only.','home',s.share)}</div></section>

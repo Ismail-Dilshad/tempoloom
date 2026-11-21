@@ -6,6 +6,7 @@ import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {chromium} from 'playwright';
 import {ROOT,defaults} from './config.js';
+import {projectPython} from './config-root.js';
 import {fontCatalog,defaultFontPath,locales} from './font-catalog.js';
 import {languageSchema} from './languages.js';
 import {brandProfile} from './brand.js';
@@ -42,12 +43,12 @@ export async function runDoctor(options:{browser?:boolean}={}):Promise<Check[]>{
  checks.push(await check('env',false,async()=>{if(!fsSync.existsSync(path.join(ROOT,'.env')))throw new Error('.env not found (optional)');return '.env present';},'Run pnpm tempoloom init, or copy .env.example to .env'));
  checks.push(await check('elevenlabs',false,async()=>{if(!process.env.ELEVENLABS_API_KEY?.trim())throw new Error('No ELEVENLABS_API_KEY: transcription, captions from speech and pause removal are off');return 'API key set (transcription, captions, tighten)';},'Add ELEVENLABS_API_KEY to .env'));
  checks.push(await check('audio-pipeline',false,async()=>{
-  const py=process.env.VIDEO_PYTHON||path.join(ROOT,'.venv',process.platform==='win32'?'Scripts/python.exe':'bin/python');
+  const py=projectPython();
   if(!fsSync.existsSync(py))throw new Error('Optional local speech analysis is not installed');
   const r=spawnSync(py,['--version'],{encoding:'utf8'});if(r.status!==0)throw new Error('Python in .venv does not run');return (r.stdout||r.stderr).trim();
  },'Optional: pnpm audio:setup (asks before large downloads)'));
  checks.push(await check('media-tools',false,async()=>{
-  const py=process.env.VIDEO_PYTHON||path.join(ROOT,'.venv',process.platform==='win32'?'Scripts/python.exe':'bin/python');
+  const py=projectPython();
   if(!fsSync.existsSync(py))throw new Error('Optional media tools are not installed');
   const mods=['auto_editor','scenedetect','librosa','mediapipe','rembg','demucs','cv2'];
   const r=spawnSync(py,['-c','import importlib.util,json;print(json.dumps([m for m in '+JSON.stringify(mods)+' if importlib.util.find_spec(m) is None]))'],{encoding:'utf8',cwd:ROOT});

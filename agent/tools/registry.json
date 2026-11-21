@@ -1480,7 +1480,7 @@
     "icon": "search",
     "group": "Export",
     "about": "Finds anything kept twice and space you can clear.",
-    "open": "#/library/tidy"
+    "open": "#/tools/tidy"
    }
   },
   {

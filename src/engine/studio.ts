@@ -16,7 +16,9 @@ import {confidence} from './brain/brain.js';
 import {emit,events,WORKING_FACE} from './studio-events.js';
 import {doctorScript} from './script-doctor.js';
 import {change,touch,adapter,merge3,revertSet} from './history.js';
-import {keepVersion,outsideScope,projectScenes,sceneHash,type Comment,type Scene} from './studio-versions.js';
+import {keepVersion,outsideScope,projectScenes,sceneHash,jobDir,studioRoot,type Plan,type Task,type Rating,type Status} from './studio-store.js';
+export {jobDir,studioRoot};
+export type {Plan,Task,Rating};
 
 const TOPICS=['motion','pacing','design','typography','color','captions','transitions','audio','voice','brand','cta','assets','kurdish','length','format','script','editing','art'] as const;
 const roleSchema=z.object({id:z.string().regex(/^[a-z][a-z-]{1,30}$/),department:z.string(),title:z.string(),agent:z.string().optional(),independent:z.boolean().optional(),mission:z.string(),
@@ -50,39 +52,9 @@ export function roleOf(id:string):Role|{id:'director';title:string;mission:strin
 }
 
 // ---------- jobs ----------
-type Status='todo'|'doing'|'done'|'redo';
-export type Task={id:string;stage:number;role?:string;gate?:boolean;title:string;needs:string[];produces?:string;status:Status;output?:string;note?:string;
- applied:string[];learned:string[];started?:string;finished?:string;rounds:number;
- /** Files to show the user with this step (frames, a preview video, a sound sample). */
- show?:string[];
- /** Two or more versions to choose between, each with the lessons only it used. */
- choices?:{label:string;file:string;applied:string[]}[];picked?:string;
- /** The agent's own check of the video this step made, before the user sees it. */
- selfcheck?:SelfCheck;
- /** What the studio expects the user to say about this step, from their earlier ratings. */
- predicted?:{good:number;reasons:string[];basis:number};held?:number;
- /** After comments on moments of its video: the scenes this redo may change, and how the others looked. */
- scope?:{round:number;scenes:(Scene&{comments:string[]})[];keep?:Record<string,string>}};
-export type Rating={at:string;task:string;round:number;rating:'good'|'ok'|'bad';predicted?:number;reasons:string[];note:string;parts:{part:string;rating:'good'|'bad';note:string}[];scored:string[];rule?:string;reopened:string[]};
-export type Plan={version:1;job:string;type:string;title:string;request:string;options:string[];created:string;updated:string;videoJob?:string;verdict?:string;
- tasks:Task[];feedback:{at:string;said:string;rule:string;verdict:Verdict;lesson:string;topics:string[];roles:string[];reopened:string[]}[];
- /** The user's rating of each step (the Studio page, or `studio rate`). */
- ratings?:Rating[];
- /** The request from the Studio page this job was planned from. */
- source?:string;
- /** Hidden from the Studio page's list (nothing is deleted). */
- archived?:boolean;
- /** The taste profile this job follows (main when not set). */
- profile?:string;
- /** The second reviewer's taste: another profile, or a general viewer when not set. */
- secondProfile?:string;
- /** The user's comments on moments of the videos steps showed. */
- comments?:Comment[];
- /** Scenes the user marked final: later rounds keep them exactly as they were when locked. */
- locked?:{id:string;n:number;label:string;hash:string;at:string}[]};
+// The plan's types, studioRoot and jobDir live in studio-store.ts (re-exported above).
 const now=()=>new Date().toISOString();
 const slug=(s:string)=>s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40);
-export const studioRoot=()=>path.resolve(ROOT,process.env.VIDEO_WORKSPACE||'workspace','studio');
 /** A second opinion, read: the points it disagrees on, or that it agrees with everything. */
 /** The locked scenes that are no longer as they were locked (missing or changed). */
 export function changedLocked(p:Plan):string[]{
@@ -97,7 +69,6 @@ export function opinionOf(md:string){
 }
 /** The job's script: the user's own (written when the request is taken) or the scriptwriter's. */
 export const scriptOf=(job:string)=>path.join(jobDir(job),'script.txt');
-export const jobDir=(job:string)=>{if(!/^[a-z0-9][a-z0-9-]{0,60}$/.test(job))throw new Error('Not a studio job name: '+job);return path.join(studioRoot(),job);};
 export function readPlan(job:string):Plan{try{return JSON.parse(fs.readFileSync(path.join(jobDir(job),'plan.json'),'utf8')) as Plan;}catch{throw new Error(`No studio job "${job}". Start one: pnpm tempoloom studio plan "REQUEST" --type TYPE`);}}
 const deletedPlan=(job:string)=>path.join(jobDir(job),'deleted-plan.json');
 export function deleteJob(job:string){

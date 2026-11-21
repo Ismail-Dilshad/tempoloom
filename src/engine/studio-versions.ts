@@ -6,43 +6,19 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {createHash,randomBytes} from 'node:crypto';
-import {ROOT} from './config.js';
-import {readPlan,jobDir,savePlan,reopenAfter,feedback,type Plan,type Task} from './studio.js';
+import {readPlan,savePlan,reopenAfter,feedback} from './studio.js';
+import {jobDir,readAll,writeAll,projectScenes,sceneHash,type Version,type Scene,type Comment} from './studio-store.js';
 import {probe} from '../renderer/ffmpeg-encoder.js';
 import {findShots} from '../editor/shots.js';
 import {emit} from './studio-events.js';
 import {change} from './history.js';
+// Kept here too for callers that import them from this module (the code lives in studio-store.ts).
+export {keepVersion,projectScenes,sceneHash,outsideScope,type Version,type Scene,type Comment} from './studio-store.js';
 
-export type Version={n:number;round:number;at:string;output?:string;outputName?:string;show:string[];names:string[];
- choices?:{label:string;file:string;applied:string[]}[];picked?:string;applied:string[];note?:string;from?:number;
- /** Copied into the job's versions folder (false: the files are only referenced, from before versions were kept). */
- kept:boolean};
 const now=()=>new Date().toISOString();
 const MEDIA:Record<string,'image'|'video'|'audio'>={'.png':'image','.jpg':'image','.jpeg':'image','.webp':'image','.gif':'image','.svg':'image','.mp4':'video','.webm':'video','.mov':'video','.m4v':'video','.mp3':'audio','.wav':'audio','.m4a':'audio'};
 const mediaOf=(f:string)=>MEDIA[path.extname(f).toLowerCase()]??null;
 const TEXT=/\.(md|txt|json|srt|vtt|csv)$/i;
-const file=(job:string)=>path.join(jobDir(job),'versions.json');
-function readAll(job:string):Record<string,Version[]>{try{return JSON.parse(fs.readFileSync(file(job),'utf8')) as Record<string,Version[]>;}catch{return {};}}
-function writeAll(job:string,v:Record<string,Version[]>){const tmp=file(job)+'.tmp';fs.writeFileSync(tmp,JSON.stringify(v,null,1)+'\n');fs.renameSync(tmp,file(job));}
-const dirOf=(job:string,task:string,n:number)=>path.join(jobDir(job),'versions',task,'v'+n);
-const safeName=(f:string)=>path.basename(f).normalize('NFKC').replace(/[^\p{L}\p{N}._ -]+/gu,'-').slice(0,90)||'file';
-// A copy that shares the disk blocks where the file system allows it (copy-on-write), else a plain copy.
-const copy=(from:string,to:string)=>{fs.mkdirSync(path.dirname(to),{recursive:true});fs.copyFileSync(from,to,fs.constants.COPYFILE_FICLONE);return to;};
-
-/** Keeps the version a step just finished as (called by studio done). A step finished twice in the
- *  same round replaces that round's copy. */
-export function keepVersion(p:Plan,t:Task):Version{
- const all=readAll(p.job),list=all[t.id]??[],n=t.rounds+1;
- const old=list.find(v=>v.n===n);if(old?.kept&&!old.from)fs.rmSync(dirOf(p.job,t.id,n),{recursive:true,force:true});
- const dir=dirOf(p.job,t.id,n),here=(f:string)=>fs.existsSync(f)&&fs.statSync(f).isFile();
- const output=t.output&&here(t.output)?copy(t.output,path.join(dir,'output-'+safeName(t.output))):undefined;
- const show=(t.show??[]).filter(here).map((f,k)=>copy(f,path.join(dir,`${k}-${safeName(f)}`)));
- const choices=t.choices?.map((c,k)=>({label:c.label,file:here(c.file)?copy(c.file,path.join(dir,`choice-${k}-${safeName(c.file)}`)):c.file,applied:c.applied}));
- const v:Version={n,round:t.rounds,at:t.finished??now(),...(output?{output,outputName:path.basename(t.output!)}:{}),show,names:(t.show??[]).filter(here).map(f=>path.basename(f)),
-  ...(choices?.length?{choices}:{}),...(t.picked?{picked:t.picked}:{}),applied:[...t.applied],...(t.note?{note:t.note}:{}),kept:true};
- all[t.id]=[...list.filter(x=>x.n!==n),v].sort((a,b)=>a.n-b.n);writeAll(p.job,all);
- return v;
-}
 /** How many kept versions each step of a job has. */
 export function versionCounts(job:string):Record<string,number>{return Object.fromEntries(Object.entries(readAll(job)).map(([k,v])=>[k,v.length]));}
 /** The versions of one step, oldest first. A step finished before versions were kept shows its
@@ -99,17 +75,7 @@ export function bringBack(job:string,task:string,n:number){
 }
 
 // ---------- the scenes of a video, and comments on its moments ----------
-export type Scene={n:number;start:number;end:number;id?:string;label:string};
 export type Timeline={source:'scenes'|'cuts';duration:number;scenes:Scene[]};
-const projectFile=(id:string)=>/^[a-z0-9][a-z0-9_-]{0,150}$/i.test(id)?path.resolve(ROOT,process.env.VIDEO_WORKSPACE||'workspace','projects',id,'project.json'):null;
-type ProjectScene={id:string;text:string;start:number;duration:number};
-/** The scenes of the motion project a job made (studio done --link), read without loading the project. */
-export function projectScenes(id:string|undefined):ProjectScene[]|null{
- const f=id?projectFile(id):null;if(!f)return null;
- try{const s=(JSON.parse(fs.readFileSync(f,'utf8')) as {scenes?:ProjectScene[]}).scenes;return Array.isArray(s)&&s.length?s:null;}catch{return null;}
-}
-/** A scene's fingerprint without its start (an earlier scene growing moves it, which is fine). */
-export const sceneHash=(s:ProjectScene)=>{const {start:_,...rest}=s as ProjectScene&Record<string,unknown>;return createHash('sha1').update(JSON.stringify(rest)).digest('hex').slice(0,12);};
 const clock=(t:number)=>`${Math.floor(t/60)}:${String(Math.floor(t%60)).padStart(2,'0')}`;
 /** Where a video's scenes start and end: the project's own scenes when the video is that project's
  *  render, otherwise the cuts found in the picture. Worked out once and kept next to the file. */
@@ -127,7 +93,6 @@ export async function timeline(job:string,taskIndex:number,slot:string):Promise<
  fs.mkdirSync(path.dirname(cache),{recursive:true});fs.writeFileSync(cache,JSON.stringify(out));
  return out;
 }
-export type Comment={id:string;at:string;task:string;round:number;slot:string;time:number;scene:Scene;text:string;answered?:number};
 export type CommentInput={slot:string;time:number;text:string};
 /** Comments on moments of a step's video. Each lands on the scene playing at that moment; the step
  *  is redone for those scenes only (the rest must stay as it is), and the comments are kept on the
@@ -178,9 +143,4 @@ export function lock(job:string,scenes:number[],on=true){
   emit(job,{type:'feedback',role:'you',text:`You ${on?'locked':'unlocked'} scene${scenes.length>1?'s':''} ${scenes.join(', ')}${on?': they stay as they are':''}`,data:{locked:p.locked.map(l=>l.n)}});
   return {job,locked:p.locked.map(l=>({scene:l.n,label:l.label})),note:on?'Locked scenes stay exactly as they are in every later round.':'Unlocked: the next round may change them.'};
  });
-}
-/** The scenes a redo changed that the user did not comment on (empty when it kept to its scenes). */
-export function outsideScope(p:Plan,t:Task):string[]{
- if(!t.scope?.keep)return [];const ps=projectScenes(p.videoJob);if(!ps)return [];
- return Object.entries(t.scope.keep).filter(([id,h])=>{const s=ps.find(x=>x.id===id);return !s||sceneHash(s)!==h;}).map(([id])=>{const i=ps.findIndex(x=>x.id===id);return i<0?`${id} (removed)`:`scene ${i+1}`;});
 }

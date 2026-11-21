@@ -1,6 +1,6 @@
 'use strict';
 // The shell's shared parts: icons, the right panel, menus, the picker and command overlays, the
-// bell, the top bar's icons and the keyboard. Screens use these instead of drawing their own.
+// bell (in the sidebar footer) and the keyboard. Screens use these instead of drawing their own.
 Object.assign(I,{
  spark:ICON('<path d="M12 3l1.900 5.100L19 10l-5.100 1.900L12 17l-1.900-5.100L5 10l5.100-1.900z"/><path d="M19 15l.800 2.200L22 18l-2.200.800L19 21l-.800-2.200L16 18l2.200-.800z"/>'),
  palette:ICON('<path d="M12 3a9 9 0 1 0 0 18c1 0 1.700-.800 1.700-1.700 0-.500-.200-.900-.500-1.200-.300-.300-.500-.700-.500-1.200 0-.900.800-1.700 1.700-1.700H16a5 5 0 0 0 5-5c0-4-4-7.200-9-7.200z"/><circle cx="7.500" cy="11.500" r="1"/><circle cx="10.500" cy="7.500" r="1"/><circle cx="15.500" cy="7.500" r="1"/>'),
@@ -59,16 +59,24 @@ const Panel={
   el.innerHTML=`<header class="panel-head">${o.back?`<button class="iconbtn sm" aria-label="Back" onclick="Panel.back()">${I.back}</button>`:''}<h2 id="panel-title" dir="auto">${esc(o.title)}</h2>${o.headActions||''}<button class="iconbtn sm" aria-label="Close the panel" onclick="Panel.close()">${I.x}</button></header>
    ${o.sub?`<p class="panel-sub">${esc(o.sub)}</p>`:''}${o.tabs||''}<div class="panel-body" id="panel-body">${o.body||''}</div>${o.dock?`<div class="panel-dock">${o.dock}</div>`:''}${o.foot?`<footer class="panel-foot">${o.foot}</footer>`:''}`;
   this.backFn=o.back||null;
+  // Edit prompt, Instructions and Settings are one kind of drawer: on a wide screen it sits beside
+  // the page (no shade over it); on a narrower one it slides over the page.
+  const docked=['prompt-editor','rules','brief-settings','learn-setup','add-rule','taste-profile'].includes(o.id)||o.id.startsWith('tool-');
+  el.toggleAttribute('data-docked',docked);
+  // Instructions and Settings leave the page's prompt box in place: it makes room as the drawer comes in.
+  $('#app').toggleAttribute('data-drawer-open',docked);
   if(!$('.drawer-shade')){
    const shade=document.createElement('div');
    shade.className='drawer-shade';
    shade.onclick=()=>Panel.close();
    el.before(shade);
   }
-  $('.drawer-shade').classList.toggle('prompt-drawer-shade',o.id==='prompt-editor');
+  $('.drawer-shade').classList.toggle('docked-shade',docked);
+
   if(o.dockNode){
    $('.prompt-drawer-host',el).append(o.dockNode);
-   $('#dock-expand',o.dockNode)?.setAttribute('aria-expanded','true');
+   const ex=$('#dock-expand',o.dockNode);// in the drawer the same button shrinks the prompt back
+   if(ex){ex.setAttribute('aria-expanded','true');ex.setAttribute('aria-label','Shrink prompt');ex.innerHTML=I.shrink||I.expand;}
   }
   el.hidden=false;
   if(!wasOpen)this.motion(el,false);
@@ -82,10 +90,11 @@ const Panel={
   const shade=$('.drawer-shade');
   shade?.getAnimations().forEach(animation=>animation.cancel());
   if(matchMedia('(prefers-reduced-motion: reduce)').matches)return null;
-  const offset=getComputedStyle(el).direction==='rtl'?-24:24;
-  const frames=[{opacity:0,transform:`translateX(${offset}px)`},{opacity:1,transform:'none'}];
+  // Soft: a longer, gentle glide with a slight settle in, and an unhurried ease out.
+  const offset=getComputedStyle(el).direction==='rtl'?-56:56;
+  const frames=[{opacity:0,transform:`translateX(${offset}px) scale(.985)`},{opacity:1,transform:'none'}];
   const backdrop=[{opacity:0},{opacity:1}];
-  const timing={duration:closing?180:260,easing:'cubic-bezier(.22,1,.36,1)',fill:'both'};
+  const timing=closing?{duration:300,easing:'cubic-bezier(.4,0,.7,.2)',fill:'both'}:{duration:460,easing:'cubic-bezier(.16,1,.3,1)',fill:'both'};
   shade?.animate(closing?backdrop.reverse():backdrop,timing);
   return el.animate(closing?frames.reverse():frames,timing);
  },
@@ -95,6 +104,7 @@ const Panel={
   const f=this.onclose,was=this.id,opener=this.opener;
   this.onclose=null;this.id=null;this.opener=null;
   el.inert=true;
+  $('#app').removeAttribute('data-drawer-open');// the prompt box glides back as the drawer leaves
   const finish=()=>{
    Dock.restore(!silent&&was==='prompt-editor');
    el.hidden=true;el.innerHTML='';
@@ -106,7 +116,8 @@ const Panel={
   if(silent)finish();
   else{
    const exit=this.exit=this.motion(el,true);
-   if(exit)exit.finished.then(()=>{if(this.exit===exit)finish();},()=>{});
+   // A background tab does not run animations: finish anyway a moment after the exit should end.
+   if(exit)Promise.race([exit.finished,new Promise(r=>setTimeout(r,450))]).then(()=>{if(this.exit===exit)finish();},()=>{});
    else finish();
    if(was!=='prompt-editor'&&opener?.isConnected)opener.focus({preventScroll:true});
    f?.();
@@ -145,6 +156,29 @@ const Pop={
  },
 };
 document.addEventListener('pointerdown',e=>{if(Pop.el&&!Pop.el.contains(e.target)&&!Pop.anchor?.contains(e.target))Pop.close();});
+/** Renames in a small popup by the button that asked: a box that grows with the name, save and
+ *  cancel. Enter saves, Escape or a click elsewhere cancels. `save` may throw to keep it open. */
+function renamePop(anchor,{value,label='Name',max=120,select,save}){
+ const el=Pop.open(anchor,`<form class="rename-pop">
+  <input type="text" dir="auto" aria-label="${esc(label)}" value="${esc(value)}" maxlength="${max}" required spellcheck="false">
+  <button type="submit" class="iconbtn sm rename-save" aria-label="Save name">${I.check}</button>
+  <button type="button" class="iconbtn sm" data-cancel aria-label="Cancel rename">${I.x}</button></form>`,{role:'dialog',label:'Rename',align:'end',focus:false});
+ if(!el)return;
+ const form=$('form',el),input=$('input',form),ok=$('[type=submit]',form),r=anchor.getBoundingClientRect();
+ // The box grows with the name; the popup stays lined up with the button's end as it does.
+ const ctx=document.createElement('canvas').getContext('2d');ctx.font=getComputedStyle(input).font;
+ const fit=()=>{input.style.width=Math.max(140,Math.min(440,innerWidth-120,Math.ceil(ctx.measureText(input.value).width)+30))+'px';const w=el.offsetWidth;el.style.left=Math.max(8,Math.min(r.right-w,innerWidth-w-8))+'px';};
+ fit();input.focus();input.setSelectionRange(0,select??input.value.length);
+ input.oninput=()=>{fit();ok.disabled=!input.value.trim();};
+ el.onkeydown=e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();Pop.close(true);}};
+ $('[data-cancel]',form).onclick=()=>Pop.close(true);
+ form.onsubmit=async e=>{
+  e.preventDefault();const v=input.value.trim();if(!v)return;
+  if(v===value){Pop.close(true);return;}
+  ok.disabled=input.readOnly=true;
+  try{await save(v);if(Pop.el===el)Pop.close();}catch(err){toast(err.message,true);ok.disabled=input.readOnly=false;input.focus();}
+ };
+}
 window.addEventListener('resize',()=>Pop.close());
 
 // ---------- overlays: the picker and the command menu ----------
@@ -172,18 +206,15 @@ const Cmd={
   const go=(label,href,icon,group,about)=>({label,icon,group,about,run:()=>{location.hash=href;}});
   const out=[];
   out.push({label:'Make a new video',icon:'spark',group:'Actions',run:()=>Dock.focus()});
-  out.push({label:'Add files to your library',icon:'upload',group:'Actions',run:()=>libraryAdd()});
-  out.push({label:'Teach a video',icon:'add',group:'Actions',run:()=>{location.hash='#/library/teach';}});
+  out.push({label:'Teach a video',icon:'add',group:'Actions',run:()=>{location.hash='#/learn';}});
   for(const p of PLACES)if(p!=='-')out.push(go(p.label,'#/'+p.id,p.icon,'Go to'));
   for(const [place,tabs] of Object.entries(TABS))for(const [path,l] of tabs)if(path.includes('/'))out.push(go(l,'#/'+path,PLACES.find(p=>p.id===place)?.icon||'gear','Go to',PLACES.find(p=>p.id===place)?.label||'Settings'));
   out.push(go('Trash','#/trash','trash','Go to'));
-  for(const t of this.tools||[])out.push({label:t.name,icon:t.icon,group:'Tools',about:t.about,run:()=>openTool(t.id)});
   out.push({label:$('#app').dataset.rail==='collapsed'?'Expand the rail':'Collapse the rail',icon:'collapse',group:'Navigation',run:()=>App.collapse()});
   return out;
  },
  async open(q=''){
-  this.loadTools().then(()=>{if(Overlay.el?.querySelector('.cmd'))this.draw();});
-  Overlay.open(`<div class="cmd"><div class="cmd-input">${I.search}<input type="text" id="cmd-q" autocomplete="off" spellcheck="false" placeholder="Search places, tools and everything you made" aria-label="Search places, tools and everything you made" aria-controls="cmd-list" value="${esc(q)}"></div><div class="cmd-list" id="cmd-list" role="listbox"></div><div class="cmd-foot"><span>↑↓ to move</span><span>Enter to open</span><span>Esc to close</span></div></div>`,{label:'Command menu'});
+  Overlay.open(`<div class="cmd"><div class="cmd-input">${I.search}<input type="text" id="cmd-q" autocomplete="off" spellcheck="false" placeholder="Search places and everything you made" aria-label="Search places and everything you made" aria-controls="cmd-list" value="${esc(q)}"></div><div class="cmd-list" id="cmd-list" role="listbox"></div><div class="cmd-foot"><span>↑↓ to move</span><span>Enter to open</span><span>Esc to close</span></div></div>`,{label:'Command menu'});
   const input=$('#cmd-q');input.oninput=()=>{this.index=0;this.draw();};
   input.onkeydown=e=>{
    if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();this.index=(this.index+(e.key==='ArrowDown'?1:-1)+this.list.length)%Math.max(1,this.list.length);this.draw();}
@@ -249,23 +280,20 @@ function startTabFills(){
  sync();
 }
 
-// ---------- the shell: top bar icons, the bell, help, keyboard ----------
+// ---------- the shell: the bell, help, keyboard ----------
 const Shell={
  busy(){return !!(Pop.el||Overlay.el||$('#panel').contains(document.activeElement)&&/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName));},
  icons(h){
   const waiting=h.you.length+(h.agent.length?1:0);
-  const box=$('#tb-icons');
-  if(!box)return;
-  if(!box.firstElementChild){
-   box.innerHTML=`<button class="iconbtn bell" id="tb-bell" aria-haspopup="menu" aria-expanded="false" onclick="Shell.bell(this)">${I.bell}<span class="dot" hidden></span></button>
-    <button class="avatar" id="tb-me" data-tooltip="Your menu" aria-label="Your menu" aria-haspopup="menu" aria-expanded="false" onclick="Shell.me(this)">${I.user}</button>`;
-  }
-  const bell=$('#tb-bell'),dot=bell.querySelector('.dot');
-  const label=waiting?`Waiting for you: ${waiting}`:'Waiting for you';
+  // The bell sits in the sidebar's footer: a count beside it, or a dot on it when the sidebar is narrow.
+  const bell=$('#rail-bell');
+  if(!bell)return;
+  const n=bell.querySelector('.n'),dot=bell.querySelector('.dot');
+  const label=waiting?`Notifications: ${waiting} waiting for you`:'Notifications';
   bell.setAttribute('aria-label',label);
-  bell.dataset.tooltip=label;
-  dot.hidden=!waiting;
-  if(dot.textContent!==String(waiting))dot.textContent=String(waiting);
+  if($('#app').dataset.rail==='collapsed'&&!matchMedia('(max-width:767px)').matches)bell.dataset.tooltip=label;else delete bell.dataset.tooltip;
+  n.hidden=dot.hidden=!waiting;
+  if(n.textContent!==String(waiting))n.textContent=dot.textContent=String(waiting);
  },
  bell(btn){
   const h=App.home,you=h.you,agent=h.agent;
@@ -273,18 +301,16 @@ const Shell={
    ${you.length?you.map(j=>`<a class="pop-item" href="#/projects/${encodeURIComponent(j.job)}">${I.film}<span><span dir="auto">${esc(j.title)}</span><small>Needs your look or approval</small></span></a>`).join(''):'<div class="pop-empty">Nothing is waiting for you.</div>'}
    ${agent.length?`<hr><div class="pop-head">Your agent has work</div>${agent.map(x=>`<div style="padding:4px 12px 8px"><div class="small muted">${esc(x.why)}. Tell it:</div><div class="say-line"><span dir="auto">“${esc(x.say)}”</span><button class="iconbtn sm" aria-label="Copy the command ${esc(x.command)}" onclick="copyText('${esc(x.command)}')">${I.copy}</button></div></div>`).join('')}`:''}`,{align:'end',label:'Waiting for you'});
  },
- me(btn){
-  Pop.open(btn,`<a class="pop-item" role="menuitem" href="#/settings">${I.gear}<span>Models and keys</span></a>
-   <a class="pop-item" role="menuitem" href="#/settings/history">${I.history||I.restore}<span>History</span></a>
-   <a class="pop-item" role="menuitem" href="#/settings/backup">${I.box||I.export}<span>Backup and move</span></a>`,{align:'end',label:'Your menu'});
- },
  start(){
   startTabFills();
   let g=0;
   document.addEventListener('keydown',e=>{
    if(e.defaultPrevented||e.isComposing)return;
    const typing=/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)||e.target.isContentEditable;
-   if((e.ctrlKey||e.metaKey)&&!e.altKey&&e.key.toLowerCase()==='k'){e.preventDefault();Cmd.open();return;}
+   // Ctrl+K: on Create it goes to the search at the top (again from the search: the command menu).
+   if((e.ctrlKey||e.metaKey)&&!e.altKey&&e.key.toLowerCase()==='k'){e.preventDefault();
+    if(e.target.id!=='create-search'&&typeof CreateFind!=='undefined'&&(App.route==='create'?CreateFind:App.route==='teach/library'&&!App.arg?LearnFind:null)?.focus())return;
+    Cmd.open();return;}
    if(e.key==='Escape'){
     if(Controls.open||$('#modal').innerHTML)return;
     if(Pop.el){e.preventDefault();Pop.close(true);return;}
@@ -293,11 +319,14 @@ const Shell={
     return;}
    const altGraph=e.getModifierState('AltGraph');
    if(typing||e.metaKey||(!altGraph&&(e.ctrlKey||e.altKey)))return;
-   if(Controls.open||Pop.el||Overlay.el||$('#modal').innerHTML||!$('#panel').hidden||$('#app').classList.contains('open'))return;
+   // Another panel (rules, settings…) keeps its keys; the Edit prompt drawer holds the prompt itself.
+   if(Controls.open||Pop.el||Overlay.el||$('#modal').innerHTML||(!$('#panel').hidden&&Panel.id!=='prompt-editor')||$('#app').classList.contains('open'))return;
    if(e.key==='/'&&Dock.el){e.preventDefault();Dock.focus();return;}
    if(e.key==='['){e.preventDefault();App.collapse();return;}
    const prompt=Dock.el?.querySelector('textarea');
-   if(prompt&&!prompt.disabled&&!prompt.readOnly&&!e.target.closest?.('button,a[href],[role=button],[role=slider],summary,[tabindex]:not(#view)')){
+   // Type anywhere: a letter goes into the prompt even when a card, a button or a link has focus
+   // (Space and Enter still press it). Only controls that use letters themselves keep them.
+   if(prompt&&!prompt.disabled&&!prompt.readOnly&&!e.target.closest?.('[role=slider],[role=listbox],[role=menu],[role=grid],[role=tree],video,audio')){
     if(e.key==='Dead'||e.key==='Process'){
      // Move focus before the browser begins composing the character.
      prompt.focus({preventScroll:true});
@@ -315,7 +344,7 @@ const Shell={
     }
    }
    if(e.key==='g'){g=Date.now();return;}
-   if(Date.now()-g<900){const to={c:'create',p:'projects',l:'library',t:'tools',b:'brain',s:'library/scenes'}[e.key];if(to){e.preventDefault();location.hash='#/'+to;}g=0;}
+   if(Date.now()-g<900){const to={c:'create',p:'create',b:'brain'}[e.key];if(to){e.preventDefault();location.hash='#/'+to;}g=0;}
   });
  },
 };
@@ -332,7 +361,8 @@ const Dock={
   const panelBefore=Panel.id;
   const departure=this.departure=this.compactMotion(dock,true);
   if(departure){
-   await departure.finished.catch(()=>{});
+   // A background tab does not run animations: never wait more than a moment for this one.
+   await Promise.race([departure.finished.catch(()=>{}),new Promise(r=>setTimeout(r,400))]);
    this.departure=null;
    if(this.el!==dock||!dock.isConnected||Panel.id!==panelBefore){
     departure.cancel();
@@ -341,18 +371,13 @@ const Dock={
   }
   const panel=Panel.open({
    id:'prompt-editor',title:'Edit prompt',dockNode:this.el,
-   body:`<div class="prompt-drawer-start">
-    <h3>What would you like to create?</h3>
-    <div class="prompt-modes" role="group" aria-label="Video type">
-     ${VIDEO_KINDS.map(({id,icon,label})=>`<button type="button" class="prompt-mode" data-prompt-kind="${id}" aria-pressed="${Studio.N.mode===id}"><span class="prompt-mode-icon">${I[icon]}</span><span>${esc(label)}</span></button>`).join('')}
-    </div>
-   </div>`,
+   body:'<div class="prompt-drawer-start" id="drawer-start"></div>',
    dock:'<div class="prompt-drawer-host"></div>'
   });
   departure?.cancel();
   const input=this.el.querySelector('textarea');
   autoGrow(input);
-  panel.querySelectorAll('[data-prompt-kind]').forEach(button=>button.onclick=()=>setKind(button.dataset.promptKind));
+  (this.mode==='learn'?LearnWork:DrawerWork).render(panel);// Create: what to make or the work on it; Learn: what to learn and what is learning
  },
  compactMotion(dock,leaving){
   if(matchMedia('(prefers-reduced-motion: reduce)').matches)return null;
@@ -365,13 +390,14 @@ const Dock={
  restore(animate=false){
   if(!this.el?.closest('.prompt-drawer-host'))return;
   $('#dock-slot').append(this.el);
-  $('#dock-expand',this.el)?.setAttribute('aria-expanded','false');
+  const ex=$('#dock-expand',this.el);
+  if(ex){ex.setAttribute('aria-expanded','false');ex.setAttribute('aria-label','Expand prompt');ex.innerHTML=I.expand;}
   const input=this.el.querySelector('textarea');
   if(input)autoGrow(input);
   if(animate)this.compactMotion(this.el,false);
  },
  mount(route,arg){
-  const want=route==='create'?'create':route==='studio/videos'&&arg?'change':null;
+  const want=route==='create'?'create':route==='teach/library'&&!arg?'learn':route==='studio/videos'&&arg?'change':null;
   const slot=$('#dock-slot');
   if(!want){slot.innerHTML='';this.el=null;this.mode=null;return;}
   const keep=this.mode===want&&this.el&&this.el.isConnected&&this.arg===arg;
@@ -380,7 +406,7 @@ const Dock={
   slot.innerHTML=`<div class="dock-wrap" id="dock-wrap">${this.kinds[want].html(arg)}</div>`;
   this.el=$('#dock-wrap');this.kinds[want].wire(this.el,arg);
  },
- focus(){if(App.route!=='create'&&!(App.route==='studio/videos'&&App.arg)){location.hash='#/create';setTimeout(()=>Dock.focus(),120);return;}this.el?.querySelector('textarea')?.focus();},
+ focus(){if(App.route!=='create'&&!(App.route==='teach/library'&&!App.arg)&&!(App.route==='studio/videos'&&App.arg)){location.hash='#/create';setTimeout(()=>Dock.focus(),120);return;}this.el?.querySelector('textarea')?.focus();},
 };
 /** Grows a textarea with its text, up to the stylesheet's limit. */
 function autoGrow(t){t.style.height='auto';t.style.height=t.scrollHeight+'px';}

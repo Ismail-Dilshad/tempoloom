@@ -1,13 +1,12 @@
 // Automatic categories, so nothing has to be filed by hand. Lessons, patterns and taught videos
-// fall into the three ways of teaching (motion design, footage editing, storytelling); a taught
+// fall into the two ways of teaching (motion design, with its hooks and captions, and footage editing); a taught
 // video also gets style tags from its measurements; a video the agent made gets a kind of video
 // (ad, teaser, explainer…) from its brief, length and shape.
 import type {Measured} from './teach/measure.js';
 
 export const GROUPS=[
- {id:'motion',label:'Motion design',about:'Animation, type, layout and colour',topics:['motion','typography','design','color']},
- {id:'edit',label:'Footage editing',about:'Cut rhythm, transitions and sound',topics:['editing','pacing','transitions','audio']},
- {id:'story',label:'Storytelling',about:'Hooks, script and captions',topics:['script','captions']}] as const;
+ {id:'motion',label:'Motion design',about:'Animation, type, layout, colour, hooks and captions',topics:['motion','typography','design','color','script','captions']},
+ {id:'edit',label:'Footage editing',about:'Cut rhythm, transitions and sound',topics:['editing','pacing','transitions','audio']}] as const;
 export type GroupId=typeof GROUPS[number]['id'];
 export const groupOfTopic=(topic:string):GroupId=>GROUPS.find(g=>(g.topics as readonly string[]).includes(topic))?.id??'motion';
 /** The group most of the topics belong to (the first group wins a tie). */

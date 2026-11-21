@@ -38,27 +38,27 @@ describe('the gallery',()=>{
   const thumb=await G.galleryThumb(f.id);expect(fs.statSync(thumb).size).toBeGreaterThan(300);expect(await G.galleryThumb(f.id)).toBe(thumb);
  },120000);
 
- it('sorts videos by itself, keeps your rating, and deletes only inside the project',async()=>{
+ it('sorts videos by itself, keeps your rating, and deletes a video wherever it is',async()=>{
   const G=await import('../src/engine/gallery.js'),C=await import('../src/engine/categories.js'),brain=await import('../src/engine/brain/brain.js');
   // The kind of video comes from the words of the brief or the name, then from how it was made.
   expect(C.videoKind('A 30 second ad for cold brew')).toBe('ad');expect(C.videoKind('launch teaser final')).toBe('teaser');expect(C.videoKind('how to brew tutorial')).toBe('explainer');
   expect(C.videoKind('interview podcast cut')).toBe('talk');expect(C.videoKind('my clip',{mode:'edit'})).toBe('talk');expect(C.videoKind('clip 7',{seconds:12,shape:'vertical'})).toBe('short');expect(C.videoKind('clip 7',{seconds:80,shape:'horizontal'})).toBe('other');
-  expect(C.groupOfTopic('pacing')).toBe('edit');expect(C.groupOfTopics(['color','typography','script'])).toBe('motion');expect(C.groupOfTopics(['captions'])).toBe('story');
+  expect(C.groupOfTopic('pacing')).toBe('edit');expect(C.groupOfTopics(['color','typography','script'])).toBe('motion');expect(C.groupOfTopics(['captions'])).toBe('motion');
   expect(C.lengthTag(12)).toBe('Under 20 s');expect(C.shapeOf(180,320)).toBe('vertical');expect(C.styleTags(null)).toEqual([]);
   const outside=await clip(path.join(tmp,'elsewhere','client-talk.mp4'),'0x223344');brain.recordJob({id:'made-elsewhere',kind:'video',title:'Client interview',output:outside});
   const g=await G.gallery({hidden:true});
   const f=g.items.find(i=>i.name==='cold-brew.mp4')!,l=g.items.find(i=>i.name==='holiday-ad.mp4')!,o=g.items.find(i=>i.name==='client-talk.mp4')!;
   expect(f.category).toBe('ad');expect(l.category).toBe('ad');expect(o.category).toBe('talk');expect(f.tags).toContain('Vertical');
   expect(g.categories.find(c=>c.id==='ad')!.count).toBeGreaterThanOrEqual(2);
-  expect(l.canDelete).toBe(true);expect(o.canDelete).toBe(false);
+  expect(l.canDelete).toBe(true);expect(o.canDelete).toBe(true);
   // A rating is kept with the gallery; a bad one needs a reason.
   await expect(G.rateVideo(l.id,'bad','')).rejects.toThrow(/what is wrong/);await expect(G.rateVideo('0000000000000000','good')).rejects.toThrow(/No such video/);
   await G.rateVideo(l.id,'bad','The cuts are too slow.');
   let again=(await G.gallery({hidden:true})).items.find(i=>i.id===l.id)!;expect(again).toMatchObject({rating:'bad',ratedHere:true,note:'The cuts are too slow.'});
   await G.rateVideo(l.id,'good');expect((await G.gallery({hidden:true})).totals.good).toBeGreaterThanOrEqual(1);
   G.clearRating(l.id);again=(await G.gallery({hidden:true})).items.find(i=>i.id===l.id)!;expect(again.rating).toBeNull();expect(again.ratedHere).toBe(false);
-  // Deleting removes the file for good, but never one outside the export folder and workspace.
-  await expect(G.deleteVideo(o.id)).rejects.toThrow(/outside/);expect(fs.existsSync(outside)).toBe(true);
+  // Deleting (only ever on your say-so) removes the file for good, wherever it is.
+  expect(await G.deleteVideo(o.id)).toMatchObject({deleted:'client-talk.mp4'});expect(fs.existsSync(outside)).toBe(false);
   const loose=path.join(env.VIDEO_OUTPUT,'older','holiday-ad.mp4');await G.galleryThumb(l.id);
   expect(await G.deleteVideo(l.id)).toMatchObject({deleted:'holiday-ad.mp4'});expect(fs.existsSync(loose)).toBe(false);
   const after=await G.gallery({hidden:true});expect(after.items.some(i=>i.id===l.id)).toBe(false);expect(after.hidden).toBe(0);

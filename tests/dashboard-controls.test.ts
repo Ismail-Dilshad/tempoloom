@@ -38,7 +38,7 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
    if(url.pathname==='/api/state')return route.fulfill({json:{videos:[],topics:[],can:{maxMB:2048,speech:false}}});
    if(url.pathname==='/logo.svg')return route.fulfill({body:await fs.readFile('assets/brand/logo/svg/tempoloom-wordmark-for-dark.svg'),contentType:'image/svg+xml'});
    const name=url.pathname==='/'?'index.html':path.basename(url.pathname);
-   if(!['index.html','tokens.css','app.css','shell.css','core.js','shell.js','icons.js','create.js','places.js','teach.js','studio.js','settings.js'].includes(name))return route.fulfill({status:204});
+   if(!['index.html','tokens.css','app.css','shell.css','core.js','shell.js','icons.js','create.js','learn.js','brain.js','places.js','teach.js','studio.js','settings.js'].includes(name))return route.fulfill({status:204});
    return route.fulfill({body:await fs.readFile(path.resolve('src/teach/ui',name)),contentType:name.endsWith('.js')?'text/javascript':name.endsWith('.css')?'text/css':'text/html'});
   });
   await page.goto('http://dashboard.test/#/studio/new');
@@ -49,11 +49,11 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
   const colorScheme=()=>page.evaluate(()=>getComputedStyle(document.documentElement).colorScheme);
   expect(await colorScheme()).toBe('dark');
   const logoSize=await page.locator('.logo-mark').boundingBox();
-  await page.locator('#tb-me').click();
-  await page.evaluate('App.refresh(false)');
-  await page.getByRole('menuitem',{name:'Models and keys'}).waitFor();
+  await page.locator('#rail-bell').waitFor();
+  await page.locator('#rail-settings').click();
+  await page.waitForFunction(()=>location.hash==='#/settings');
+  await page.evaluate(()=>{location.hash='/create';});await page.locator('#dock-text').waitFor();
   expect(await page.getByRole('menuitemradio').count()).toBe(0);
-  await page.keyboard.press('Escape');
   await page.emulateMedia({colorScheme:'dark'});
   await page.emulateMedia({colorScheme:'light'});
   expect(await colorScheme()).toBe('dark');
@@ -65,17 +65,22 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
   const header=await page.locator('.rail-head').boundingBox(),navigation=await page.locator('.rail-body').boundingBox(),footer=await page.locator('.rail-foot').boundingBox();
   expect(navigation!.y).toBeGreaterThanOrEqual(header!.y+header!.height);
   expect(footer!.y+footer!.height).toBeCloseTo(1000,0);
-  // The rail: five places in order, Trash and Collapse at its foot.
-  expect(await page.locator('.rail-body .navlink .lbl').allInnerTexts()).toEqual(['Create','Projects','Library','Tools','Brain']);
+  // The rail: four places (Projects lives on Create) in order, Trash and Collapse at its foot.
+  expect(await page.locator('.rail-body .navlink .lbl').allInnerTexts()).toEqual(['Studio','Brain']);
   await page.getByRole('button',{name:'Collapse',exact:true}).click();
   expect(await page.locator('#app').getAttribute('data-rail')).toBe('collapsed');
-  const projectsIcon=page.locator('.rail-body a[href="#/projects"]');
-  await projectsIcon.hover();
-  await page.locator('#dashboard-tooltip.visible',{hasText:'Projects'}).waitFor();
+  const brainIcon=page.locator('.rail-body a[href="#/brain"]');
+  await brainIcon.hover();
+  await page.locator('#dashboard-tooltip.visible',{hasText:'Brain'}).waitFor();
   await page.keyboard.press('Escape');
   await page.keyboard.press('[');
   expect(await page.locator('#app').getAttribute('data-rail')).toBe('');
   // The prompt box keeps what you wrote; its settings open in the right panel.
+  // Create shows the ways to start only while it has nothing else (no uploads, projects or outputs):
+  // the demo project is set aside here and comes back below.
+  // (taught styles are cards on Create too, so they are set aside as well)
+  const taughtWas=studio.taught;studio.taught=[];
+  studio.jobs[0]!.archived=true;await page.evaluate('App.refresh(true)');await page.locator('.create-preview-art').first().waitFor();
   const previews=await page.locator('.create-preview-art').evaluateAll(async elements=>Promise.all(elements.map(async el=>{
    const image=new Image();
    const background=getComputedStyle(el).backgroundImage;
@@ -98,6 +103,7 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
   expect(await page.locator('#dock-kind').innerText()).toContain('Edit my footage');
   await page.getByRole('button',{name:'Animate an idea'}).click();
   expect(await page.locator('#dock-kind').innerText()).toContain('Motion graphics');
+  studio.taught=taughtWas;studio.jobs[0]!.archived=false;await page.evaluate('App.refresh(true)');await page.locator('[data-group=projects]').waitFor();
   await page.locator('#view').focus();
   await page.keyboard.type('go');
   expect(await page.locator('#dock-text').inputValue()).toBe('go');
@@ -106,11 +112,11 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
   await page.getByRole('heading',{name:'Edit prompt'}).waitFor();
   const expandedPrompt=page.locator('#panel #dock-text');
   expect(await expandedPrompt.inputValue()).toBe('A complete original script.');
-  const footageMode=page.locator('#panel').getByRole('button',{name:'Edit my footage'});
+  const footageMode=page.locator('#panel .prompt-mode',{hasText:'Edit my footage'});
   await footageMode.click();
   expect(await footageMode.getAttribute('aria-pressed')).toBe('true');
   expect(await expandedPrompt.inputValue()).toBe('A complete original script.');
-  await page.locator('#panel').getByRole('button',{name:'Motion graphics'}).click();
+  await page.locator('#panel .prompt-mode',{hasText:'Motion graphics'}).click();
   await expandedPrompt.fill('Revised in the drawer.');
   await page.keyboard.press('Escape');
   await page.locator('#panel').waitFor({state:'hidden'});
@@ -176,7 +182,9 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
   // The kind pill and the command menu.
   await page.locator('#dock-kind').click();await page.getByRole('menuitemradio',{name:/Edit my footage/}).click();
   expect(await page.locator('#dock-kind').innerText()).toContain('Edit my footage');
-  await page.keyboard.press('Control+k');await page.getByRole('textbox',{name:/Search places, tools/}).fill('trash');
+  // On Create, Ctrl+K goes to the page's search first; pressed again there it opens the command menu.
+  await page.keyboard.press('Control+k');expect(await page.evaluate(()=>document.activeElement?.id)).toBe('create-search');
+  await page.keyboard.press('Control+k');await page.getByRole('textbox',{name:/Search places/}).fill('trash');
   await page.keyboard.press('Enter');await expect.poll(()=>new URL(page.url()).hash).toBe('#/trash');
   await page.evaluate(()=>{location.hash='/create';});await page.locator('#dock-text').waitFor();
   // A select created inside a dialog is enhanced too; Escape closes the list first.
@@ -211,7 +219,7 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
   await page.getByRole('button',{name:'Close the panel'}).click();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.getByRole('button',{name:'Open the menu'}).click();expect(await page.locator('#app').getAttribute('class')).toContain('open');
-  await page.locator('.navlink[href="#/projects"]').click();await page.locator('.teach-workspace-head h2',{hasText:'Projects'}).waitFor();
+  await page.locator('.navlink[href="#/create"]').click();await page.locator('[data-group=projects]').waitFor();
   expect(await page.locator('#app').getAttribute('class')).not.toContain('open');
   if(process.env.DASHBOARD_SCREENSHOTS)await page.screenshot({path:'workspace/cache/dashboard-review/home-mobile.png',fullPage:true});
   await page.evaluate(()=>{(window as any).dialog('<h2>Tooltip check</h2><button id="tip-check" title="Save your changes" aria-describedby="tip-help">Save</button><span id="tip-help">Settings</span>');});
@@ -232,11 +240,11 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
   expect(await tipButton.getAttribute('aria-describedby')).toBe('tip-help');
   await page.evaluate(()=>{(window as any).closeDialog();});
   await page.evaluate(()=>{location.hash='/studio/videos';});
-  await expect.poll(()=>new URL(page.url()).hash).toBe('#/projects');
+  await expect.poll(()=>new URL(page.url()).hash).toBe('#/create');// the project list lives on Create
   // A project goes to the trash first; only the trash deletes it, after asking.
   await page.getByRole('button',{name:'More for Waiting example',exact:true}).click();
   await page.getByRole('menuitem',{name:'Move to trash'}).or(page.getByRole('button',{name:'Move to trash'})).click();
-  await page.getByRole('heading',{name:'No projects yet'}).waitFor();
+  await page.locator('[data-group=projects]').waitFor({state:'detached'});
   await page.evaluate(()=>{location.hash='/trash';});
   const more=page.getByRole('button',{name:'More for Waiting example',exact:true});
   await more.click();await page.getByRole('button',{name:'Delete forever'}).click();
@@ -245,7 +253,7 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
   expect(new URL(page.url()).hash).toBe('#/trash');
   await more.click();await page.getByRole('button',{name:'Delete forever'}).click();
   await page.getByRole('button',{name:'Delete job',exact:true}).click();
-  await page.getByRole('heading',{name:'The trash is empty'}).waitFor();
+  await page.getByRole('heading',{name:'Trash is empty'}).waitFor();
   expect(await page.locator('#view').evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('none');
   if(process.env.DASHBOARD_SCREENSHOTS)await page.screenshot({path:'workspace/cache/dashboard-review/empty-videos-mobile.png'});
   expect(studio.jobs).toHaveLength(0);
@@ -335,27 +343,18 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
   await page.getByText('View chart data').click();
   expect(await page.locator('.chart-row').innerText()).toContain('2/4 \u00b7 50%');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  // Learn takes a link in its + popup; a post with several videos asks which one.
   await page.evaluate(()=>{location.hash='/teach/add';});
-  await page.getByRole('heading',{name:'Teach your studio something new'}).waitFor();
-  expect(await page.getByRole('button',{name:'Choose videos'}).count()).toBe(1);
+  await expect.poll(()=>new URL(page.url()).hash).toBe('#/learn');
+  const learnPrompt=page.getByRole('textbox',{name:'Learn from a video'});await learnPrompt.waitFor();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-  if(process.env.DASHBOARD_SCREENSHOTS){
-   await page.screenshot({path:'workspace/cache/dashboard-review/upload-mobile.png'});
-   await page.setViewportSize({width:1440,height:1000});
-   await page.screenshot({path:'workspace/cache/dashboard-review/upload-desktop.png'});
-  }
   const postUrl='https://www.instagram.com/p/CorrectCode/';
+  await page.getByRole('button',{name:'Add a video to learn from'}).click();
+  await page.getByRole('button',{name:'Link',exact:true}).click();
   await page.getByRole('textbox',{name:'Link to a video'}).fill(postUrl);
-  await page.getByRole('button',{name:'Open link',exact:true}).click();
-  await page.getByRole('heading',{name:'First carousel video'}).waitFor();
-  expect(confirmedLink).toBeNull();
-  const choose=page.getByRole('combobox',{name:/Choose a video from this post/});
-  await choose.click();await page.getByRole('option',{name:/Video 2/}).click();
-  await page.getByRole('heading',{name:'Second carousel video'}).waitFor();
-  expect(await page.getByRole('link',{name:'Open original video'}).getAttribute('href')).toContain('img_index=2');
-  await page.getByRole('button',{name:'Download this video'}).click();
-  await page.waitForFunction(()=>!document.querySelector('.link-pending'));
-  expect(confirmedLink).toMatchObject({url:postUrl,confirm:true,previewToken:'test-preview',selection:{id:'second',item:2}});
+  await page.getByRole('button',{name:'Bring it in'}).click();
+  await page.getByRole('menuitem',{name:'Second carousel video'}).click();
+  await expect.poll(()=>confirmedLink).toMatchObject({url:postUrl,confirm:true,previewToken:'test-preview',selection:{id:'second',item:2}});
   await page.evaluate(()=>{location.hash='/settings';});
   const budget=page.getByRole('spinbutton',{name:'Per video',exact:true});await budget.waitFor();
   await page.getByRole('button',{name:'Increase Per video',exact:true}).click();

@@ -3,12 +3,12 @@
 // each with Undo. An undo is a change too, so it shows here and can be undone (a redo).
 I.history=ICON('<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/><path d="M12 7v5l3 2"/>');
 const HI={kind:store.get('history-kind',''),busy:null};
-const KIND_LABEL={lessons:'Lessons',taste:'Taste',ratings:'Ratings'};
+const KIND_LABEL={lessons:'Rules',taste:'Taste',ratings:'Ratings'};
 const STORE_LABEL={lesson:'lesson',rule:'rule',taught:'taught video',profile:'taste profile',plan:'video',gallery:'gallery',brainjob:'record'};
 App.register('history',{
  title:()=>'History',sub:()=>'Every change, with Undo',hold:()=>!!HI.busy,
  load:()=>api('/api/history'+(HI.kind?'?kind='+HI.kind:'')),
- head:()=>({title:'History',text:'Every change to what the studio learned, your taste profiles and your ratings. Undo puts what a change touched back the way it was; anything changed again later keeps its newer value.'}),
+ head:()=>({title:'History'}),
  render(el){
   const d=this.data,all=Object.values(d.counts).reduce((a,b)=>a+b,0);
   const day=iso=>new Date(iso).toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'});
@@ -21,8 +21,8 @@ App.register('history',{
      ${e.kept.length?`<details class="hist-kept"><summary class="muted small">Some fields kept a later value</summary><ul>${e.kept.map(k=>`<li class="small" dir="auto">${esc(k)}</li>`).join('')}</ul></details>`:''}</div>
     <div class="hist-act">${e.undone?'<span class="badge wait">Undone</span>':`<button class="btn small" ${HI.busy?'disabled':''} onclick="histUndo('${esc(e.id)}')">${HI.busy===e.id?'<span class="spin"></span> ':''}${e.undoes?'Undo (redo)':'Undo'}</button>`}</div></article>`;}).join('');
   el.innerHTML=`<div class="focus-chips hist-filter" role="group" aria-label="Show">${[['','Everything',all],...Object.entries(KIND_LABEL).map(([k,l])=>[k,l,d.counts[k]])].map(([k,l,n])=>`<button aria-pressed="${HI.kind===k}" onclick="histKind('${k}')">${esc(l)} <span class="muted">${n}</span></button>`).join('')}</div>
-   ${d.entries.length?`<section class="hist-list">${rows}</section><p class="muted small" style="margin-top:14px">The newest ${d.kept} changes are kept. A taught video's file is gone once it is forgotten; Undo brings back its lessons and measurements.</p>`
-    :`<div class="card" style="margin-top:14px"><p class="muted" style="margin:0">${HI.kind?'No changes of this kind yet.':'No changes yet. Rate a step, keep a lesson or edit your taste, and it shows here with Undo.'}</p></div>`}`;
+   ${d.entries.length?`<section class="hist-list">${rows}</section>`
+    :`<div class="trash-empty"><span class="trash-empty-icon" aria-hidden="true">${I.history}</span><h2>${HI.kind?'Nothing here yet':'No changes yet'}</h2></div>`}`;
  }});
 window.histKind=k=>{HI.kind=k;store.set('history-kind',k);App.refresh(true);};
 window.histUndo=async id=>{if(HI.busy)return;HI.busy=id;App.show(false);

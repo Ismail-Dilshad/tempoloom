@@ -1,12 +1,11 @@
 // The Teach page's local server. It listens on this computer only (127.0.0.1), needs the key in
-// the link it prints, and never sends a video anywhere: uploads go to the temporary study folder
-// and are deleted once learned.
+// the link it prints, and never sends a video anywhere. Uploads are kept in the workspace; a video
+// uploaded to teach is kept in .tempoloom/teach-originals/ after its study files are removed.
 import http from 'node:http';
 import {z} from 'zod';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import os from 'node:os';
 import {randomBytes,timingSafeEqual} from 'node:crypto';
 import {pipeline} from 'node:stream/promises';
 import {Transform} from 'node:stream';
@@ -43,7 +42,7 @@ const MAX_MB=Number(process.env.TEACH_MAX_MB||'2048');
 const runCover=promisify(execFile);
 const uploadKind=z.enum(R.FILE_KINDS);
 const uploadName=z.string().min(1).max(160);
-const UI=new Set(['tokens.css','shell.css','shell.js','create.js','places.js','icons.js','app.css','core.js','taste.js','teach.js','learned.js','studio.js','gallery.js','live.js','settings.js','backup.js','script.js','ideas.js','history.js','text.js','find.js']);
+const UI=new Set(['tokens.css','shell.css','shell.js','create.js','learn.js','brain.js','places.js','icons.js','app.css','core.js','taste.js','teach.js','learned.js','studio.js','gallery.js','live.js','settings.js','backup.js','script.js','ideas.js','history.js','text.js','find.js']);
 const TYPES:Record<string,string>={'.js':'text/javascript; charset=utf-8','.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.mp4':'video/mp4','.jpg':'image/jpeg','.svg':'image/svg+xml','.ttf':'font/ttf','.json':'application/json; charset=utf-8',
  '.png':'image/png','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.webm':'video/webm','.mov':'video/quicktime','.m4v':'video/mp4','.mp3':'audio/mpeg','.wav':'audio/wav','.m4a':'audio/mp4'};
 class HttpError extends Error{constructor(public status:number,message:string){super(message);}}
@@ -110,12 +109,26 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
    if(m==='GET'&&p==='/'){res.setHeader('content-security-policy',"default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' blob: https:; frame-src https://www.youtube-nocookie.com https://www.instagram.com https://www.tiktok.com https://player.vimeo.com; frame-ancestors 'none'");return await file(req,res,path.join(here,'ui','index.html'));}
    if(m==='GET'&&p==='/api/home')return json(res,home());
    // ---------- the page's places: tools from the registry, your library, scenes across projects ----------
-   if(m==='GET'&&p==='/api/tools'){const {readRegistry}=await import('../cli/tools-registry.js');return json(res,{tools:(await readRegistry()).tools.filter(t=>t.page&&t.status==='ready').map(t=>({id:t.id,command:t.command,description:t.description,whenToUse:t.whenToUse,inputs:t.inputs,...t.page}))});}
+   if(m==='GET'&&p==='/api/tools'){const {readRegistry}=await import('../cli/tools-registry.js'),TR=await import('./tool-runner.js'),fm=TR.forms();return json(res,{tools:(await readRegistry()).tools.filter(t=>t.page&&t.status==='ready').map(t=>({id:t.id,command:t.command,description:t.description,whenToUse:t.whenToUse,inputs:t.inputs,...t.page,form:fm[t.id]??null}))});}
+   // ---------- tools from the page, without a terminal ----------
+   if(m==='POST'&&p==='/api/tools/input'){const TR=await import('./tool-runner.js');try{return json(res,await TR.saveInput(url.searchParams.get('name')||'file',req,MAX_MB*1048576));}catch(e){throw new HttpError(400,(e as Error).message);}}
+   const toolRun=/^\/api\/tools\/([a-z0-9-]+)\/(run|runs)$/.exec(p);
+   if(toolRun){const TR=await import('./tool-runner.js');
+    if(m==='POST'&&toolRun[2]==='run'){try{return json(res,await TR.startRun(toolRun[1]!,(await body(req)).values as Record<string,unknown>??{}));}catch(e){throw new HttpError(400,(e as Error).message);}}
+    if(m==='GET'&&toolRun[2]==='runs')return json(res,{runs:TR.recentRuns(toolRun[1]!)});}
+   const rr=/^\/api\/tool-runs\/([a-f0-9]{12})(\/stop)?$/.exec(p);
+   if(rr){const TR=await import('./tool-runner.js');try{return json(res,m==='POST'&&rr[2]?TR.stopRun(rr[1]!):TR.getRun(rr[1]!));}catch(e){throw new HttpError(404,(e as Error).message);}}
+   if(m==='GET'&&p==='/api/tool-results'){const TR=await import('./tool-runner.js');return json(res,{results:TR.results(),active:TR.activeRuns()});}
+   const tres=/^\/api\/tool-results\/([a-f0-9]{12})$/.exec(p);
+   if(m==='DELETE'&&tres){const TR=await import('./tool-runner.js');try{return json(res,await TR.deleteResult(tres[1]!));}catch(e){throw new HttpError(404,(e as Error).message);}}
+   if(m==='GET'&&p==='/api/tool-file'){const TR=await import('./tool-runner.js');let f:string;try{f=TR.runFile(url.searchParams.get('p')||'');}catch{throw new HttpError(404,'Not found');}return await file(req,res,f);}
    if(m==='GET'&&p==='/api/library'){const L=await import('../engine/my-library.js');return json(res,{entries:L.libraryEntries().map(e=>({id:e.id,kind:e.kind,name:e.name,added:e.added,bytes:e.bytes,description:e.description,tags:e.tags,width:e.width,height:e.height,seconds:e.seconds,bpm:e.bpm??null,energy:e.energy,colours:e.colours??[],uses:e.uses.length,available:fs.existsSync(e.file)})),kinds:L.LIB_KINDS});}
    if(m==='POST'&&p==='/api/library/upload'){
     const L=await import('../engine/my-library.js'),name=path.basename(url.searchParams.get('name')||'file').replace(/[^\p{L}\p{N}._ -]/gu,'_').slice(0,120)||'file';
     const length=Number(req.headers['content-length']??0);if(length>MAX_MB*1048576)throw new HttpError(413,`The file is over ${MAX_MB} MB`);
-    const dir=await fsp.mkdtemp(path.join(os.tmpdir(),'tl-lib-'));let size=0;
+    // Received inside the library folder (not the system's temporary folder), then added to the library for good.
+    await fsp.mkdir(path.join(L.libraryRoot(),'_incoming'),{recursive:true});
+    const dir=await fsp.mkdtemp(path.join(L.libraryRoot(),'_incoming','up-'));let size=0;
     const limit=new Transform({transform(c:Buffer,_e,cb){size+=c.length;size>MAX_MB*1048576?cb(new HttpError(413,`The file is over ${MAX_MB} MB`)):cb(null,c);}});
     try{await pipeline(req,limit,fs.createWriteStream(path.join(dir,name)));if(!size)throw new HttpError(400,'The upload was empty');const r=await L.addToLibrary([path.join(dir,name)],{copyClips:true});if(!r.added.length)throw new HttpError(400,r.skipped[0]||'This file cannot go in the library');return json(res,{added:r.added.map(a=>a.id)});}
     catch(e){throw e instanceof HttpError?e:new HttpError(400,(e as Error).message);}
@@ -157,6 +170,8 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
     catch(e){throw new HttpError(/changed since|No such|No lesson|Name the|Say videos|starred|rated good/.test((e as Error).message)?409:400,(e as Error).message);}}
    // ---------- the gallery: every video the agent made ----------
    if(m==='GET'&&p==='/api/gallery')return json(res,await G.gallery({hidden:url.searchParams.get('hidden')==='1'}));
+   const gt=/^\/api\/gallery\/([a-f0-9]{16})\/teach$/.exec(p);
+   if(m==='POST'&&gt){let f:string;try{f=await G.galleryFile(gt[1]!);}catch{throw new HttpError(404,'Not found');}return json(res,await T.draftFromFile(f));}
    const gf=/^\/gallery\/(file|thumb)\/([a-f0-9]{16})$/.exec(p);
    if(m==='GET'&&gf){let f:string;try{f=gf[1]==='thumb'?await G.galleryThumb(gf[2]!):await G.galleryFile(gf[2]!);}catch{throw new HttpError(404,'Not found');}return await file(req,res,f,gf[1]==='thumb'?'max-age=3600':'no-store');}
    // ---------- the publish kit: covers to choose from and a post package, beside the video ----------
@@ -234,7 +249,24 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
     catch(e){preview.busy=false;throw e;}
    }
 
-   const one=/^\/api\/videos\/([a-z0-9-]+)(\/teach|\/finish|\/crop)?$/.exec(p);
+   // Better names for taught videos, written by the main model. With none set, the page asks your terminal agent.
+   if(m==='POST'&&p==='/api/videos/names'){
+    const b=await body(req),ids=(Array.isArray(b.ids)?b.ids:[]).map(String).slice(0,40);if(!ids.length)throw new HttpError(400,'Choose videos to name');
+    const {readSettings}=await import('../engine/models/settings.js'),pick=readSettings().model;const names:Record<string,string>={};
+    if(!pick)return json(res,{by:'agent',renamed:[]});
+    {
+     const {chat}=await import('../engine/models/chat.js'),{record}=await import('../engine/models/spend.js');
+     const about=ids.map(id=>{const v=T.show(id);return {id,now:v.title,lessons:v.lessons.slice(0,4).map(l=>l.title),looks:(v as {style?:string[]}).style??[]};});
+     try{const r=await chat(pick,[{role:'system',content:'You name reference videos in a motion design library. Give each a short, clear name (2 to 6 words) that says what it teaches or how it looks. Plain words, no quotes, no emoji, no hashtags. Answer only JSON: {"names":{"ID":"Name"}}.'},{role:'user',content:JSON.stringify(about)}],[],{max:600});
+      if(r.usd)record({usd:r.usd,what:'Better names for taught videos',service:pick.provider});
+      const j=JSON.parse(r.text.slice(r.text.indexOf('{'),r.text.lastIndexOf('}')+1)) as {names?:Record<string,unknown>};
+      for(const [id,n] of Object.entries(j.names??{}))if(ids.includes(id)&&typeof n==='string'&&n.trim())names[id]=n.trim().slice(0,120);}
+     catch(e){throw new HttpError(502,'The model could not name them: '+(e as Error).message);}
+    }
+    const done:{id:string;title:string}[]=[];for(const [id,title] of Object.entries(names)){try{done.push({id,...T.renameVideo(id,title)});}catch{/* not learned yet */}}
+    return json(res,{by:'model',renamed:done});
+   }
+   const one=/^\/api\/videos\/([a-z0-9-]+)(\/teach|\/finish|\/crop|\/again|\/refine)?$/.exec(p);
    if(one){const [,id,action]=one;
     if(cropping.has(id!))throw new HttpError(409,'A crop is being prepared for this video. Wait a moment.');
     if(m==='POST'&&action==='/crop'){
@@ -249,14 +281,16 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
      const v=T.video(id!);if(!['draft','failed'].includes(v.status))throw new HttpError(409,'This video was already sent');
      queue(()=>T.teach(id!,input.data,o.fetcher?{fetcher:o.fetcher}:{}));return json(res,{ok:true});}
     if(m==='POST'&&action==='/finish')return json(res,await T.finish(id!));
-    if(m==='DELETE'&&!action){const v=T.video(id!);return json(res,v.status==='learned'?await T.forget(id!):await T.discard(id!));}
+    if(m==='POST'&&action==='/again')return json(res,await T.again(id!));
+    if(m==='POST'&&action==='/refine')return json(res,T.refine(id!,(await body(req)).prompt));
+    if(m==='DELETE'&&!action){const v=T.video(id!);return json(res,v.status==='learned'?await T.forget(id!,{keepLessons:url.searchParams.get('keep')==='lessons'}):await T.discard(id!));}
    }
    const lesson=/^\/api\/lessons\/([\w.:-]+)$/.exec(p);
    if(m==='POST'&&lesson){const b=await body(req),action=String(b.action);if(!['keep','remove','edit','both'].includes(action))throw new HttpError(400,'Unknown action');
     return json(res,T.review(lesson[1]!,action as 'keep',{...(typeof b.title==='string'?{title:b.title}:{}),...(typeof b.body==='string'?{body:b.body}:{})}));}
    // ---------- the Studio page ----------
    if(m==='GET'&&p==='/studio'){res.setHeader('content-security-policy',"default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' blob: https:; frame-src https://www.youtube-nocookie.com https://www.instagram.com https://www.tiktok.com https://player.vimeo.com; frame-ancestors 'none'");return await file(req,res,path.join(here,'ui','index.html'));}
-   if(m==='GET'&&p==='/api/studio/state')return json(res,{...R.overview(),taught:T.videos().filter(v=>v.status==='learned').map(v=>({id:v.id,title:v.title})),looks:(await (await import('../engine/looks.js')).listLooks()).map(l=>({name:l.name,summary:l.summary.slice(0,2).join(', ')})),profiles:Taste.profiles(),can:{maxMB:MAX_MB,fileLimits:R.fileLimits}});
+   if(m==='GET'&&p==='/api/studio/state')return json(res,{...R.overview(),taught:T.videos().filter(v=>v.status==='learned').map(v=>({id:v.id,title:v.title,palette:(v.measured?.color?.palette??[]).slice(0,4).map(c=>c.hex)})),looks:(await (await import('../engine/looks.js')).listLooks()).map(l=>({name:l.name,summary:l.summary.slice(0,2).join(', '),colors:{bgHue:l.measured.backgroundHue,bgSat:l.measured.backgroundSaturation,light:l.measured.brightness,accentHue:l.measured.accentHue}})),profiles:Taste.profiles(),can:{maxMB:MAX_MB,fileLimits:R.fileLimits}});
    if(m==='POST'&&p==='/api/studio/trash/empty'){
     const input=z.object({projects:z.array(z.string().regex(/^[a-z0-9-]+$/)),uploads:z.array(z.object({request:z.string().regex(/^r-[a-f0-9]{8}$/),trashId:z.string().regex(/^[a-f0-9]{24}$/)}))}).strict().parse(await body(req));
     let removed=0,failed=0;
@@ -299,6 +333,8 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
      // The page works on it at once when Settings say so (or the user chose it for this video).
      if(st.model&&(st.driver==='browser'||(st.driver==='ask'&&raw.drive==='page'))){const t=R.take(id!);const D=await import('../engine/driver.js');await D.drive(t.job);return json(res,{...r,job:t.job,driving:true});}
      return json(res,r);}
+    // Whether a sent request has become a job yet (the Edit prompt drawer follows it).
+    if(m==='GET'&&!action){const r=R.request(id!);return json(res,{id:r.id,status:r.status,job:r.job??null});}
     if(m==='PATCH'&&!action)return json(res,R.editBrief(id!,(await body(req)).text));
     if(m==='DELETE'&&!action)return json(res,await R.discard(id!));
    }

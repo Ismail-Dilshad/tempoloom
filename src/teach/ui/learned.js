@@ -39,27 +39,27 @@ App.register('teach/lessons',{
  }});
 window.lessonGroup=g=>{Teach.les.group=g;store.set('teach-les',Teach.les);App.show(false);};
 window.lessonStatus=s=>{Teach.les.status=s;store.set('teach-les',Teach.les);App.show(false);};
-window.keepAll=async()=>{const ids=Teach.trialShown||[];if(!ids.length||!await ask(`Keep all ${ids.length} lessons?`,'They are applied to new videos whenever they fit. You can still reword or remove each one.','Keep them'))return;
- act(async()=>{for(const id of ids)await api('/api/lessons/'+encodeURIComponent(id),{method:'POST',body:JSON.stringify({action:'both'})});},`Kept ${ids.length} lessons`);};
+window.keepAll=async()=>{const ids=Teach.trialShown||[];if(!ids.length||!await ask(`Approve all ${ids.length} rules?`,'They apply to new videos whenever they fit. You can still edit or archive each one.','Approve all'))return;
+ act(async()=>{for(const id of ids)await api('/api/lessons/'+encodeURIComponent(id),{method:'POST',body:JSON.stringify({action:'both'})});},`Approved ${ids.length} rules`);};
 window.exportLessons=()=>{
  const S=Teach.S,live=S.lessons.filter(l=>lessonState(l)!=='removed');
- const md=`# Tempoloom lessons\n\nExported ${new Date().toISOString().slice(0,10)}: ${live.length} lessons and ${S.patterns.found.length} patterns.\n\n`+
-  (S.patterns.found.length?`## Patterns your good examples share\n\n${S.patterns.found.map(p=>`- ${p.body}`).join('\n')}\n\n`:'')+
+ const md=`# Tempoloom rules\n\nExported ${new Date().toISOString().slice(0,10)}: ${live.length} rules and ${S.patterns.found.length} patterns.\n\n`+
+  (S.patterns.found.length?`## Patterns in your best examples\n\n${S.patterns.found.map(p=>`- ${p.body}`).join('\n')}\n\n`:'')+
   S.groups.map(g=>{const mine=live.filter(l=>l.group===g.id);return mine.length?`## ${g.label}\n\n`+S.topics.filter(t=>g.topics.includes(t.id)).map(t=>{const list=mine.filter(l=>(l.topics[0]||g.topics[0])===t.id);
-   return list.length?`### ${t.label}\n\n${list.map(l=>`- ${l.kind==='avoid'?'Avoid: ':''}${l.body} (${l.status==='trial'?'on trial':l.status}, confidence ${l.confidence}%)`).join('\n')}\n`:'';}).filter(Boolean).join('\n'):'';}).filter(Boolean).join('\n');
- download('tempoloom-lessons.md',md);
+   return list.length?`### ${t.label}\n\n${list.map(l=>`- ${l.kind==='avoid'?'Avoid: ':''}${l.body} (${l.status==='trial'?'needs review':l.status==='approved'?'active':l.status}, confidence ${l.confidence}%)`).join('\n')}\n`:'';}).filter(Boolean).join('\n'):'';}).filter(Boolean).join('\n');
+ download('tempoloom-rules.md',md);
 };
 window.writeLesson=()=>{
  const S=Teach.S;
- dialog(`<h2>Write a lesson</h2><p class="muted">New lessons apply immediately.</p>
-  <label class="f" for="wl">The lesson</label><textarea id="wl" dir="auto" maxlength="1500" placeholder="For example: end every ad on the logo for at least 2 seconds, with the website address under it."></textarea>
-  <fieldset class="teach-example" style="margin-top:14px"><legend>How should the studio use it?</legend><div class="example-choices"><label><input type="radio" name="wk" value="do" checked><span><b>Do this</b><small>Apply it whenever it fits.</small></span></label><label><input type="radio" name="wk" value="avoid"><span><b>Avoid this</b><small>Never do it.</small></span></label></div></fieldset>
-  <label class="f">About</label><div class="focus-chips" id="wt">${S.topics.map(t=>`<button type="button" aria-pressed="false" data-t="${t.id}">${esc(t.label)}</button>`).join('')}</div>
-  <div class="dialog-actions"><button class="btn" onclick="closeDialog()">Cancel</button><button class="btn primary" id="wsave">Save the lesson</button></div>`);
+ dialog(`<h2>Add a rule</h2><p class="muted">Rules you add are active right away.</p>
+  <label class="f" for="wl">Rule</label><textarea id="wl" dir="auto" maxlength="1500" placeholder="For example: end every ad on the logo for at least 2 seconds, with the website address under it."></textarea>
+  <fieldset class="teach-example" style="margin-top:14px"><legend>Type</legend><div class="example-choices"><label><input type="radio" name="wk" value="do" checked><span><b>Do</b><small>Apply it whenever it fits.</small></span></label><label><input type="radio" name="wk" value="avoid"><span><b>Avoid</b><small>Never do this.</small></span></label></div></fieldset>
+  <label class="f">Topics <span class="muted">(optional)</span></label><div class="focus-chips" id="wt">${S.topics.map(t=>`<button type="button" aria-pressed="false" data-t="${t.id}">${esc(t.label)}</button>`).join('')}</div>
+  <div class="dialog-actions"><button class="btn" onclick="closeDialog()">Cancel</button><button class="btn primary" id="wsave">Add rule</button></div>`);
  $('#wt').onclick=e=>{const b=e.target.closest('button');if(b)b.setAttribute('aria-pressed',b.getAttribute('aria-pressed')!=='true');};
  $('#wl').focus();
  $('#wsave').onclick=async()=>{const text=$('#wl').value.trim(),topics=[...document.querySelectorAll('#wt [aria-pressed=true]')].map(b=>b.dataset.t),avoid=document.querySelector('[name=wk]:checked').value==='avoid';
-  try{await api('/api/lessons',{method:'POST',body:JSON.stringify({text,topics,avoid})});closeDialog(true);toast('Lesson saved');await App.refresh(true);}catch(e){toast(e.message,true);}};
+  try{await api('/api/lessons',{method:'POST',body:JSON.stringify({text,topics,avoid})});closeDialog(true);toast('Rule added');await App.refresh(true);}catch(e){toast(e.message,true);}};
 };
 
 // ---------- patterns ----------

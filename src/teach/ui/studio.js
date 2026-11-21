@@ -8,12 +8,18 @@ const PRESETS=[
  {name:'Explainer, 60 s',mode:'motion',seconds:'60',shape:'horizontal',notes:'An explainer: what it is, how it works in three steps, who it is for.'},
  {name:'Talking-head short',mode:'edit',seconds:'45',shape:'vertical',captions:true,visuals:true,notes:'Keep the strongest part. Cut pauses and filler words. Big readable captions.'},
  {name:'Clean up a recording',mode:'edit',seconds:'',shape:'',captions:false,visuals:false,notes:'Keep everything said. Only remove long pauses and mistakes, fix the sound and the colour.'}];
-const VIDEO_SETTINGS_KEYS=['shape','medium','voice','captions','visuals','profile','second','same','like','useMix','mixA','mixB','mixWeight'];
+const VIDEO_SETTINGS_KEYS=['shape','medium','voice','captions','visuals','profile','second','same','like','look','useMix','mixA','mixB','mixWeight'];
 const blankBrief=()=>({id:null,mode:'motion',text:'',script:false,link:'',seconds:'30',shape:'vertical',language:'',voice:false,captions:true,visuals:true,pick:true,second:true,secondProfile:'',useColors:false,primary:'#0B1F4A',accent:'#4C8DFF',background:'#EAF1FF',like:'',notes:'',profile:'',files:[]});
 const Studio={N:{...blankBrief(),...store.get('studio-brief',{})},busy:null,sending:false,F:{},showArchived:false,
  /** Scenes of shown videos, comments being written, where a paused video was, the versions dialog. */
  TL:{},TLctx:{},CM:{},VT:{},VS:null,
- load(){return api('/api/studio/state');},
+ /** The page's state. A draft this browser remembers that is no longer on the server (deleted, or
+  *  cleaned up) is forgotten, so the next upload starts a new one; the text and settings stay. */
+ async load(){
+  const s=await api('/api/studio/state'),N=Studio.N;
+  if(N.id&&Array.isArray(s?.requests)&&!s.requests.some(r=>r.id===N.id)){N.id=null;N.files=[];N.instructionFiles=[];Studio.save();}
+  return s;
+ },
  get S(){const here=App.screens[App.route];return here?.data?.reasons?here.data:['studio/new','studio/videos','studio/scores'].map(r=>App.screens[r].data).find(Boolean);},
  save(){store.set('studio-brief',Studio.N);},
  form(job,task){return Studio.F[job+'|'+task]??=({open:false,reasons:new Set(),parts:[],note:''});}};
@@ -117,7 +123,7 @@ window.clearBrief=async()=>{if(!await ask('Start over?','The brief and its uploa
 async function ensureRequest(){const N=Studio.N;if(!N.id){N.id=(await api('/api/studio/requests',{method:'POST'})).id;Studio.save();}return N.id;}
 async function briefUpload(kind,files,{replaceLogo=true}={}){
  if(!files.length||Studio.busy||Studio.sending)return 0;
- const N=Studio.N,S=Studio.S;
+ const N=Studio.N,S=Studio.S??await Studio.load();
  let added=0;
  Studio.busy={kind,text:'Uploading '+files[0].name};
  try{const id=await ensureRequest();
@@ -140,7 +146,7 @@ async function sendBrief(){
  const blend=N.mode==='motion'&&!same&&N.useMix;
  const body={mode:N.mode,text:N.text.trim(),script:N.mode==='motion'&&N.script,link:N.mode==='motion'?N.link.trim():'',voice:N.mode==='motion'&&N.voice,captions:N.captions,visuals:N.visuals,pick:!fromCreate&&N.mode==='motion'&&N.pick,same,
   colors:!fromCreate&&N.useColors?{primary:N.primary,accent:N.accent,background:N.background}:{},notes:N.notes.trim(),
-  ...(N.mode==='art'&&N.medium?{medium:N.medium}:{}),...(!fromCreate&&N.seconds&&N.mode!=='art'?{seconds:Number(N.seconds)}:{}),...(N.shape?{shape:N.shape}:{}),...(!fromCreate&&N.language?{language:N.language}:{}),...(N.mode==='motion'&&!same&&!blend&&N.like?{like:N.like}:{}),...(blend&&N.mixA&&N.mixB?{mix:{a:N.mixA,b:N.mixB,weight:(N.mixWeight??70)/100}}:{}),...(N.profile?{profile:N.profile}:{}),second:N.second!==false,...(!fromCreate&&N.second!==false&&N.secondProfile?{secondProfile:N.secondProfile}:{})};
+  ...(N.mode==='art'&&N.medium?{medium:N.medium}:{}),...(!fromCreate&&N.seconds&&N.mode!=='art'?{seconds:Number(N.seconds)}:{}),...(N.shape?{shape:N.shape}:{}),...(!fromCreate&&N.language?{language:N.language}:{}),...(N.mode==='motion'&&!same&&!blend&&N.like?{like:N.like}:{}),...(N.mode==='motion'&&!same&&!blend&&!N.like&&N.look?{look:N.look}:{}),...(blend&&N.mixA&&N.mixB?{mix:{a:N.mixA,b:N.mixB,weight:(N.mixWeight??70)/100}}:{}),...(N.profile?{profile:N.profile}:{}),second:N.second!==false,...(!fromCreate&&N.second!==false&&N.secondProfile?{secondProfile:N.secondProfile}:{})};
  if(N.mode==='motion'&&!body.text&&!body.link)return toast('Write a script, a prompt or a topic, or give a link.',true);
  if(N.mode==='edit'&&!attachments.some(f=>f.kind==='footage'))return toast('Choose the footage to edit.',true);
  if(blend&&(!N.mixA||!N.mixB||N.mixA===N.mixB))return toast('Choose two different styles to mix.',true);
@@ -155,6 +161,10 @@ async function sendBrief(){
   const r=await api(`/api/studio/requests/${id}/submit`,{method:'POST',body:JSON.stringify(body)});const next=blankBrief();
   for(const key of [...VIDEO_SETTINGS_KEYS,'notes','script'])next[key]=N[key];
   Studio.N=next;Studio.save();Studio.sending=false;
+  // From Create: stay on Create and follow the work in the Edit prompt drawer.
+  if(fromCreate&&typeof DrawerWork!=='undefined'){
+   const title=(body.text||body.link||'New video').split('\n')[0].slice(0,90);
+   toast(r.driving?'The studio is working on it':'Sent to the studio');App.show(false);DrawerWork.follow(id,r.job,title);return;}
   if(r.driving){toast('The studio is working on it');App.go('studio/videos',r.job);}else{toast('Sent to the studio');App.go('studio/videos');}}
  catch(e){Studio.sending=false;toast(e.message,true);App.show(false);}
 }
@@ -416,26 +426,25 @@ function scoreTrend(trend){
  <details><summary>View chart data</summary>${points.map(p=>`<div class="chart-row"><a href="#/studio/videos/${encodeURIComponent(p.job)}">${esc(p.job)}</a><span>${p.good}/${p.rated} · ${p.percent}%</span></div>`).join('')}</details>`;
 }
 App.register('studio/scores',{
- head(){const s=this.data.scores;return {title:'How the studio is doing',text:`Every rating scores only the lessons its step used. ${s.good} good and ${s.bad} bad ratings across ${s.jobs} videos.`};},
  title:()=>'Scores',sub:()=>'Is it getting better?',load:Studio.load,
  render(el){
   const s=this.data.scores;s.guesses=s.guesses||{judged:0};
-  if(!s.ratings){el.innerHTML=`<div class="empty"><h2>No ratings yet</h2><p>Rate the steps of a video and the scores appear here.</p><a class="btn primary" href="#/studio/new">New video</a></div>`;return;}
+  if(!s.ratings){el.innerHTML=`<div class="no-head brain results"><header class="brain-hero"><h1>Results</h1></header><div class="trash-empty"><span class="trash-empty-icon" aria-hidden="true">${I.chart}</span><h2>No ratings yet</h2></div></div>`;return;}
   const row=l=>`<div class="lesson"><div class="row"><span class="badge ${l.status==='trial'?'wait':l.status==='retired'?'st':'good'}">${l.status==='trial'?'on trial':esc(l.status)}</span><span class="muted small" style="margin-left:auto">${l.wins} good, ${l.losses} bad, confidence ${l.confidence}%</span></div><div dir="auto" style="margin-top:4px">${esc(l.title)}</div></div>`;
   const ok=s.ratings-s.good-s.bad;
   const mix=[['Good',s.good,'var(--good)'],['Not bad',ok,'var(--warn)'],['Bad',s.bad,'var(--bad)']];
   let offset=0;
   const stops=mix.map(([,count,color])=>{const start=offset;offset+=count/s.ratings*100;return color+' '+start+'% '+offset+'%';});
-  el.innerHTML=`<div class="score-grid"><section class="card"><h2>Rating distribution</h2><div class="rating-summary"><div class="rating-ring" style="background:conic-gradient(${stops.join(',')})"><div><strong>${s.ratings}</strong><span>ratings</span></div></div><div class="rating-key">${mix.map(([label,count,color])=>`<div><i style="background:${color}"></i><span>${label}</span><b>${count}</b></div>`).join('')}</div></div></section>
-   <section class="card"><h2>First-pass approval</h2><p class="muted small">Share of first-version steps rated good, in video creation order.</p>${scoreTrend(s.trend)}</section></div>
+  el.innerHTML=`<div class="no-head brain results"><header class="brain-hero"><h1>Results <span>${s.ratings}</span></h1></header><div class="score-grid"><section class="card"><h2>Rating distribution</h2><div class="rating-summary"><div class="rating-ring" style="background:conic-gradient(${stops.join(',')})"><div><strong>${s.ratings}</strong><span>ratings</span></div></div><div class="rating-key">${mix.map(([label,count,color])=>`<div><i style="background:${color}"></i><span>${label}</span><b>${count}</b></div>`).join('')}</div></div></section>
+   <section class="card"><h2>First-pass approval</h2>${scoreTrend(s.trend)}</section></div>
   <div class="grid">   <div class="card"><h3 style="margin-bottom:12px">By step</h3><div class="bars">${s.steps.map(x=>{const n=x.good+x.ok+x.bad;return `<span>${esc(x.step)}</span><span class="barx" role="img" aria-label="${x.good} good, ${x.ok} not bad, ${x.bad} bad"><i style="width:${x.good/n*100}%;background:var(--good)"></i><i style="width:${x.ok/n*100}%;background:var(--line)"></i><i style="width:${x.bad/n*100}%;background:var(--bad)"></i></span><span class="muted small">${x.good} good, ${x.bad} bad</span>`;}).join('')}</div></div></div>
   <section class="card" style="margin-top:16px"><h2>Does the studio guess your ratings?</h2>
    ${s.guesses.judged?`<div class="meter" style="margin:14px 0 8px"><i style="width:${s.guesses.share}%"></i></div><div>${s.guesses.matched} of ${s.guesses.judged} guesses matched your rating (${s.guesses.share}%).</div>
-    <p class="muted small">${s.guesses.trusted?'It is reliable enough: the agent now improves a step it expects you to reject before showing it.':'A guess is only advice until 20 are judged and 7 in 10 match.'}</p>`
-    :'<p class="muted small">Before you rate a step, the studio guesses your rating from how you rated that kind of step before. After a few ratings the guesses are counted here.</p>'}</section>
-  <div class="cols"><div><h2 style="margin:8px 0 4px">Lessons that are working</h2>${s.best.length?s.best.map(row).join(''):'<div class="muted">None yet.</div>'}</div>
-   <div><h2 style="margin:8px 0 4px">Lessons that are failing</h2>${s.worst.length?s.worst.map(row).join(''):'<div class="muted">None. Good.</div>'}</div></div>
-  ${s.rules.length?`<h2 style="margin:22px 0 6px">Rules from your ratings</h2>${s.rules.map(r=>`<div class="lesson" dir="auto">${esc(r)}</div>`).join('')}`:''}`;
+`
+    :'<p class="muted">No guesses judged yet.</p>'}</section>
+  <div class="cols"><div><h2 style="margin:8px 0 4px">Rules that are working</h2>${s.best.length?s.best.map(row).join(''):'<div class="muted">None yet.</div>'}</div>
+   <div><h2 style="margin:8px 0 4px">Rules that are failing</h2>${s.worst.length?s.worst.map(row).join(''):'<div class="muted">None. Good.</div>'}</div></div>
+  ${s.rules.length?`<h2 style="margin:22px 0 6px">Rules from your ratings</h2>${s.rules.map(r=>`<div class="lesson" dir="auto">${esc(r)}</div>`).join('')}`:''}</div>`;
  }});
 
 /** Who works on a job: the page's own agents (with the model, the step and what they spent), or the

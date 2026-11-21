@@ -6,7 +6,7 @@ const Bk={file:null,preview:null,mode:'merge',busy:false};
 const WHAT=['Lessons and their scores','Taught videos (their measurements and lessons, not the videos)','Your taste profiles and feedback rules','Studio jobs and your ratings','Thumbnails, gallery stars and your settings (never your keys)'];
 App.register('backup',{
  title:()=>'Backup and move',sub:()=>'Everything the studio learned, in one file',load:()=>api('/api/backups'),hold:()=>Bk.busy,
- head:()=>({title:'Backup and move',text:'Everything the studio learned in one file. Keep it somewhere safe, or open it on another computer to carry on where you stopped. Your keys and your videos are never in it.'}),
+ head:()=>({title:'Backup and move'}),
  render(el){
   const d=this.data,p=Bk.preview,rows=p?p.changes.filter(c=>c.add+c.update+c.same+c.keep):[],nothing=!!p&&rows.every(c=>!c.add&&!c.update);
   const kind=k=>({manual:'made by you',auto:'weekly, automatic','before restore':'saved before a restore'}[k]||k);
@@ -20,14 +20,14 @@ App.register('backup',{
      <label><input type="radio" name="bkmode" value="merge" ${Bk.mode==='merge'?'checked':''}><span><b>Merge (recommended)</b><small>Newer wins item by item. Nothing is removed, and your own settings and taste profiles stay.</small></span></label>
      <label><input type="radio" name="bkmode" value="replace" ${Bk.mode==='replace'?'checked':''}><span><b>Replace</b><small>The backup wins everywhere it has something. Use it to make this computer match the other one.</small></span></label></div></fieldset>
     <div class="table-wrap"><table class="bk-table"><thead><tr><th>What</th><th>New</th><th>Updated</th><th>Same</th><th>Yours kept</th></tr></thead><tbody>${rows.map(c=>`<tr><td>${esc(c.what)}</td><td>${c.add}</td><td>${c.update}</td><td>${c.same}</td><td>${c.keep}</td></tr>`).join('')}</tbody></table></div>
-    <p class="muted small">Before anything changes, a backup of what is here now is saved in the backups folder, so a restore can always be undone.</p>
+    <p class="muted small">What is here now is backed up first.</p>
     ${nothing?`<div class="banner">Everything in this backup is already here${Bk.mode==='merge'?', or newer here':''}. Nothing would change.</div>`:''}
     <div class="row"><button class="btn primary" onclick="bkRestore()" ${Bk.busy||nothing?'disabled':''}>Restore</button><button class="btn ghost" onclick="Bk.file=null;Bk.preview=null;App.show(false)">Cancel</button></div>`
-   :`<p class="muted small" style="margin-top:10px">Choose a backup made here or on another computer. Nothing changes until you see what it holds and press Restore.</p>`}</section>
+   :''}</section>
   <section class="card"><div class="teach-section-head"><h3>Your backups</h3><span class="muted small">${d.backups.length}</span></div><p class="muted small bk-folder" dir="ltr">${esc(d.folder)}</p>
    ${d.backups.length?d.backups.map(b=>`<div class="service"><div class="service-main"><b dir="auto">${esc(b.name)}</b><p class="muted small">${esc(kind(b.kind))}, ${mb(b.bytes)}, ${ago(b.at)}</p></div><div class="row service-actions"><a class="btn small" href="${withKey('/api/backups/file/'+encodeURIComponent(b.name))}" download>${I.down} Download</a></div></div>`).join('')
    :'<p class="muted small">None yet.</p>'}
-   <p class="muted small" style="margin-top:12px">A backup is also made by itself once a week when the app opens; the four newest are kept.</p></section>`;
+</section>`;
   $('#bkfile').onchange=e=>{const f=e.target.files[0];if(f){Bk.file=f;bkCheck();}};
   el.querySelectorAll('[name=bkmode]').forEach(x=>x.onchange=()=>{Bk.mode=x.value;bkCheck();});
  }

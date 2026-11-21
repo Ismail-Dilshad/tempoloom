@@ -21,10 +21,12 @@ const usage=`Usage: tempoloom teach <command>
   patterns           What your good examples have in common
   keep LESSON | remove LESSON | forget ID
                      Keep or remove a lesson; forget a video and what only it taught
+  rename ID "NAME"   Give a taught video a better name (2 to 6 plain words)
 
 Topics: ${T.TEACH_TOPICS.join(', ')}
-The video is copied to a temporary folder (workspace/teach/), studied, and deleted. Your original
-file is never touched. Only numbers and lessons go to the brain.`;
+The video is copied to a study folder (workspace/teach/) and studied. An uploaded video is kept in
+.tempoloom/teach-originals/ (one from a link is not). Your original file is never touched.
+Numbers and lessons go to the brain.`;
 
 const {values:v,positionals}=parseArgs({allowPositionals:true,options:{port:{type:'string'},'no-browser':{type:'boolean'},topics:{type:'string'},topic:{type:'string',multiple:true},bad:{type:'boolean'},good:{type:'boolean'},
  title:{type:'string'},prompt:{type:'string'},start:{type:'string'},end:{type:'string'},crop:{type:'string'},mark:{type:'string',multiple:true},'no-sound':{type:'boolean'},speech:{type:'boolean'},confirm:{type:'boolean'},at:{type:'string'},limit:{type:'string'}}});
@@ -64,6 +66,7 @@ async function main(){
   case 'patterns':return out(T.updatePatterns());
   case 'keep':if(!rest[0])throw new Error('keep LESSON');return out(T.review(rest[0],'both'));
   case 'remove':if(!rest[0])throw new Error('remove LESSON');return out(T.review(rest[0],'remove'));
+  case 'rename':{const [id,...name]=rest;if(!id||!name.length)throw new Error('rename ID "NAME"');return out(T.renameVideo(id,name.join(' ')));}
   case 'forget':if(!rest[0])throw new Error('forget ID');return out(await T.forget(rest[0]));
  }
  console.error(usage);process.exitCode=1;

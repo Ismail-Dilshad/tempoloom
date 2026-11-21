@@ -152,7 +152,8 @@ describe('the app',()=>{
     expect(uploaded.ok(),await uploaded.text()).toBe(true);
    }
    await page.goto(base+'#/create');
-   await page.getByRole('button',{name:'Use a reference'}).click();
+   // Earlier tests left outputs, so Create shows them instead of the welcome: open the reference picker as its button does.
+   await page.locator('#dock-text').waitFor();await page.evaluate('Picker.open("reference")');
    await page.locator('#pick-file').setInputFiles([{name:'sample.png',mimeType:'image/png',buffer:png},{name:'clip.mp4',mimeType:'video/mp4',buffer:fs.readFileSync(clip)}]);
    await page.locator('#pick-main').getByText('clip.mp4',{exact:true}).waitFor();
    await page.waitForFunction(()=>{
@@ -161,7 +162,7 @@ describe('the app',()=>{
    });
    await page.getByRole('button',{name:'Close',exact:true}).click();
    await page.waitForFunction(()=>{
-    const previews=[...document.querySelectorAll<HTMLImageElement>('.upload-card img')];
+    const previews=[...document.querySelectorAll<HTMLImageElement>('.upload-card:not(.output-card) img')];
     return previews.length===2&&previews.every(img=>img.naturalWidth>0);
    });
    await page.waitForFunction(()=>{
@@ -174,8 +175,8 @@ describe('the app',()=>{
    expect(await page.locator('#dock-text').inputValue()).toBe('');
    expect(await page.locator('#dock-clear').isVisible()).toBe(false);
    expect(await page.locator('.dock-attachment').count()).toBe(2);
-   const detachSample=page.getByRole('button',{name:'Remove sample.png from prompt'});
-   const useSample=page.getByRole('button',{name:'Use sample.png in prompt'});
+   const detachSample=page.locator('#dock-files').getByRole('button',{name:'Remove sample.png from prompt'});
+   const useSample=page.locator('.create-uploads .upload-card[data-name="sample.png"] .upload-select');// its label says Add or Remove
    expect(await page.locator('.create-uploads img').first().evaluate(image=>getComputedStyle(image).objectFit)).toBe('contain');
    const card=await page.locator('.create-uploads .upload-card').first().boundingBox();
    expect(card!.width).toBeCloseTo(card!.height);
@@ -210,14 +211,14 @@ describe('the app',()=>{
    await page.getByRole('button',{name:'More options for library-clip.mp4'}).waitFor();
    await page.getByRole('button',{name:'More options for sample.png'}).click();
    await page.getByRole('menuitem',{name:'Rename'}).click();
-   const editor=page.locator('.upload-card').getByRole('textbox',{name:'File name'});
+   const editor=page.locator('.rename-pop').getByRole('textbox',{name:'File name'});
    expect(await editor.inputValue()).toBe('sample.png');
    await editor.fill('Unsaved.png');
    await page.getByRole('button',{name:'Cancel rename'}).click();
    await page.getByRole('button',{name:'More options for sample.png'}).click();
    await page.getByRole('menuitem',{name:'Rename'}).click();
    await editor.fill('Renamed photo.png');
-   await page.getByRole('button',{name:'Save file name'}).click();
+   await page.getByRole('button',{name:'Save name'}).click();
    await page.getByRole('button',{name:'More options for clip.mp4'}).click();
    await page.getByRole('menuitem',{name:'Rename'}).click();
    const longName='A'.repeat(64)+'.mp4';
@@ -229,12 +230,12 @@ describe('the app',()=>{
    await page.getByRole('button',{name:'More options for Renamed photo.png'}).click();
    await page.getByRole('menuitem',{name:'Move to Trash'}).click();
    await page.getByRole('button',{name:'More options for Renamed photo.png'}).waitFor({state:'detached'});
-   const detachLogo=page.getByRole('button',{name:'Remove draft-logo.png from prompt'});
+   const detachLogo=page.locator('#dock-files').getByRole('button',{name:'Remove draft-logo.png from prompt'});
    await detachLogo.click();
    await detachLogo.waitFor({state:'detached'});
    await page.locator('#dock-text').fill('A video about the ocean');
    await page.getByRole('button',{name:'Send to the studio'}).click();
-   await page.locator('#dock-send').waitFor({state:'detached'});
+   await page.locator('#drawer-start .drawer-work').waitFor();// Create stays; the drawer follows what was sent
    const sent=rq.requests().find(r=>r.input?.text==='A video about the ocean')!;
    expect(sent.files.find(file=>file.name==='draft-logo.png')?.detached).toBe(true);
    expect(rq.brief(sent)).not.toContain('draft-logo.png');
@@ -267,7 +268,7 @@ describe('the app',()=>{
    await empty.click();
    st.archive(keep,false);
    await confirmation.getByRole('button',{name:'Empty Trash'}).click();
-   await page.getByRole('heading',{name:'The trash is empty'}).waitFor();
+   await page.getByRole('heading',{name:'Trash is empty'}).waitFor();
    expect(await empty.count()).toBe(0);
    expect(fs.existsSync(disposable)).toBe(false);
    expect(fs.existsSync(active.files.find(f=>f.name==='Renamed photo.png')!.file)).toBe(true);

@@ -4,6 +4,7 @@ import {spawn} from 'node:child_process';
 import {randomUUID,createHash} from 'node:crypto';
 import {z} from 'zod';
 import {ROOT} from './config.js';
+import {projectPython} from './config-root.js';
 import {load,dir,inside,revise,save,writeJSON} from './project.js';
 import {words} from './rtl-layout.js';
 import {applyWordAlignment,validateWordAlignment} from './voice-alignment.js';
@@ -23,7 +24,7 @@ export const audioAnalysisSchema=z.object({
   flags:z.array(z.string()),reviewed:z.boolean(),reviewer:z.string().nullable()}))
 });
 export type AudioAnalysis=z.infer<typeof audioAnalysisSchema>;
-export const projectPython=()=>process.env.VIDEO_PYTHON||path.join(ROOT,'.venv',process.platform==='win32'?'Scripts/python.exe':'bin/python');
+export {projectPython};
 // Runs `python -m MODULE ...` from the project .venv and parses its single JSON result.
 export async function runPythonModule(module:string,args:string[],{timeoutMs=45*60*1000,env={},label='Python tool'}:{timeoutMs?:number;env?:Record<string,string>;label?:string}={}):Promise<unknown>{
  const executable=projectPython();

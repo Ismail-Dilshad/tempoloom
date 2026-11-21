@@ -15,9 +15,8 @@
 <div class="shell app" id="app">
  <aside class="rail side" id="side" aria-label="Places"></aside>
  <div class="scrim" id="scrim"></div>
- <header class="topbar" id="topbar">
-  <div class="tb-left"><button class="iconbtn menu" id="menu" aria-label="Open the menu"></button><h1 class="tb-title" id="title"></h1><span id="page-menu"></span></div>
-  <div class="tb-right"><div class="tb-actions" id="actions"></div><div class="row" id="tb-icons" style="gap:4px;flex-wrap:nowrap"></div></div>
+ <header class="topbar" id="topbar" aria-label="Menu"><!-- phones only: the button that opens the sidebar -->
+  <div class="tb-left"><button class="iconbtn menu" id="menu" aria-label="Open the menu"></button></div>
  </header>
  <main class="canvas main" id="canvas"><div class="view" id="view" tabindex="-1"></div></main>
  <aside class="panel" id="panel" hidden aria-labelledby="panel-title"></aside>
@@ -43,7 +42,9 @@
 <script src="/text.js"></script>
 <script src="/find.js"></script>
 <script src="/create.js"></script>
+<script src="/learn.js"></script>
 <script src="/places.js"></script>
+<script src="/brain.js"></script>
 <script src="/icons.js"></script>
 <script>App.start();</script>
 </body>

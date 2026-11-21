@@ -6,9 +6,16 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {ROOT} from '../engine/config.js';
+import {mainCheckout} from '../engine/config-root.js';
 import {ReachError} from './result.js';
 
-export const reachRoot=()=>path.resolve(process.env.TEMPOLOOM_REACH_HOME||path.join(ROOT,'.tempoloom','reach'));
+/** Reach's home. A worktree without its own uses the main checkout's, so its saved logins work there. */
+export const reachRoot=()=>{
+ if(process.env.TEMPOLOOM_REACH_HOME)return path.resolve(process.env.TEMPOLOOM_REACH_HOME);
+ const own=path.join(ROOT,'.tempoloom','reach');if(fs.existsSync(own))return own;
+ const main=mainCheckout(),shared=main&&path.join(main,'.tempoloom','reach');
+ return shared&&fs.existsSync(shared)?shared:own;
+};
 const statePath=()=>path.join(reachRoot(),'state.json');
 export type State={added?:Record<string,{at:string}>;cooldowns?:Record<string,{code:string;at:string;message?:string}>;
  backendHealth?:Record<string,Record<string,Record<string,{code:string;at:string}>>>;requestStarts?:Record<string,number>;

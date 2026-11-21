@@ -1,6 +1,7 @@
-// Teaching the brain with videos (`pnpm tempoloom teach`). A video is copied to a temporary
-// study folder, measured, looked at by the agent with the user's prompt, and deleted; only
-// numbers and lessons go to the brain. Learning is kept clean in four ways: a lesson starts on
+// Teaching the brain with videos (`pnpm tempoloom teach`). A video is copied to a study folder,
+// measured and looked at by the agent with the user's prompt; the study files are then removed,
+// but a video the user uploaded is kept in .tempoloom/teach-originals/ (one from a link is not).
+// Numbers and lessons go to the brain. Learning is kept clean in four ways: a lesson starts on
 // trial, repeats merge into what is already known (and make it stronger), a lesson that goes
 // against a known one is flagged, and what the good examples have in common becomes a pattern
 // only when enough of them agree (outliers are left out).
@@ -29,12 +30,14 @@ export const teachInput=z.object({title:z.string().trim().min(1).max(120),verdic
  topics:z.array(z.enum(TEACH_TOPICS)).min(1,'Tick at least one thing to learn'),marks:z.array(z.object({t:z.number().min(0),note:z.string().trim().max(200).default('')}).strict()).max(12).default([]),
  segment:z.object({start:z.number().min(0),end:z.number().positive()}).strict().refine(s=>s.end-s.start>=.5,'The part to study must be at least half a second').nullable().default(null),
  crop:cropShape.nullable().default(null),
- keepPlayback:z.boolean().optional(),sound:z.boolean().default(true),speech:z.boolean().default(false)}).strict();
+ keepPlayback:z.boolean().optional(),sound:z.boolean().default(true),speech:z.boolean().default(false),
+ /** After learning, the agent gives the video a clear name from what it taught. */
+ autoName:z.boolean().default(false)}).strict();
 export type TeachInput=z.input<typeof teachInput>;
 
 export type Status='draft'|'measuring'|'waiting'|'learned'|'failed';
 export type Taught={id:string;title:string;source:{kind:'upload'|'file'|'link';name:string;url?:string};verdict:'good'|'bad';prompt:string;topics:Topic[];marks:{t:number;note:string}[];
- keepPlayback?:boolean;segment:{start:number;end:number}|null;crop:Crop|null;sound:boolean;status:Status;step:string|null;error:string|null;media:{seconds:number;width:number;height:number;fps:number;audio:boolean}|null;
+ keepPlayback?:boolean;autoName?:boolean;refine?:boolean;segment:{start:number;end:number}|null;crop:Crop|null;sound:boolean;status:Status;step:string|null;error:string|null;media:{seconds:number;width:number;height:number;fps:number;audio:boolean}|null;
  measured:Measured|null;speech:{words:number;wordsPerSecond:number;hookWords:number}|null;fingerprint:number[]|null;lessons:string[];dropped:{text:string;reason:string;at:string}[];
  sheets:{file:string;shows:string;times:number[]}[];created:string;updated:string;learnedAt:string|null};
 
@@ -47,6 +50,15 @@ export function playbackFile(id:string){
  return video(id).status==='waiting'&&fs.existsSync(path.join(dir,'study.mp4'))?path.join(dir,'study.mp4'):savedClip(id);
 }
 const savedClip=(id:string)=>path.join(path.dirname(dbPath()),'teach-playback',id+'.mp4');
+/** Where the user's own uploaded video is kept for good once it is sent for study (videos from a
+ *  link are other people's, so those are still not kept). */
+const originalsDir=()=>path.join(path.dirname(dbPath()),'teach-originals');
+export function originalFile(id:string){try{const f=fs.readdirSync(originalsDir()).find(n=>n.startsWith(id+'.'));return f?path.join(originalsDir(),f):null;}catch{return null;}}
+async function keepOriginal(id:string,src:string){
+ const dest=path.join(originalsDir(),id+(path.extname(src)||'.mp4'));await fsp.mkdir(originalsDir(),{recursive:true});
+ try{await fsp.rename(src,dest);}catch{await fsp.copyFile(src,dest+'.partial');await fsp.rename(dest+'.partial',dest);await fsp.rm(src,{force:true});}
+ return dest;
+}
 export function renameVideo(id:string,title:unknown){
  const v=video(id);
  if(v.status!=='learned')throw new Error('Finish learning before renaming the video');
@@ -82,6 +94,10 @@ export async function draftFromFile(file:string){
  await fsp.copyFile(abs,path.join(dir,'source'+(path.extname(abs).toLowerCase().replace(/[^.a-z0-9]/g,'')||'.mp4')));
  return draft(id,{kind:'file',name:path.basename(abs)});
 }
+/** Learn again: what is kept of a taught video (your original, or its study clip) comes back as a
+ *  new video to teach; a link is found again by the page. Null when nothing of it is kept. */
+export function againFile(id:string){const v=video(id);return originalFile(id)??(fs.existsSync(savedClip(id))?savedClip(id):null);}
+export async function again(id:string){const f=againFile(id);if(!f)throw new Error('Nothing of this video is kept to learn from again');const d=await draftFromFile(f);const v=video(d.id);v.title=video(id).title;return save(v);}
 /** A link: reports the title, length and size first; downloads (for study only) with confirm. */
 export async function draftFromLink(url:string,confirm:boolean,selection?:{item:number;id:string}){
  const {referenceInfo,downloadReference}=await import('../sourcing/reference-video.js');
@@ -114,7 +130,7 @@ export async function previewCrop(id:string,input:unknown){
 export async function teach(id:string,input:TeachInput,o:{fetcher?:typeof fetch}={}){
  const v=video(id);if(!['draft','failed'].includes(v.status))throw new Error(`"${v.title}" was already sent for learning`);
  const i=teachInput.parse(input),dir=studyDir(id),src=sourceFile(id);if(!src)throw new Error('The uploaded video is gone; upload it again');
- Object.assign(v,{title:i.title,keepPlayback:i.keepPlayback===true,verdict:i.verdict,prompt:i.prompt,topics:i.topics,marks:[...i.marks].sort((a,b)=>a.t-b.t),segment:i.segment,crop:i.crop,sound:i.sound,status:'measuring',step:'Cutting the part to study',error:null});save(v);
+ Object.assign(v,{title:i.title,keepPlayback:i.keepPlayback===true,autoName:i.autoName,verdict:i.verdict,prompt:i.prompt,topics:i.topics,marks:[...i.marks].sort((a,b)=>a.t-b.t),segment:i.segment,crop:i.crop,sound:i.sound,status:'measuring',step:'Cutting the part to study',error:null});save(v);
  const step=(s:string)=>{v.step=s;save(v);};
  try{
   const study=path.join(dir,'study.mp4');
@@ -135,8 +151,10 @@ export async function teach(id:string,input:TeachInput,o:{fetcher?:typeof fetch}
   const sheets=await frameSheets(study,path.join(dir,'sheets'),v.measured,v.marks);
   v.sheets=sheets.map(s=>({...s,file:rel(s.file)}));
   await thumbnail(study,thumbFile(id),v.measured.media.seconds/3).catch(()=>undefined);
-  // The upload and its preview are no longer needed: only the studied part stays until the agent has looked.
-  await fsp.rm(src,{force:true});await fsp.rm(path.join(dir,'preview.mp4'),{force:true});
+  // The user's own upload is kept for good (teach-originals); a video from a link is not kept.
+  // The page's preview is no longer needed.
+  if(v.source.kind==='link')await fsp.rm(src,{force:true});else await keepOriginal(id,src);
+  await fsp.rm(path.join(dir,'preview.mp4'),{force:true});
   v.status='waiting';v.step=null;return save(v);
  }catch(e){v.status='failed';v.step=null;v.error=(e as Error).message.slice(0,400);save(v);throw e;}
 }
@@ -157,15 +175,19 @@ export function next(id?:string){
    learnOnly:v.topics,marks:v.marks,studiedPart:v.segment,cropped:!!v.crop},
   measured:v.measured?strip(v.measured):null,speech:v.speech?{...v.speech,text:fs.existsSync(speech)?rel(speech):null}:null,
   look:v.sheets,
+  ...(v.refine?{refine:{why:'The user asked to refine what this video taught. Its video is not kept, so there are no frames: work from "measured", "speech" and its current lessons.',
+   lessons:lessonsOf(v).filter(l=>!['rejected','retired'].includes(l.status)).map(l=>({id:l.id,status:l.status,text:l.body}))}}:{}),
   similar:similar(v.id,3).map(s=>({title:s.title,example:s.verdict,alike:s.likeness.overall,mostAlikeIn:s.mostAlikeIn,lessons:s.lessons.map(l=>l.title)})),
   patterns:patterns().found.map(p=>p.title),
   how:[
-   'Open every image in "look" (they are frame sheets; "times" are the seconds of each frame, left to right, top to bottom).',
+   ...(v.refine?['This is a refine: read "refine.lessons" and the prompt. Remove a lesson that is wrong or vague: pnpm tempoloom teach remove LESSON, and write better ones (below). Keep good ones as they are.']
+    :['Open every image in "look" (they are frame sheets; "times" are the seconds of each frame, left to right, top to bottom).']),
    'Follow the prompt. Learn only the topics in "learnOnly"; a lesson on anything else is dropped.',
    `Write 2 to 6 lessons. Each is one thing to ${v.verdict==='good'?'do again':'avoid'} in future videos, with numbers from "measured" where they fit (seconds, counts, percentages).`,
    'A lesson is a way of working, not a description of this video: never its words, logo, people or story, and nothing that would copy it.',
    `Save each: pnpm tempoloom teach learn ${v.id} --topic TOPIC "THE LESSON"   (add --at SECONDS when it is about one moment)`,
-   `Then: pnpm tempoloom teach finish ${v.id}   (${v.keepPlayback?'keeps a playable study clip in your library':'deletes the video and its frames'})`]};
+   `Then: pnpm tempoloom teach finish ${v.id}   (${v.keepPlayback?'keeps a playable study clip in your library':'deletes the video and its frames'})`,
+   ...(v.autoName?[`Last, give it a clear name of 2 to 6 plain words that says what it teaches or how it looks (not its caption or account name): pnpm tempoloom teach rename ${v.id} "NAME"`]:[])]};
 }
 
 const STOP=new Set('the and for with that this are was you your from into about make have has not but its their then than when each every over under more most very use uses using used video videos should always never keep avoid dont'.split(' '));
@@ -244,21 +266,32 @@ async function finishNow(id:string){
   }else if(!fs.existsSync(dest))throw new Error('The study clip is missing');
  }
  await fsp.rm(studyDir(id),{recursive:true,force:true});
- v.status='learned';v.sheets=[];v.learnedAt=now();save(v);
+ v.status='learned';v.sheets=[];v.learnedAt=now();v.refine=false;save(v);
  const p=updatePatterns();exportCommitted();
- return {id,title:v.title,deleted:v.keepPlayback?'temporary study files':'the video and its frames',kept:{lessons:v.lessons.length,dropped:v.dropped.length,measurements:true},patterns:p.found.map(x=>x.title),
+ const original=originalFile(id);
+ return {id,title:v.title,deleted:v.keepPlayback||original?'temporary study files':'the video and its frames',...(original?{original}:{}),kept:{lessons:v.lessons.length,dropped:v.dropped.length,measurements:true},patterns:p.found.map(x=>x.title),
   next:videos().some(x=>x.status==='waiting')?'Another video is waiting: pnpm tempoloom teach next':'Nothing else is waiting.'};
+}
+/** Refine what a learned video taught, from its measurements and lessons (no video needed): it waits
+ *  for the agent again with the user's direction, and is learned again when the agent finishes. */
+export function refine(id:string,prompt:unknown){
+ const v=video(id);if(v.status!=='learned')throw new Error('Only a learned video can be refined');
+ const why=z.string().trim().min(3,'Say what to refine').max(2000).parse(prompt);
+ Object.assign(v,{status:'waiting' as Status,prompt:why,refine:true,keepPlayback:fs.existsSync(savedClip(id))});save(v);
+ return {id,status:v.status,next:`Tell your agent: study the videos I taught (pnpm tempoloom teach next ${id})`};
 }
 /** Removes an upload that was never taught, or stops a video that failed. */
 export async function discard(id:string){const v=video(id);if(v.status==='learned')throw new Error('This video was learned; to remove what it taught use: teach forget '+id);
  if(v.status==='measuring')throw new Error('It is being measured; wait a moment');
  return forget(id);}
 /** Forgets a taught video: its record, and the lessons that came only from it and were never used. */
-export function forget(id:string){const v=video(id);return v.status==='learned'?change({kind:'lessons',title:`Forgot the taught video "${v.title.slice(0,70)}" (Undo brings back its lessons; the video file itself is gone)`},()=>forgetNow(id)):forgetNow(id);}
-async function forgetNow(id:string){
+export function forget(id:string,o:{keepLessons?:boolean}={}){const v=video(id);return v.status==='learned'?change({kind:'lessons',title:o.keepLessons?`Removed the taught video "${v.title.slice(0,70)}" and kept its lessons`:`Forgot the taught video "${v.title.slice(0,70)}" (Undo brings back its lessons; the video file itself is gone)`},()=>forgetNow(id,o)):forgetNow(id,o);}
+async function forgetNow(id:string,o:{keepLessons?:boolean}={}){
  const v=video(id),removed:string[]=[],kept:string[]=[];
  await fsp.rm(studyDir(id),{recursive:true,force:true});await fsp.rm(thumbFile(id),{force:true});await fsp.rm(savedClip(id),{force:true});await fsp.rm(savedClip(id)+'.partial',{force:true});
+ const original=originalFile(id);if(original)await fsp.rm(original,{force:true});
  for(const lid of v.lessons){const k=getKnowledge(lid);if(!k)continue;
+  if(o.keepLessons){kept.push(lid);continue;}
   if(k.source===`teach:${id}`&&k.uses===0&&!k.evidence.some(e=>e.startsWith('teach:')&&e!==`teach:${id}`)){removeKnowledge(lid);removed.push(lid);}else kept.push(lid);}
  removeVideo(id);updatePatterns();exportCommitted();
  return {forgot:v.title,lessonsRemoved:removed,lessonsKept:kept,note:kept.length?'Kept lessons were also seen elsewhere or already used in a job.':undefined};
@@ -349,7 +382,7 @@ export function overview(){
  // Every taught lesson: from videos, and the ones the user wrote themselves.
  const all=[...vs.flatMap(v=>lessonsOf(v)),...allKnowledge().filter(k=>k.tags.includes('mine')).map(lessonView)],uniq=[...new Map(all.map(l=>[l.id,l])).values()].sort((a,b)=>b.created.localeCompare(a.created));
  return {videos:vs.map(v=>({id:v.id,title:v.title,source:v.source.kind,verdict:v.verdict,status:v.status,step:v.step,error:v.error,prompt:v.prompt,topics:v.topics,group:groupOfTopics(v.topics),style:styleTags(v.measured),marks:v.marks,media:v.media,created:v.created,learnedAt:v.learnedAt,
-   measured:v.measured?strip(v.measured):null,speech:v.speech,lessons:lessonsOf(v),dropped:v.dropped,hasPlayback:(v.status==='waiting'&&fs.existsSync(path.join(studyDir(v.id),'study.mp4')))||fs.existsSync(savedClip(v.id)),hasThumb:fs.existsSync(thumbFile(v.id)),
+   measured:v.measured?strip(v.measured):null,speech:v.speech,lessons:lessonsOf(v),dropped:v.dropped,hasPlayback:(v.status==='waiting'&&fs.existsSync(path.join(studyDir(v.id),'study.mp4')))||fs.existsSync(savedClip(v.id)),hasThumb:fs.existsSync(thumbFile(v.id)),canAgain:!!(originalFile(v.id)||fs.existsSync(savedClip(v.id))),link:v.source.kind==='link'?v.source.url??null:null,
    similar:v.fingerprint&&['waiting','learned'].includes(v.status)?similar(v.id,3).map(s=>({id:s.id,title:s.title,alike:Math.round(s.likeness.overall*100),mostAlikeIn:s.mostAlikeIn})):[]})),
   patterns:p,lessons:uniq,groups:GROUPS.map(g=>({id:g.id,label:g.label,about:g.about,topics:g.topics})),
   conflicts:uniq.filter(l=>l.conflictWith&&l.status==='trial').map(l=>{const o=getKnowledge(l.conflictWith!);return o&&!['rejected','retired'].includes(o.status)?{lesson:l,against:lessonView(o)}:null;}).filter(Boolean),

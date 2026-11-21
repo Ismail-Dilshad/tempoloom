@@ -32,7 +32,7 @@ describe('design tokens',()=>{
   expect(contrast(t['on-accent']!,t['accent-fill']!),'white on a filled blue button').toBeGreaterThanOrEqual(4.5);
  });
  it('are the only place the new shell names colours',()=>{
-  for(const f of ['shell.css','shell.js','create.js','places.js'])expect(fs.readFileSync(path.join(UI,f),'utf8'),f).not.toMatch(/#[0-9a-fA-F]{6}\b|coral/);
+  for(const f of ['shell.css','shell.js','create.js','learn.js','places.js'])expect(fs.readFileSync(path.join(UI,f),'utf8'),f).not.toMatch(/#[0-9a-fA-F]{6}\b|coral/);
   for(const f of fs.readdirSync(UI))expect(fs.readFileSync(path.join(UI,f),'utf8'),f).not.toMatch(/--coral|#f27542|#FF6B4A/i);
  });
 });
@@ -101,30 +101,22 @@ describe('places and old addresses',()=>{
    const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(8000);
    await page.goto(s.url);await page.locator('#dock-text').waitFor();
    expect(new URL(page.url()).hash).toBe('');
-   expect(await page.locator('#title').innerText()).toBe('Create');
-   const moves:[string,string,string][]=[['home','create','Create'],['studio/new','create','Create'],['studio/videos','projects','Projects'],['studio/gallery','projects/finished','Projects'],
-    ['studio/scores','brain/worked','Brain'],['studio/ideas','tools/trends','Tools'],['studio/text','tools/text','Tools'],['taste','brain/taste','Brain'],['teach/add','library/teach','Library'],
-    ['teach/library','library/references','Library'],['teach/lessons','brain/lessons','Brain'],['teach/patterns','brain/lessons','Brain'],['looks','library/looks','Library'],['scenes','library/scenes','Library'],['brain/teach','library/teach','Library'],['find','library/tidy','Library'],
+   expect(await page.title()).toMatch(/Studio · Tempoloom$/);
+   const moves:[string,string,string][]=[['home','create','Studio'],['studio/new','create','Studio'],['studio/videos','create','Studio'],['studio/gallery','create','Studio'],
+    ['studio/scores','brain/worked','Brain'],['studio/ideas','create','Studio'],['studio/text','create','Studio'],['taste','brain/taste','Brain'],['teach/add','learn','Studio'],
+    ['teach/library','learn','Studio'],['library/references','learn','Studio'],['teach/lessons','brain','Brain'],['teach/patterns','brain','Brain'],['looks','create','Studio'],['scenes','create','Studio'],['brain/teach','learn','Studio'],['find','create','Studio'],
     ['history','settings/history','Settings'],['backup','settings/backup','Settings'],['settings','settings','Settings']];
    for(const [old,now,place] of moves){
     await page.evaluate(h=>{location.hash='/'+h;},old);
     await expect.poll(()=>new URL(page.url()).hash,{message:old}).toBe('#/'+now);
-    await page.waitForFunction(p=>document.querySelector('#title')?.textContent===p||p==='Settings',place);
+    await page.waitForFunction(p=>document.title.endsWith(p+' · Tempoloom')||p==='Settings'||location.hash.startsWith('#/learn'),place);
     const current=page.locator('.rail .navlink[aria-current=page] .lbl');
     if(place!=='Settings')expect(await current.innerText(),old).toBe(place);
-    if(now.includes('/')&&now!=='library/teach')await expect.poll(()=>page.locator('.tabs [aria-current=page]').count(),{message:old}).toBe(1);
+    if(now.includes('/')&&!now.startsWith('learn')&&!now.startsWith('tools')&&!now.startsWith('brain'))await expect.poll(()=>page.locator('.tabs [aria-current=page]').count(),{message:old}).toBe(1);
    }
-   // The command menu reaches places and tools by name.
-   await page.keyboard.press('Control+k');await page.getByRole('textbox',{name:/Search places, tools/}).fill('clean audio');
-   await page.getByRole('option',{name:/Clean up audio/}).waitFor();await page.keyboard.press('Enter');
-   await page.getByRole('heading',{name:'Clean up audio'}).waitFor();
-   expect(await page.locator('.cmdline code').innerText()).toContain('pnpm tempoloom media voice');
-   await page.keyboard.press('Escape');expect(await page.locator('#panel').isHidden()).toBe(true);
-   // Keyboard: g then t goes to Tools; [ collapses the rail.
-   await page.locator('body').click({position:{x:700,y:300}});await page.keyboard.press('g');await page.keyboard.press('t');
-   await expect.poll(()=>new URL(page.url()).hash).toBe('#/tools');
-   await page.locator('.tool-card').first().waitFor();
-   expect(await page.locator('.section-head h3').allInnerTexts()).toEqual(expect.arrayContaining(['Sound','Words','Picture','Style','Art','Export']));
+   // Tools are gone: the old address opens Studio, and the sidebar has no Tools.
+   await page.evaluate(()=>{location.hash='/tools';});await expect.poll(()=>new URL(page.url()).hash).toBe('#/create');
+   expect(await page.locator('.rail .navlink .lbl').allInnerTexts()).not.toContain('Tools');
    expect(errors).toEqual([]);
   }finally{await browser.close();await s.close();}
  },60000);
