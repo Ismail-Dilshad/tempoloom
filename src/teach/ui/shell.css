@@ -1720,6 +1720,7 @@ button.video-back{border:0;background:transparent;font:var(--type-small)}
 .trash-bar h1{display:flex;align-items:center;gap:8px;margin:0;font:var(--type-title-2);font-weight:700;letter-spacing:-.015em}
 .trash-bar h1 span{height:22px;min-width:22px;display:inline-grid;place-items:center;padding:0 7px;border-radius:var(--radius-full);background:color-mix(in srgb,var(--text) 8%,transparent);font:var(--type-caption);font-weight:600;color:var(--text-2)}
 .trash-bar .btn{border-radius:var(--radius-full)}
+.ed-proj-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .trash-grid .upload-select{display:none}
 .trash-empty{display:grid;justify-items:center;gap:10px;padding:min(18vh,160px) var(--space-4);text-align:center}
 .trash-empty-icon{width:56px;height:56px;display:grid;place-items:center;border-radius:50%;background:color-mix(in srgb,var(--text) 6%,transparent);color:var(--text-3)}

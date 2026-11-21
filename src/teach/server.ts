@@ -146,6 +146,26 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
     finally{await fsp.rm(dir,{recursive:true,force:true}).catch(()=>{});}
     return;
    }
+   // The editor draws every frame itself and encodes it (VP8/VP9 in IVF), then mixes the sound (WAV). Both come
+   // in one upload, the video first (`v` bytes); ffmpeg puts them together as an MP4 (H.264/AAC) or a WebM.
+   if(m==='POST'&&p==='/api/editor/mux'){
+    const fps=Math.min(60,Math.max(12,Number(url.searchParams.get('fps'))||30)),format=url.searchParams.get('format')==='webm'?'webm':'mp4';
+    const vBytes=Number(url.searchParams.get('v'));if(!Number.isSafeInteger(vBytes)||vBytes<=32)throw new HttpError(400,'The video part is missing');
+    const dir=path.join(ROOT,process.env.VIDEO_WORKSPACE||'workspace','cache','editor-export',randomUUID());await fsp.mkdir(dir,{recursive:true});
+    const both=path.join(dir,'in.bin'),vid=path.join(dir,'in.ivf'),wav=path.join(dir,'in.wav'),out=path.join(dir,'out.'+format);let size=0;
+    const limit=new Transform({transform(c:Buffer,_e,cb){size+=c.length;size>MAX_MB*1048576?cb(new HttpError(413,`The video is over ${MAX_MB} MB`)):cb(null,c);}});
+    try{
+     await pipeline(req,limit,fs.createWriteStream(both));if(size<=vBytes+44)throw new HttpError(400,'The upload is incomplete');
+     await pipeline(fs.createReadStream(both,{start:0,end:vBytes-1}),fs.createWriteStream(vid));
+     await pipeline(fs.createReadStream(both,{start:vBytes}),fs.createWriteStream(wav));await fsp.rm(both,{force:true});
+     const codec=format==='mp4'?['-c:v','libx264','-preset','veryfast','-crf','19','-pix_fmt','yuv420p','-r',String(fps),'-c:a','aac','-b:a','192k','-movflags','+faststart']:['-c:v','copy','-c:a','libopus','-b:a','160k'];
+     await promisify(execFile)(ffmpeg,['-y','-hide_banner','-loglevel','error','-i',vid,'-i',wav,'-map','0:v:0','-map','1:a:0',...codec,out],{maxBuffer:1<<24,windowsHide:true});
+     const st=await fsp.stat(out);res.writeHead(200,{'content-type':format==='mp4'?'video/mp4':'video/webm','content-length':String(st.size),'cache-control':'no-store'});
+     await pipeline(fs.createReadStream(out),res);
+    }catch(e){if(!res.headersSent)throw e instanceof HttpError?e:new HttpError(500,'Could not make the video: '+(e as Error).message.slice(0,200));}
+    finally{await fsp.rm(dir,{recursive:true,force:true}).catch(()=>{});}
+    return;
+   }
    if(m==='GET'&&p==='/api/tool-results'){const TR=await import('./tool-runner.js');return json(res,{results:TR.results(),active:TR.activeRuns()});}
    const tres=/^\/api\/tool-results\/([a-f0-9]{12})$/.exec(p);
    if(m==='DELETE'&&tres){const TR=await import('./tool-runner.js');try{return json(res,await TR.deleteResult(tres[1]!));}catch(e){throw new HttpError(404,(e as Error).message);}}

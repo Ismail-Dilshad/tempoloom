@@ -20,27 +20,69 @@ const edEase=u=>u<.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2;
 const Ed={
  p:null,media:[],urls:{},els:{},imgs:{},time:0,playing:false,sel:null,sels:new Set(),junction:null,zoom:40,snap:true,tab:'media',ptab:null,
  past:[],future:[],dom:{},ready:null,exporting:null,clipboard:null,guides:false,recording:null,
- // ---------- saving: each project in localStorage, the files in IndexedDB ----------
+ // ---------- saving: everything in IndexedDB (projects, undo steps, the list, the files) ----------
+ // Reads are from memory (filled by load()), so the page stays simple; every write goes to IndexedDB in order,
+ // and "Saved" shows only once the browser has committed it. localStorage held only ~5 MB; older projects move here once.
+ pjson:new Map(),plist:[],
  blank:()=>({v:3,name:'Untitled project',ratio:'16:9',bg:'#000000',bgMode:'color',magnet:true,markers:[],tracks:ED_TRACKS0(),clips:[]}),
- list(){try{return JSON.parse(localStorage.getItem('editor-projects')||'[]');}catch{return [];}},
- setList(l){try{localStorage.setItem('editor-projects',JSON.stringify(l));}catch{}},
- readProject(id){try{return JSON.parse(localStorage.getItem('editor-p:'+id)||'null');}catch{return null;}},
+ list(){return this.plist;},
+ setList(l){this.plist=l;return this.persist([['meta','list',l]]);},
+ readProject(id){const s=this.pjson.get(id);try{return s?JSON.parse(s):null;}catch{return null;}},
+ writeProject(p){const s=JSON.stringify(p);this.pjson.set(p.id,s);return this.persist([['projects',p.id,s]]);},
+ deleteProject(id){this.pjson.delete(id);this.plist=this.plist.filter(q=>q.id!==id);if(this.p?.id===id){clearTimeout(this.st);this.st=null;this.p=null;}
+  return this.persist([['projects',id],['history',id],['meta','list',this.plist]]);},
  create(from){const id=this.uid(),p={...this.blank(),...(from||{}),id};p.updated=new Date().toISOString();
-  try{localStorage.setItem('editor-p:'+id,JSON.stringify(p));}catch{}this.setList([this.entry(p,null),...this.list()]);return id;},
+  this.writeProject(p);this.setList([this.entry(p,null),...this.list()]);return id;},
  entry(p,thumb){const end=(p.clips||[]).reduce((a,c)=>Math.max(a,c.start+c.dur),0);return {id:p.id,name:p.name,ratio:p.ratio,updated:p.updated||new Date().toISOString(),dur:end,clips:(p.clips||[]).length,thumb};},
  cover(){const cv=this.dom.canvas;if(!cv||!this.p.clips.length||this.exporting)return null;try{const [W,H]=this.size(),s=Math.min(320/W,320/H),c=document.createElement('canvas');c.width=Math.round(W*s);c.height=Math.round(H*s);c.getContext('2d').drawImage(cv,0,0,c.width,c.height);return c.toDataURL('image/jpeg',.7);}catch{return null;}},
  save(){if(!this.p?.id)return;this.p.updated=new Date().toISOString();clearTimeout(this.st);this.st=setTimeout(()=>this.flush(),300);this.saved(false);},
- flush(){if(!this.p?.id)return;clearTimeout(this.st);try{localStorage.setItem('editor-p:'+this.p.id,JSON.stringify(this.p));localStorage.setItem('editor-media',JSON.stringify(this.media));
-  try{localStorage.setItem('editor-h:'+this.p.id,JSON.stringify({past:this.past.slice(-20),future:this.future.slice(-20)}));}catch{localStorage.removeItem('editor-h:'+this.p.id);}
-  const old=this.list().find(x=>x.id===this.p.id),e=this.entry(this.p,this.cover()??old?.thumb??null);this.setList([e,...this.list().filter(x=>x.id!==this.p.id)]);this.saved(true);}catch{toast('This browser is out of room to save the project.',true);}},
+ flush(){if(!this.p?.id)return Promise.resolve(true);clearTimeout(this.st);this.st=null;
+  const id=this.p.id,s=JSON.stringify(this.p);this.pjson.set(id,s);
+  const old=this.list().find(x=>x.id===id),e=this.entry(this.p,this.cover()??old?.thumb??null);this.plist=[e,...this.list().filter(x=>x.id!==id)];
+  return this.persist([['projects',id,s],['history',id,{past:this.past.slice(-50),future:this.future.slice(-50)}],['meta','list',this.plist],['meta','media',this.media]])
+   .then(ok=>{if(ok&&this.p?.id===id&&!this.st)this.saved(true);return ok;});},
  saved(done){const el=this.dom.saved;if(el)el.textContent=done?'Saved':'Saving…';},
- db(){return this.dbp||(this.dbp=new Promise((res,rej)=>{const r=indexedDB.open('tempoloom-editor',1);r.onupgradeneeded=()=>r.result.createObjectStore('media');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);}));},
- async put(id,blob){const d=await this.db();await new Promise((res,rej)=>{const t=d.transaction('media','readwrite');t.objectStore('media').put(blob,id);t.oncomplete=res;t.onerror=()=>rej(t.error);});},
- async get(id){const d=await this.db();return new Promise(res=>{const q=d.transaction('media').objectStore('media').get(id);q.onsuccess=()=>res(q.result||null);q.onerror=()=>res(null);});},
- async del(id){const d=await this.db();d.transaction('media','readwrite').objectStore('media').delete(id);},
+ /** Writes in order, one transaction per call; a write never rejects (it says what went wrong once and returns false). */
+ persist(ops){return this.wq=(this.wq||Promise.resolve(true)).then(()=>this.write(ops)).then(()=>true,e=>{
+  if(!this.warned||Date.now()-this.warned>8000){this.warned=Date.now();toast(e?.name==='QuotaExceededError'?'This browser is out of room for the editor. Remove some media or old projects.':'Could not save the editor: '+(e?.message||e),true);}
+  this.saved(false);return false;});},
+ async write(ops){const d=await this.db(),stores=[...new Set(ops.map(o=>o[0]))];
+  await new Promise((res,rej)=>{const t=d.transaction(stores,'readwrite');for(const [s,k,v] of ops){const st=t.objectStore(s);if(v===undefined)st.delete(k);else st.put(v,k);}
+   t.oncomplete=res;t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error||new Error('Saving was stopped'));});},
+ async read(store,key){const d=await this.db();return new Promise(res=>{const q=d.transaction(store).objectStore(store).get(key);q.onsuccess=()=>res(q.result??null);q.onerror=()=>res(null);});},
+ async readAll(store){const d=await this.db();return new Promise((res,rej)=>{const t=d.transaction(store),s=t.objectStore(store),k=s.getAllKeys(),v=s.getAll();t.oncomplete=()=>res(k.result.map((x,i)=>[x,v.result[i]]));t.onerror=()=>rej(t.error);});},
+ db(){return this.dbp||(this.dbp=new Promise((res,rej)=>{const r=indexedDB.open('tempoloom-editor',2);
+  r.onupgradeneeded=()=>{const d=r.result;for(const s of ['media','projects','history','meta'])if(!d.objectStoreNames.contains(s))d.createObjectStore(s);};
+  r.onsuccess=()=>{r.result.onversionchange=()=>r.result.close();res(r.result);};r.onerror=()=>rej(r.error);
+  r.onblocked=()=>toast('The Editor is open in another tab with an older version. Close that tab to continue.',true);}));},
+ put(id,blob){return this.write([['media',id,blob]]);},
+ get(id){return this.read('media',id);},
+ del(id){return this.write([['media',id]]);},
+ /** Projects saved by earlier versions in localStorage move to IndexedDB once; the old keys go only after the move is committed. */
+ async fromLocal(){
+  let ls;try{ls=window.localStorage;if(!ls)return;}catch{return;}
+  const keys=Object.keys(ls).filter(k=>/^editor-(p:|h:|projects$|media$|project$)/.test(k));if(!keys.length)return;
+  const json=k=>{try{return JSON.parse(ls.getItem(k)||'null');}catch{return null;}};
+  {// merged by id: what IndexedDB already has wins
+   const ops=[],had=new Set(this.pjson.keys()),list=[...this.plist],media=[...this.media];
+   for(const k of keys){const id=k.slice(9);if(had.has(id))continue;
+    if(k.startsWith('editor-p:')){const v=ls.getItem(k);if(v)ops.push(['projects',id,v]);}else if(k.startsWith('editor-h:')){const h=json(k);if(h)ops.push(['history',id,h]);}}
+   const moved=new Set(ops.filter(o=>o[0]==='projects').map(o=>o[1]));
+   for(const e of json('editor-projects')||[])if(moved.has(e?.id)&&!list.some(x=>x.id===e.id))list.push(e);
+   for(const m of json('editor-media')||[])if(m?.id&&!media.some(x=>x.id===m.id))media.push(m);
+   ops.push(['meta','list',list],['meta','media',media]);
+   try{await this.write(ops);}catch(e){toast('Could not move your editor projects to the new storage: '+(e?.message||e),true);return;}
+   for(const [s,k,v] of ops)if(s==='projects')this.pjson.set(k,v);this.plist=list;this.media=media;
+   const old=json('editor-project');if(old?.clips?.length&&!this.plist.length)this.create(old);
+  }
+  for(const k of keys)try{ls.removeItem(k);}catch{}
+ },
  load(){return this.ready||(this.ready=(async()=>{
-  try{this.media=JSON.parse(localStorage.getItem('editor-media')||'[]');}catch{}
-  try{const old=JSON.parse(localStorage.getItem('editor-project')||'null');if(old&&!this.list().length&&old.clips?.length)this.create(old);localStorage.removeItem('editor-project');}catch{}
+  try{await this.db();}catch{toast('This browser cannot keep editor projects (its storage is off). Edits last until you reload.',true);return;}
+  for(const [k,v] of await this.readAll('projects'))if(typeof v==='string')this.pjson.set(k,v);
+  this.plist=(await this.read('meta','list'))||[];this.media=(await this.read('meta','media'))||[];
+  await this.fromLocal();
+  this.plist=this.plist.filter(x=>this.pjson.has(x.id));
   const kept=[];for(const m of this.media){const b=await this.get(m.id).catch(()=>null);if(b){this.urls[m.id]=URL.createObjectURL(b);kept.push(m);}}
   this.media=kept;
   document.fonts?.load('40px Vazirmatn').catch(()=>{});document.fonts?.load('40px Fredoka').catch(()=>{});
@@ -62,7 +104,7 @@ const Ed={
   if(this.p)this.pause();for(const el of Object.values(this.els))el.pause?.();this.els={};this.playing=false;
   this.p=this.migrate(p);this.time=0;this.sel=null;this.sels.clear();this.junction=null;this.past=[];this.future=[];
   // Undo keeps working after a reload: the last steps are saved with the project.
-  try{const h=JSON.parse(localStorage.getItem('editor-h:'+id)||'null');if(h){this.past=h.past||[];this.future=h.future||[];}}catch{}
+  this.read('history',id).then(h=>{if(h&&this.p?.id===id&&!this.past.length&&!this.future.length){this.past=h.past||[];this.future=h.future||[];}}).catch(()=>{});
   return true;
  },
  // ---------- tracks and clips ----------
@@ -105,7 +147,7 @@ const Ed={
  async importFiles(files){
   const list=[...files].filter(f=>/^(video|image|audio)\//.test(f.type));
   if(!list.length){toast('Choose videos, photos or audio.',true);return [];}
-  const made=[];
+  const made=[];navigator.storage?.persist?.().catch(()=>{});
   for(const f of list){
    const id=this.uid(),type=f.type.split('/')[0],url=URL.createObjectURL(f);this.urls[id]=url;
    const m={id,name:f.name,type,dur:type==='image'?5:0,w:0,h:0,thumbs:[],peaks:null};
@@ -341,8 +383,92 @@ const Ed={
    g.fill();}
   g.restore();
  },
- // ---------- exporting: the frame and the sound, recorded while it plays; MP4 is made by ffmpeg here ----------
+ // ---------- exporting: every frame drawn at its exact time and encoded (WebCodecs), the sound mixed offline;
+ // ffmpeg on this computer puts them together. Browsers without WebCodecs record while it plays (exportLive). ----------
  async exportVideo(o){
+  if(this.exporting)return;
+  if(o.live)return this.exportLive(o);
+  const scale=o.height/Math.min(...this.base()),fps=o.fps,t0=this.time;
+  this.pause();
+  this.exporting={scale,format:o.format,fps,name:o.name,studio:!!o.studio,offline:true};
+  const ex=this.exporting,[W,H]=this.size(),cfg=await edVideoConfig(W,H,fps,Math.min(60e6,Math.max(4e6,Math.round(W*H*fps*.12))));
+  if(!cfg){this.exporting=null;return this.exportLive(o);}
+  this.pick(null);this.drawTimeline();this.drawProps();this.fit();this.drawExport('Getting ready…');
+  const frames=Math.max(1,Math.ceil(this.end()*fps-1e-6)),chunks=[];let err=null;
+  try{
+   await this.exportReady();
+   this.drawExport('Mixing the sound…');
+   const wav=edWav(await this.mixAudio(frames/fps));if(ex.cancelled)return;
+   const enc=ex.enc=new VideoEncoder({output:ch=>{const b=new Uint8Array(ch.byteLength);ch.copyTo(b);chunks.push({b,pts:Math.round(ch.timestamp*fps/1e6)});},error:e=>{err=e;}});
+   enc.configure(cfg);
+   for(let i=0;i<frames&&!ex.cancelled;i++){
+    if(err)throw err;
+    const t=i/fps;this.time=t;await this.seekExact(t);if(ex.cancelled)break;this.time=t;this.draw();
+    const f=new VideoFrame(this.dom.canvas,{timestamp:Math.round(i*1e6/fps),duration:Math.round(1e6/fps)});
+    enc.encode(f,{keyFrame:i%(fps*2)===0});f.close();
+    while(enc.encodeQueueSize>4&&!err)await new Promise(r=>setTimeout(r,2));
+    if(i%4===0){this.drawExport(`Exporting… ${Math.floor(i/frames*90)}%`);this.drawHead();this.drawTime();}
+   }
+   if(ex.cancelled)return;
+   await enc.flush();if(err)throw err;enc.close();
+   const ivf=edIvf(chunks,W,H,fps,cfg.codec.startsWith('vp09')?'VP90':'VP80');chunks.length=0;
+   this.drawExport(ex.format==='mp4'?'Making the MP4…':'Making the WebM…');
+   const r=await fetch(withKey(`/api/editor/mux?fps=${fps}&format=${ex.format}&v=${ivf.size}`),{method:'POST',body:new Blob([ivf,wav])});
+   if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Could not make the video');
+   if(ex.cancelled)return;
+   const out=await r.blob(),name=ex.name+'.'+ex.format;edSaveFile(out,name);toast(`Exported (${frames} frames)`);if(ex.studio)this.toStudio(out,name);
+  }catch(e){if(!ex.cancelled)toast('Export stopped: '+(e?.message||e),true);}
+  finally{try{if(ex.enc&&ex.enc.state!=='closed')ex.enc.close();}catch{}
+   this.exporting=null;this.drawExport();this.fit();this.time=Math.min(t0,this.end());this.sync();this.draw();this.drawHead();this.drawTime();}
+ },
+ /** Before the first frame: the fonts of every text, every picture decoded, every video able to show a frame. */
+ async exportReady(){
+  await document.fonts?.ready;
+  const waits=[];
+  for(const c of this.p.clips){
+   if(c.text!==undefined){waits.push(document.fonts?.load(this.font(c,c.start),c.text||'a').catch(()=>{}));continue;}
+   if(c.sticker||c.asAudio)continue;const m=this.mediaOf(c);if(!m)continue;
+   if(m.type==='image')waits.push(this.image(m).decode().catch(()=>{throw new Error('The picture '+m.name+' could not be read');}));
+   else if(m.type==='video'){const el=this.element(c);if(el.readyState<2)waits.push(edWaitFor(el,'loadeddata',20000,'The video '+m.name+' did not load'));}
+  }
+  await Promise.all(waits);
+ },
+ /** Every video that can be on screen at t (or held for a transition) shows exactly its frame for t. Same targets as sync(). */
+ async seekExact(t){
+  const waits=[];
+  for(const c of this.p.clips){
+   if(c.text!==undefined||c.sticker||c.asAudio)continue;const m=this.mediaOf(c);if(!m||m.type!=='video')continue;
+   let want;
+   if(t>=c.start&&t<c.start+c.dur)want=(c.in||0)+(t-c.start)*(c.speed||1);
+   else if(c.start-t>0&&c.start-t<1.5)want=c.in||0;
+   else if(t-(c.start+c.dur)>=0&&t-(c.start+c.dur)<1.5)want=Math.max(0,(c.in||0)+c.dur*(c.speed||1)-.05);
+   else continue;
+   const el=this.element(c);if(!el.paused)el.pause();
+   if(Math.abs(el.currentTime-want)<.0005&&el.readyState>=2)continue;
+   waits.push(edSeek(el,want,m.name).then(()=>el.readyState>=2||edWaitFor(el,'canplay',15000,'The video '+m.name+' did not show its frame in time')));
+  }
+  await Promise.all(waits);
+ },
+ /** The sound of the whole video, mixed offline: the same clips, volumes, keyframes and fades as playback.
+  *  Faster or slower clips keep their pitch, as in the player (edStretch). */
+ async mixAudio(dur){
+  const sr=48000,oc=new OfflineAudioContext(2,Math.max(1,Math.round(dur*sr)),sr),bufs=new Map(),silent=new Set();
+  for(const c of this.p.clips){
+   if(c.text!==undefined||c.sticker||!(c.dur>0)||c.start>=dur)continue;const m=this.mediaOf(c);if(!m||m.type==='image')continue;
+   if(this.trackOf(c)?.muted||(c.detached&&!c.asAudio))continue;
+   if(!bufs.has(m.id)){const b=await this.get(m.id).catch(()=>null);let buf=null;if(b){try{buf=await oc.decodeAudioData(await b.arrayBuffer());}catch{buf=null;}}bufs.set(m.id,buf);}
+   const buf=bufs.get(m.id);if(!buf){silent.add(m.name);continue;} // a video without sound, or a file the browser cannot decode
+   const sp=c.speed||1,stretch=Math.abs(sp-1)>.001,n=oc.createBufferSource(),g=oc.createGain();
+   n.buffer=stretch?edStretch(oc,buf,c.in||0,c.dur*sp,sp):buf;
+   const steps=Math.max(2,Math.ceil(c.dur*120)),curve=new Float32Array(steps);
+   for(let i=0;i<steps;i++)curve[i]=this.vol(c,c.start+Math.min(c.dur*i/(steps-1),c.dur-1e-4));
+   g.gain.setValueCurveAtTime(curve,c.start,c.dur);
+   n.connect(g).connect(oc.destination);n.start(c.start,stretch?0:(c.in||0),c.dur);
+  }
+  if(silent.size)toast('No sound was found in '+[...silent].join(', ')+'. If it has sound, this browser could not read it.');
+  return oc.startRendering();
+ },
+ async exportLive(o){
   if(typeof MediaRecorder==='undefined')return toast('This browser cannot record video.',true);
   this.audio();await this.ac?.resume?.();
   const scale=o.height/Math.min(...this.base()),fps=o.fps;
@@ -363,7 +489,7 @@ const Ed={
  },
  toStudio(blob,name){edSaveToStudio(blob,name).then(()=>toast('Saved to Studio')).catch(e=>toast(e.message,true));},
  finishExport(){const e=this.exporting;if(e?.rec&&e.rec.state!=='inactive')setTimeout(()=>e.rec.stop(),200);},
- cancelExport(){const e=this.exporting;if(!e)return;e.cancelled=true;this.pause();if(e.rec&&e.rec.state!=='inactive')e.rec.stop();else{this.exporting=null;this.drawExport();this.fit();this.draw();}},
+ cancelExport(){const e=this.exporting;if(!e)return;e.cancelled=true;if(e.offline){this.drawExport('Stopping…');return;}this.pause();if(e.rec&&e.rec.state!=='inactive')e.rec.stop();else{this.exporting=null;this.drawExport();this.fit();this.draw();}},
  // ---------- voice-over: the microphone, recorded onto an audio track from the playhead ----------
  async recordVoice(){
   if(this.recording){this.recording.rec.stop();return;}
@@ -396,6 +522,32 @@ const Ed={
   }catch(e){toast(e.message,true);}
   finally{this.drawLib();}
  },
+ // ---------- project files: one .zip with project.json and the media it uses, to keep or open elsewhere ----------
+ async packProject(id){
+  if(this.p?.id===id)await this.flush();
+  const p=this.readProject(id);if(!p)throw new Error('That project is gone');
+  const used=new Set(p.clips.map(c=>c.media).filter(Boolean)),files=[],media=[];
+  for(const m of this.media.filter(m=>used.has(m.id))){const b=await this.get(m.id);if(!b)continue;files.push(['media/'+m.id+edExt(m.name),b]);media.push({...m,mime:b.type||''});}
+  files.unshift(['project.json',new Blob([JSON.stringify({app:'tempoloom-editor',v:1,project:p,media})],{type:'application/json'})]);
+  return edZip(files);
+ },
+ /** Opens a project file as a new project. Files already here (same id and size) are not stored twice. */
+ async importProjectFile(file){
+  const z=await edUnzip(file),pj=z.get('project.json');if(!pj)throw new Error('This is not an editor project file');
+  let j;try{j=JSON.parse(await pj.text());}catch{throw new Error('The project file is damaged');}
+  if(j?.app!=='tempoloom-editor'||!j.project||!Array.isArray(j.project.clips))throw new Error('This is not an editor project file');
+  const map={};
+  for(const m of Array.isArray(j.media)?j.media:[]){
+   const name=[...z.keys()].find(k=>k.startsWith('media/'+m.id+'.')||k==='media/'+m.id),part=name&&z.get(name);if(!part||!m.id)continue;
+   const here=this.media.find(x=>x.id===m.id),hb=here&&await this.get(here.id);
+   if(hb&&hb.size===part.size){map[m.id]=here.id;continue;}
+   const blob=new Blob([part],{type:m.mime||''}),id=this.uid(),{mime,...meta}=m;
+   await this.put(id,blob);this.urls[id]=URL.createObjectURL(blob);this.media.unshift({...meta,id});map[m.id]=id;
+  }
+  await this.persist([['meta','media',this.media]]);
+  const p=j.project;for(const c of p.clips)if(c.media)c.media=map[c.media]||c.media;
+  const id=this.create(this.migrate({...p,name:String(p.name||'Imported project').slice(0,80)}));await this.wq;return id;
+ },
 };
 const edFmt=t=>{t=Math.max(0,t||0);const m=Math.floor(t/60),s=Math.floor(t%60),f=Math.floor((t%1)*30);return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}:${String(f).padStart(2,'0')}`;};
 function edSaveFile(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name.replace(/[\\/:*?"<>|]+/g,'').trim()||'video';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),6000);}
@@ -411,5 +563,82 @@ async function edVideoInfo(url){
  for(let k=0;k<6;k++){v.currentTime=Math.min(dur-.05,dur*(k+.5)/6);await Promise.race([new Promise(r=>v.addEventListener('seeked',r,{once:true})),new Promise(r=>setTimeout(r,1500))]);try{thumbs.push(edThumb(v,w,h));}catch{}}
  v.removeAttribute('src');v.load();
  return {dur,w,h,thumbs};
+}
+// ---------- export helpers ----------
+/** A WebCodecs encoder setting this browser supports: VP9, else VP8 (both go in IVF, which ffmpeg reads). */
+async function edVideoConfig(W,H,fps,bitrate){
+ if(typeof VideoEncoder==='undefined'||typeof VideoFrame==='undefined'||typeof OfflineAudioContext==='undefined')return null;
+ for(const codec of ['vp09.00.51.08','vp09.00.41.08','vp8']){const cfg={codec,width:W,height:H,bitrate,framerate:fps,latencyMode:'quality'};
+  try{if((await VideoEncoder.isConfigSupported(cfg)).supported)return cfg;}catch{}}
+ return null;
+}
+function edWaitFor(el,ev,ms,msg){return new Promise((res,rej)=>{const to=setTimeout(()=>{el.removeEventListener(ev,ok);rej(new Error(msg));},ms),ok=()=>{clearTimeout(to);res();};el.addEventListener(ev,ok,{once:true});});}
+function edSeek(el,t,name){const p=edWaitFor(el,'seeked',15000,'The video '+name+' did not show its frame in time');try{el.currentTime=t;}catch{}return p;}
+/** Encoded frames in an IVF file: a 32-byte header, then each frame with its size and time (in frames). */
+function edIvf(chunks,W,H,fps,fourcc){
+ const h=new DataView(new ArrayBuffer(32)),ascii=(o,s)=>{for(let i=0;i<s.length;i++)h.setUint8(o+i,s.charCodeAt(i));};
+ ascii(0,'DKIF');h.setUint16(4,0,true);h.setUint16(6,32,true);ascii(8,fourcc);h.setUint16(12,W,true);h.setUint16(14,H,true);h.setUint32(16,fps,true);h.setUint32(20,1,true);h.setUint32(24,chunks.length,true);
+ const parts=[h.buffer];for(const c of chunks){const f=new DataView(new ArrayBuffer(12));f.setUint32(0,c.b.length,true);f.setUint32(4,c.pts,true);f.setUint32(8,0,true);parts.push(f.buffer,c.b);}
+ return new Blob(parts);
+}
+/** 16-bit PCM WAV of an AudioBuffer. */
+function edWav(b){
+ const ch=b.numberOfChannels,n=b.length,bytes=n*ch*2,d=new DataView(new ArrayBuffer(44+bytes)),s=(o,t)=>{for(let i=0;i<t.length;i++)d.setUint8(o+i,t.charCodeAt(i));};
+ s(0,'RIFF');d.setUint32(4,36+bytes,true);s(8,'WAVE');s(12,'fmt ');d.setUint32(16,16,true);d.setUint16(20,1,true);d.setUint16(22,ch,true);d.setUint32(24,b.sampleRate,true);d.setUint32(28,b.sampleRate*ch*2,true);d.setUint16(32,ch*2,true);d.setUint16(34,16,true);s(36,'data');d.setUint32(40,bytes,true);
+ const cs=[];for(let k=0;k<ch;k++)cs.push(b.getChannelData(k));let o=44;
+ for(let i=0;i<n;i++)for(let k=0;k<ch;k++){const v=Math.max(-1,Math.min(1,cs[k][i]));d.setInt16(o,v<0?v*32768:v*32767,true);o+=2;}
+ return new Blob([d.buffer],{type:'audio/wav'});
+}
+/** Plays srcDur seconds from inT at `rate` without changing the pitch (WSOLA: overlapping windows, each placed where it
+ *  best continues the last one). This is what the player does for a faster or slower clip. */
+function edStretch(oc,buf,inT,srcDur,rate){
+ const sr=buf.sampleRate,ch=buf.numberOfChannels,a0=Math.min(buf.length-1,Math.max(0,Math.floor(inT*sr))),n=Math.max(1,Math.min(buf.length-a0,Math.floor(srcDur*sr)));
+ const outN=Math.max(1,Math.round(n/rate)),out=oc.createBuffer(ch,outN,sr),N=2048,Hs=N/2,tol=512,win=new Float32Array(N);
+ for(let i=0;i<N;i++)win[i]=.5-.5*Math.cos(2*Math.PI*i/N);
+ const ins=[],outs=[];for(let k=0;k<ch;k++){ins.push(buf.getChannelData(k).subarray(a0,a0+n));outs.push(out.getChannelData(k));}
+ const mono=ins[0];let prev=-1;
+ for(let o=0,j=0;o<outN;o+=Hs,j++){
+  const nominal=Math.min(Math.max(0,n-N),Math.round(j*Hs*rate));let best=nominal;
+  if(prev>=0){const target=prev+Hs;let bc=-Infinity;
+   for(let s=Math.max(0,nominal-tol);s<=Math.min(Math.max(0,n-N),nominal+tol);s+=8){let cc=0;for(let i=0;i<Hs;i+=4)cc+=mono[s+i]*(mono[target+i]||0);if(cc>bc){bc=cc;best=s;}}}
+  for(let k=0;k<ch;k++){const I=ins[k],O=outs[k];for(let i=0;i<N&&o+i<outN;i++)O[o+i]+=(I[best+i]||0)*win[i];}
+  prev=best;
+ }
+ return out;
+}
+// ---------- project file helpers: a plain .zip (stored, not compressed: the media are compressed already) ----------
+const edCrcT=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
+function edCrc(u8,crc){let c=~crc;for(let i=0;i<u8.length;i++)c=edCrcT[(c^u8[i])&255]^(c>>>8);return (~c)>>>0;}
+const edExt=name=>(/\.[a-z0-9]{1,5}$/i.exec(name||'')||[''])[0].toLowerCase();
+async function edZip(files){
+ const enc=new TextEncoder(),parts=[],central=[];let off=0;
+ for(const [name,blob] of files){
+  const nm=enc.encode(name);let crc=0;
+  for(let p=0;p<blob.size;p+=8<<20)crc=edCrc(new Uint8Array(await blob.slice(p,p+(8<<20)).arrayBuffer()),crc);
+  if(off+30+nm.length+blob.size>=0xFFFFFFFF)throw new Error('The project is too big for one file (over 4 GB)');
+  const h=new DataView(new ArrayBuffer(30));h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(6,0x0800,true);h.setUint16(12,0x21,true);h.setUint32(14,crc,true);h.setUint32(18,blob.size,true);h.setUint32(22,blob.size,true);h.setUint16(26,nm.length,true);
+  const c=new DataView(new ArrayBuffer(46));c.setUint32(0,0x02014b50,true);c.setUint16(4,20,true);c.setUint16(6,20,true);c.setUint16(8,0x0800,true);c.setUint16(14,0x21,true);c.setUint32(16,crc,true);c.setUint32(20,blob.size,true);c.setUint32(24,blob.size,true);c.setUint16(28,nm.length,true);c.setUint32(42,off,true);
+  parts.push(h.buffer,nm,blob);central.push(c.buffer,nm);off+=30+nm.length+blob.size;
+ }
+ const size=central.reduce((a,b)=>a+b.byteLength,0),e=new DataView(new ArrayBuffer(22));
+ e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,size,true);e.setUint32(16,off,true);
+ return new Blob([...parts,...central,e.buffer],{type:'application/zip'});
+}
+/** The files in a .zip as Blob slices (nothing is read into memory until used). Only stored entries, as edZip writes. */
+async function edUnzip(file){
+ const tail=new DataView(await file.slice(Math.max(0,file.size-65557)).arrayBuffer());let e=-1;
+ for(let i=tail.byteLength-22;i>=0;i--)if(tail.getUint32(i,true)===0x06054b50){e=i;break;}
+ if(e<0)throw new Error('This is not an editor project file');
+ const n=tail.getUint16(e+10,true),size=tail.getUint32(e+12,true),at=tail.getUint32(e+16,true);
+ const cd=new DataView(await file.slice(at,at+size).arrayBuffer()),dec=new TextDecoder(),out=new Map();
+ for(let i=0,p=0;i<n;i++){
+  if(p+46>cd.byteLength||cd.getUint32(p,true)!==0x02014b50)throw new Error('The project file is damaged');
+  const method=cd.getUint16(p+10,true),cs=cd.getUint32(p+20,true),nl=cd.getUint16(p+28,true),xl=cd.getUint16(p+30,true),cl=cd.getUint16(p+32,true),lo=cd.getUint32(p+42,true);
+  const name=dec.decode(new Uint8Array(cd.buffer,cd.byteOffset+p+46,nl));
+  if(method!==0)throw new Error('This project file was repacked by another program. Export it again from the Editor.');
+  const lh=new DataView(await file.slice(lo,lo+30).arrayBuffer());if(lh.getUint32(0,true)!==0x04034b50)throw new Error('The project file is damaged');
+  const start=lo+30+lh.getUint16(26,true)+lh.getUint16(28,true);out.set(name,file.slice(start,start+cs));p+=46+nl+xl+cl;
+ }
+ return out;
 }
 async function edPeaks(file){const ac=new AudioContext();try{const buf=await ac.decodeAudioData(await file.arrayBuffer());const d=buf.getChannelData(0),n=160,step=Math.floor(d.length/n)||1,out=[];for(let i=0;i<n;i++){let m=0;for(let j=i*step;j<(i+1)*step&&j<d.length;j+=8)m=Math.max(m,Math.abs(d[j]));out.push(Math.round(m*100)/100);}return out;}finally{ac.close();}}

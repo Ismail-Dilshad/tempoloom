@@ -201,7 +201,8 @@ function edProjects(el){
  const list=Ed.list().sort((a,b)=>String(b.updated).localeCompare(String(a.updated)));
  el.innerHTML=`<div class="no-head ed-projects">
   <header class="trash-bar"><h1>Editor${list.length?` <span>${list.length}</span>`:''}</h1>
-   ${list.length?`<button type="button" class="btn small primary" data-new>${I.add} New project</button>`:''}</header>
+   <span class="ed-proj-actions"><button type="button" class="btn small" data-import-project>${I.upload} Open project file</button>${list.length?`<button type="button" class="btn small primary" data-new>${I.add} New project</button>`:''}</span>
+   <input type="file" accept=".zip,application/zip" data-project-file hidden></header>
   ${list.length?`<div class="ed-project-grid">${list.map(x=>`<article class="ed-project" data-open="${esc(x.id)}" tabindex="0" role="link" aria-label="Open ${esc(x.name)}">
     <div class="ed-project-thumb">${x.thumb?`<img src="${x.thumb}" alt="">`:`<span>${I.cut}</span>`}<span class="ed-project-ratio">${esc(x.ratio)}</span></div>
     <div class="ed-project-text"><b dir="auto">${esc(x.name)}</b><small>${x.clips?`${edFmt(x.dur).slice(0,5)} · `:''}${esc(edAgo(x.updated))}</small></div>
@@ -209,22 +210,32 @@ function edProjects(el){
    :`<div class="trash-empty"><span class="trash-empty-icon" aria-hidden="true">${I.cut}</span><h2>No projects yet</h2><button type="button" class="btn primary" data-new>${I.add} New project</button></div>`}
  </div>`;
  el.querySelectorAll('[data-new]').forEach(b=>b.onclick=()=>App.go('editor',Ed.create()));
+ const pf=el.querySelector('[data-project-file]'),pb=el.querySelector('[data-import-project]');
+ pb.onclick=()=>pf.click();
+ pf.onchange=async()=>{const file=pf.files[0];pf.value='';if(!file)return;pb.disabled=true;pb.innerHTML='<span class="spin"></span> Opening…';
+  try{const id=await Ed.importProjectFile(file);toast('Project opened');App.go('editor',id);}catch(e){toast(e.message,true);edProjects(el);}};
  el.querySelectorAll('[data-open]').forEach(c=>{const go=()=>App.go('editor',c.dataset.open);c.onclick=e=>{if(!e.target.closest('[data-more]'))go();};c.onkeydown=e=>{if(e.key==='Enter')go();};});
  el.querySelectorAll('[data-more]').forEach(b=>b.onclick=e=>{e.stopPropagation();const id=b.dataset.more,x=Ed.list().find(p=>p.id===id);if(!x)return;
-  const pop=Pop.open(b,`<button class="pop-item" data-act="open">${I.cut}<span>Open</span></button><button class="pop-item" data-act="rename">${I.text}<span>Rename</span></button><button class="pop-item" data-act="dup">${I.copy}<span>Duplicate</span></button><hr><button class="pop-item danger" data-act="del">${I.trash}<span>Delete</span></button>`,{align:'end',label:'Project'});
+  const pop=Pop.open(b,`<button class="pop-item" data-act="open">${I.cut}<span>Open</span></button><button class="pop-item" data-act="rename">${I.text}<span>Rename</span></button><button class="pop-item" data-act="dup">${I.copy}<span>Duplicate</span></button><button class="pop-item" data-act="file">${I.export}<span>Export project file</span></button><hr><button class="pop-item danger" data-act="del">${I.trash}<span>Delete</span></button>`,{align:'end',label:'Project'});
   if(!pop)return;
   pop.querySelector('[data-act=open]').onclick=()=>{Pop.close();App.go('editor',id);};
   pop.querySelector('[data-act=rename]').onclick=()=>{Pop.close();edRename(b,id);};
   pop.querySelector('[data-act=dup]').onclick=()=>{Pop.close();const p=Ed.readProject(id);if(p){const nid=Ed.create({...p,name:p.name+' copy'});const l=Ed.list(),e2=l.find(q=>q.id===nid);if(e2){e2.thumb=x.thumb;e2.dur=x.dur;e2.clips=x.clips;Ed.setList(l);}}edProjects(el);};
   pop.querySelector('[data-act=del]').onclick=async()=>{Pop.close();if(!await ask('Delete this project?','The edit is deleted. Your imported files stay in Media.','Delete',true,{file:{name:x.name}}))return;
-   try{localStorage.removeItem('editor-p:'+id);localStorage.removeItem('editor-h:'+id);}catch{}Ed.setList(Ed.list().filter(q=>q.id!==id));if(Ed.p?.id===id)Ed.p=null;edProjects(el);toast('Deleted');};
+   await Ed.deleteProject(id);edProjects(el);toast('Deleted');};
+  pop.querySelector('[data-act=file]').onclick=()=>{Pop.close();edExportProject(id,x.name);};
  });
+}
+/** Saves a project and the media it uses as one .zip, to keep it safe or open it in another browser. */
+async function edExportProject(id,name){
+ toast('Packing the project…');
+ try{edSaveFile(await Ed.packProject(id),(name||'Project')+'.zip');toast('Project file saved');}catch(e){toast(e.message,true);}
 }
 function edRename(btn,id){
  const x=Ed.list().find(p=>p.id===id);if(!x)return;
  const el=Pop.open(btn,`<form class="refine-pop"><label class="field-label" for="ed-rn">Name</label><input id="ed-rn" maxlength="80" value="${esc(x.name)}" dir="auto"><div class="refine-actions"><button type="button" class="btn small ghost" data-cancel>Cancel</button><button class="btn small primary">Save</button></div></form>`,{role:'dialog',label:'Rename',align:'end',focus:false});
  if(!el)return;const i=$('#ed-rn',el);i.focus();i.select();$('[data-cancel]',el).onclick=()=>Pop.close(true);
- $('form',el).onsubmit=e=>{e.preventDefault();const name=i.value.trim()||'Untitled project';const p=Ed.readProject(id);if(p){p.name=name;try{localStorage.setItem('editor-p:'+id,JSON.stringify(p));}catch{}}if(Ed.p?.id===id)Ed.p.name=name;
+ $('form',el).onsubmit=e=>{e.preventDefault();const name=i.value.trim()||'Untitled project';const p=Ed.readProject(id);if(p){p.name=name;Ed.writeProject(p);}if(Ed.p?.id===id)Ed.p.name=name;
   Ed.setList(Ed.list().map(q=>q.id===id?{...q,name}:q));Pop.close();edProjects($('#view'));};
 }
 /** Export: name, resolution, frame rate and format. MP4 is made by ffmpeg on this computer. */
@@ -236,15 +247,16 @@ function edExportDialog(){
   <div class="ed-xrow"><span>Resolution</span><div class="ed-seg">${res.map(([h,l])=>`<button type="button" data-res="${h}" aria-pressed="${h===1080}">${l}</button>`).join('')}</div></div>
   <div class="ed-xrow"><span>Frame rate</span><div class="ed-seg">${[24,30,60].map(f=>`<button type="button" data-fps="${f}" aria-pressed="${f===30}">${f} fps</button>`).join('')}</div></div>
   <div class="ed-xrow"><span>Format</span><div class="ed-seg"><button type="button" data-fmt="mp4" aria-pressed="true">MP4</button><button type="button" data-fmt="webm" aria-pressed="false">WebM</button></div></div>
+  ${typeof VideoEncoder!=='undefined'?`<div class="ed-xrow"><span>Frames</span><div class="ed-seg"><button type="button" data-mode="exact" aria-pressed="true">Exact</button><button type="button" data-mode="live" aria-pressed="false">Real time</button></div></div>`:''}
   <label class="ed-xrow ed-xcheck"><span>Studio</span><span class="ed-xopt"><input type="checkbox" role="switch" id="ex-studio" checked> Also save it to Studio</span></label>
   <p class="ed-xnote" id="ex-note"></p>
   <div class="ed-xactions"><button type="button" class="btn ghost" data-no>Cancel</button><button class="btn primary" type="submit">${I.down} Export</button></div></form>`);
- const f=$('.ed-export-form'),st={res:1080,fps:30,fmt:'mp4'};
- const note=()=>{const [w,h]=Ed.base(),k=st.res/short;$('#ex-note').textContent=`${Math.round(w*k/2)*2} × ${Math.round(h*k/2)*2} · ${edFmt(Ed.end()).slice(0,5)} · it plays through once while it records.`;};note();
- f.querySelectorAll('[data-res],[data-fps],[data-fmt]').forEach(b=>b.onclick=()=>{const key=b.dataset.res?'res':b.dataset.fps?'fps':'fmt';st[key]=key==='fmt'?b.dataset.fmt:Number(b.dataset[key]);
+ const f=$('.ed-export-form'),st={res:1080,fps:30,fmt:'mp4',mode:typeof VideoEncoder!=='undefined'?'exact':'live'};
+ const note=()=>{const [w,h]=Ed.base(),k=st.res/short;$('#ex-note').textContent=`${Math.round(w*k/2)*2} × ${Math.round(h*k/2)*2} · ${edFmt(Ed.end()).slice(0,5)} · ${st.mode==='exact'?'every frame is drawn exactly; footage with few keyframes can take longer than the video.':'it plays through once while it records; a busy computer can skip frames.'}`;};note();
+ f.querySelectorAll('[data-res],[data-fps],[data-fmt],[data-mode]').forEach(b=>b.onclick=()=>{const key=b.dataset.res?'res':b.dataset.fps?'fps':b.dataset.fmt?'fmt':'mode';st[key]=key==='fmt'||key==='mode'?b.dataset[key]:Number(b.dataset[key]);
   b.parentElement.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));note();});
  f.querySelector('[data-no]').onclick=()=>closeDialog();
- f.onsubmit=e=>{e.preventDefault();const name=$('#ex-name').value.trim()||Ed.p.name,studio=$('#ex-studio').checked;closeDialog(true);Ed.exportVideo({name,height:st.res,fps:st.fps,format:st.fmt,studio});};
+ f.onsubmit=e=>{e.preventDefault();const name=$('#ex-name').value.trim()||Ed.p.name,studio=$('#ex-studio').checked;closeDialog(true);Ed.exportVideo({name,height:st.res,fps:st.fps,format:st.fmt,studio,live:st.mode==='live'});};
 }
 function edBuild(el){
  const p=Ed.p;
@@ -330,6 +342,7 @@ function edBuild(el){
  new ResizeObserver(()=>{if(!Ed.playing)Ed.drawTimeline();}).observe(Ed.dom.scroll);
 }
 window.addEventListener('beforeunload',()=>{try{Ed.flush();}catch{}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&Ed.st)try{Ed.flush();}catch{}});
 window.addEventListener('hashchange',()=>{if(Ed.p&&!(App.route==='editor'&&App.arg===Ed.p.id)){Ed.pause();Ed.flush();if(Ed.recording)Ed.recording.rec.stop();}});
 function edWireTimeline(){
  const sc=Ed.dom.scroll,inner=Ed.dom.inner;
@@ -394,7 +407,7 @@ function edWirePreview(){
  };
 }
 window.addEventListener('keydown',e=>{
- if(App.route!=='editor'||!Ed.p||!Ed.dom.root?.isConnected||e.isComposing)return;
+ if(App.route!=='editor'||!Ed.p||!Ed.dom.root?.isConnected||e.isComposing||Ed.exporting)return;
  if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)||e.target.isContentEditable||$('#modal')?.innerHTML)return;
  const k=e.key.toLowerCase(),mod=e.ctrlKey||e.metaKey;let done=true;
  if(k===' '&&!mod)Ed.play();

@@ -1,5 +1,21 @@
 # Changelog
 
+## 10.3.0: Editor export you can trust, and room to save
+
+- **Frame-accurate export**: the Editor draws every frame at its exact time and encodes it in the
+  page (WebCodecs, VP9 or VP8); nothing is dropped when the computer is busy, and it no longer has
+  to play through in real time. The sound is mixed offline with the same volumes, keyframes and
+  fades as the player; faster or slower clips keep their pitch. ffmpeg on this computer makes the
+  MP4 (H.264/AAC) or WebM. Export has a Frames choice: Exact (the default; footage with few
+  keyframes can take longer than the video) or Real time (records while it plays, as before, and
+  can skip frames on a busy computer). Browsers without WebCodecs always use Real time.
+- **Projects in IndexedDB**: projects, the last 50 undo steps and the media list moved from
+  localStorage (about 5 MB) to IndexedDB, so big projects save. Older projects move over once on
+  first open. "Saved" shows only after the browser has committed the change; a full disk is said.
+- **Project files**: Export project file (a project's menu) saves the edit and the media it uses
+  as one .zip; Open project file on the Editor page opens it as a new project, in this browser or
+  another one.
+
 ## 10.2.0: Sileo notifications
 
 - **Notifications in the style of [Sileo](https://sileo.aaryan.design)**: a pill with a badge and a
