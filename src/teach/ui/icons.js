@@ -93,7 +93,10 @@ const studioIcons={
  key:["key","<path d=\"m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4\"/><path d=\"m21 2-9.6 9.6\"/><circle cx=\"7.5\" cy=\"15.5\" r=\"5.5\"/>"],
  remove:["minus","<path d=\"M5 12h14\"/>"],
  error:["circle-alert","<circle cx=\"12\" cy=\"12\" r=\"10\"/><line x1=\"12\" x2=\"12\" y1=\"8\" y2=\"12\"/><line x1=\"12\" x2=\"12.01\" y1=\"16\" y2=\"16\"/>"],
- refresh:["refresh-cw","<path d=\"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8\"/><path d=\"M21 3v5h-5\"/><path d=\"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16\"/><path d=\"M8 16H3v5\"/>"]
+ refresh:["refresh-cw","<path d=\"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8\"/><path d=\"M21 3v5h-5\"/><path d=\"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16\"/><path d=\"M8 16H3v5\"/>"],
+ freeze:["snowflake","<path d=\"M2 12h20\"/><path d=\"M12 2v20\"/><path d=\"m20 16-4-4 4-4\"/><path d=\"m4 8 4 4-4 4\"/><path d=\"m16 4-4 4-4-4\"/><path d=\"m8 20 4-4 4 4\"/>"],
+ trimL:["arrow-left-to-line","<path d=\"M3 19V5\"/><path d=\"m13 6-6 6 6 6\"/><path d=\"M7 12h14\"/>"],
+ trimR:["arrow-right-to-line","<path d=\"M17 12H3\"/><path d=\"m11 18 6-6-6-6\"/><path d=\"M21 5v14\"/>"]
 };
 for(const [key,[name,body]] of Object.entries(studioIcons)){
  I[key]=`<svg class="lucide lucide-${name}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;

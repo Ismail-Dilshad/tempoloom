@@ -1,6 +1,6 @@
 # Changelog
 
-## 10.3.0: Editor export you can trust, and room to save
+## 10.3.0: Editor export you can trust, room to save, and timeline tools
 
 - **Frame-accurate export**: the Editor draws every frame at its exact time and encodes it in the
   page (WebCodecs, VP9 or VP8); nothing is dropped when the computer is busy, and it no longer has
@@ -15,6 +15,12 @@
 - **Project files**: Export project file (a project's menu) saves the edit and the media it uses
   as one .zip; Open project file on the Editor page opens it as a new project, in this browser or
   another one.
+- **Timeline tools, as in other editors**: ripple delete (Shift+Delete) and Delete gap (right-click
+  an empty space) close the space; Q and W delete left or right of the playhead; J, K and L play
+  back, stop and play forward, faster on each press; I and O mark in and out (Shift+I/O go there,
+  Alt+X clears), shown on the ruler, and Export can make only that range; Freeze frame (Shift+F)
+  holds the frame under the playhead for 2 seconds; Replace with... swaps a clip's media and keeps
+  its place, length, effects and keyframes.
 
 ## 10.2.0: Sileo notifications
 

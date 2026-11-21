@@ -202,10 +202,83 @@ const Ed={
   if(!list.length){const c=this.p.clips.find(x=>x.track===this.main()?.id&&inside(x))||this.p.clips.find(inside);if(c)list=[c];}
   if(!list.length)return toast('Move the playhead over a clip to split it.');
   this.snapshot();let last=null;
-  for(const c of list){const first=t-c.start,b={...c,id:this.uid(),start:t,in:(c.in||0)+first*(c.speed||1),dur:c.dur-first};delete b.trans;
-   if(c.kf){b.kf={};c.kf=Object.fromEntries(Object.entries(c.kf).map(([k,f])=>{b.kf[k]=f.filter(x=>x.t>=first).map(x=>({t:x.t-first,v:x.v}));return [k,f.filter(x=>x.t<=first)];}));}
-   c.dur=first;c.fadeOut=0;b.fadeIn=0;this.p.clips.push(b);last=b.id;}
+  for(const c of list)last=this.splitClip(c,t).id;
   this.pick(last);this.after(true);
+ },
+ /** Cuts one clip in two at time t (no undo step); returns the second part. */
+ splitClip(c,t){const first=t-c.start,b={...c,id:this.uid(),start:t,in:(c.in||0)+first*(c.speed||1),dur:c.dur-first};delete b.trans;
+  if(c.kf){b.kf={};c.kf=Object.fromEntries(Object.entries(c.kf).map(([k,f])=>{b.kf[k]=f.filter(x=>x.t>=first).map(x=>({t:x.t-first,v:x.v}));return [k,f.filter(x=>x.t<=first)];}));}
+  c.dur=first;c.fadeOut=0;b.fadeIn=0;this.p.clips.push(b);return b;},
+ /** Moves every clip on a track that starts at or after `from` by d seconds (negative = left). */
+ shiftTrack(trackId,from,d,except){for(const o of this.p.clips)if(o.track===trackId&&o.start>=from-.001&&o!==except)o.start=Math.max(0,o.start+d);},
+ /** The clips the playhead tools act on: the selected ones under the playhead, else the main track's clip there, else any. */
+ underHead(){const t=this.time,inside=x=>t>x.start+.02&&t<x.start+x.dur-.02&&!this.trackOf(x)?.locked;
+  const s=this.picked().filter(inside);if(s.length)return s;const c=this.p.clips.find(x=>x.track===this.main()?.id&&inside(x))||this.p.clips.find(inside);return c?[c]:[];},
+ /** Ripple delete: the selection goes and what comes after it on the same track moves left to close the space. */
+ rippleRemove(){
+  const list=this.picked().filter(c=>!this.trackOf(c)?.locked);if(!list.length)return toast('Select a clip to ripple delete.');
+  this.snapshot();const gone=new Set(list.map(c=>c.id));this.p.clips=this.p.clips.filter(x=>!gone.has(x.id));
+  for(const id of gone){this.els[id]?.pause?.();delete this.els[id];}
+  const byTrack=new Map();for(const c of list){if(!byTrack.has(c.track))byTrack.set(c.track,[]);byTrack.get(c.track).push([c.start,c.start+c.dur]);}
+  for(const [tr,spans] of byTrack){spans.sort((a,b)=>b[0]-a[0]);// right to left, so earlier shifts do not move later spans
+   for(const [s,e] of spans){const len=e-s,free=this.p.clips.filter(o=>o.track===tr&&o.start<e-.001&&o.start+o.dur>s+.001).length===0;if(free)this.shiftTrack(tr,e,-len);}}
+  this.pick(null);this.after(true);toast(list.length>1?`Ripple deleted ${list.length} clips`:'Ripple deleted');
+ },
+ /** The empty space at time t on a track, between the clip before it and the clip after it. */
+ gapAt(trackId,t){const cl=this.p.clips.filter(c=>c.track===trackId).sort((a,b)=>a.start-b.start);if(cl.some(c=>t>=c.start&&t<c.start+c.dur))return null;
+  const next=cl.find(c=>c.start>t);if(!next)return null;const prev=[...cl].reverse().find(c=>c.start+c.dur<=t+.001);const s=prev?prev.start+prev.dur:0;return next.start-s>.01?{s,e:next.start}:null;},
+ closeGap(trackId,t){const tr=this.p.tracks.find(x=>x.id===trackId);if(!tr||tr.locked)return;const g=this.gapAt(trackId,t);if(!g)return;
+  this.snapshot();this.shiftTrack(trackId,g.e,-(g.e-g.s));this.after(true);toast('Gap closed');},
+ /** Trim to the playhead and close the space (Q: the part before it goes; W: the part after it goes). */
+ trimTo(side){
+  const t=this.time,list=this.underHead();if(!list.length)return toast('Move the playhead over a clip.');
+  this.snapshot();let back=null;
+  for(const c of list){const sp=c.speed||1,end=c.start+c.dur;
+   if(side==='start'){const d=t-c.start;c.in=(c.in||0)+(c.media?d*sp:0);c.dur-=d;delete c.trans;
+    if(c.kf)for(const k of Object.keys(c.kf)){const f=c.kf[k];const v0=this.val({...c,dur:c.dur+d,kf:{[k]:f}},k,t);c.kf[k]=[{t:0,v:v0},...f.filter(x=>x.t>d).map(x=>({t:x.t-d,v:x.v}))];}
+    this.shiftTrack(c.track,end,-d,c);back=back??c.start;}
+   else{const d=end-t;c.dur-=d;this.shiftTrack(c.track,end,-d,c);}
+   c.fadeIn=Math.min(c.fadeIn||0,c.dur/2);c.fadeOut=Math.min(c.fadeOut||0,c.dur/2);}
+  this.after(true);if(back!==null)this.seek(back);
+ },
+ /** Freeze frame: the frame under the playhead held as a picture for 2 seconds; what follows moves right. */
+ async freeze(){
+  const t=this.time,isVid=x=>!x.asAudio&&this.mediaOf(x)?.type==='video'&&!this.trackOf(x)?.locked&&t>=x.start&&t<x.start+x.dur;
+  const c=this.picked().find(isVid)||this.p.clips.find(x=>x.track===this.main()?.id&&isVid(x))||this.p.clips.find(isVid);
+  if(!c)return toast('Move the playhead over a video clip to freeze its frame.');
+  const m=this.mediaOf(c),el=this.element(c);this.pause();
+  try{await edReady(el,m.name);await this.seekExact(t);}catch(e){return toast(e.message,true);}
+  const cv=document.createElement('canvas');cv.width=m.w||el.videoWidth;cv.height=m.h||el.videoHeight;cv.getContext('2d').drawImage(el,0,0,cv.width,cv.height);
+  const blob=await new Promise(r=>cv.toBlob(r,'image/png'));if(!blob)return toast('Could not take the frame.',true);
+  const [img]=await this.importFiles([new File([blob],`Freeze ${m.name.replace(/\.\w{2,5}$/,'')} ${edFmt(t).replace(/:/g,'.')}.png`,{type:'image/png'})]);if(!img)return;
+  const F=2;this.snapshot();let at=t;
+  if(t>c.start+.02&&t<c.start+c.dur-.02)this.splitClip(c,t);else at=t<=c.start+.02?c.start:c.start+c.dur;
+  this.shiftTrack(c.track,at,F);
+  const f={id:this.uid(),track:c.track,media:img.id,start:at,in:0,dur:F,speed:1,volume:1,fadeIn:0,fadeOut:0};
+  for(const k of ['flipH','flipV','crop','adj'])if(c[k]!==undefined)f[k]=JSON.parse(JSON.stringify(c[k]));
+  for(const k of ['scale','x','y','rotate','opacity'])f[k]=this.val(c,k,t);
+  this.p.clips.push(f);this.pick(f.id);this.after(true);toast('Frame frozen for 2 seconds');
+ },
+ /** Replace: other media in the clip; its place, length, effects and keyframes stay. */
+ replaceClip(c,mid){
+  const m=this.media.find(x=>x.id===mid);if(!c||!m||c.media===mid)return;
+  if(m.type==='video'&&!m.dur)return toast('Still reading this video. Try again in a moment.');
+  this.snapshot();const sp=c.speed||1;c.media=mid;c.in=0;delete c.detached;this.els[c.id]?.pause?.();delete this.els[c.id];
+  let short=false;if(m.type!=='image'&&m.dur){const max=m.dur/sp;if(c.dur>max+.001){c.dur=max;short=true;}}
+  c.fadeIn=Math.min(c.fadeIn||0,c.dur/2);c.fadeOut=Math.min(c.fadeOut||0,c.dur/2);
+  this.after(true);toast(short?'Replaced. The new file is shorter, so the clip is too.':'Replaced');
+ },
+ // ---------- in and out: a range of the timeline, to export only that part ----------
+ setRange(which){const t=Math.round(this.time*30)/30;this.snapshot();const r={...(this.p.range||{})};r[which]=t;
+  if(r.in!=null&&r.out!=null&&r.out<=r.in)delete r[which==='in'?'out':'in'];this.p.range=r;this.after(false);},
+ clearRange(){if(!this.p.range)return;this.snapshot();delete this.p.range;this.after(false);},
+ rangeSpan(){const r=this.p.range;if(!r||(r.in==null&&r.out==null))return null;const s=Math.max(0,r.in??0),e=Math.min(r.out??this.end(),this.end());return e-s>.05?{s,e}:null;},
+ // ---------- shuttle: J back, K stop, L forward; again for 2×, 4×, 8× ----------
+ shuttle(dir){
+  if(!dir){if(this.playing)this.pause();this.rate=1;this.drawTime();return;}
+  if(!this.p.clips.length)return;
+  this.rate=this.playing&&Math.sign(this.rate)===dir?edClamp(this.rate*2,-8,8):dir;
+  if(!this.playing)this.start();else{this.t0=this.time;this.p0=performance.now();this.sync();}this.drawTime();
  },
  remove(){
   if(this.junction){const c=this.clip(this.junction);if(c?.trans){this.snapshot();delete c.trans;this.junction=null;this.after(true);}return;}
@@ -263,8 +336,9 @@ const Ed={
    const el=this.element(c);if(!el)continue;
    const on=t>=c.start&&t<c.start+c.dur,want=(c.in||0)+(t-c.start)*(c.speed||1);
    if(on){
-    el.playbackRate=c.speed||1;el.volume=this.vol(c,t);
-    if(this.playing){if(el.paused){try{el.currentTime=want;}catch{}el.play().catch(()=>{});}else if(Math.abs(el.currentTime-want)>.3)el.currentTime=want;}
+    const fwd=this.playing&&this.rate>0;
+    el.playbackRate=edClamp((c.speed||1)*(fwd?this.rate:1),.0625,16);el.volume=this.vol(c,t);
+    if(fwd){if(el.paused){try{el.currentTime=want;}catch{}el.play().catch(()=>{});}else if(Math.abs(el.currentTime-want)>.3*Math.max(1,this.rate))el.currentTime=want;}
     else{if(!el.paused)el.pause();if(Math.abs(el.currentTime-want)>.03){try{el.currentTime=want;}catch{}}}
    }else{if(!el.paused)el.pause();
     // Just before or after its turn, a clip waits on its first or last frame (for transitions).
@@ -272,17 +346,23 @@ const Ed={
     if(pre||post){const w=pre?(c.in||0):(c.in||0)+c.dur*(c.speed||1)-.05;if(Math.abs(el.currentTime-w)>.06){try{el.currentTime=Math.max(0,w);}catch{}}}}
   }
  },
+ rate:1,
  play(){
   if(this.playing)return this.pause();
+  this.rate=1;this.start();
+ },
+ start(){
   if(!this.p.clips.length)return;
   this.audio();this.ac?.resume?.();
-  if(this.time>=this.end()-.05)this.time=0;
+  if(this.rate>0&&this.time>=this.end()-.05)this.time=0;
+  if(this.rate<0&&this.time<=.05)this.time=this.end();
   this.playing=true;this.t0=this.time;this.p0=performance.now();this.drawTime();
   const tick=now=>{
    if(!this.playing)return;
    if(!document.contains(this.dom.canvas)){this.pause();return;}
-   this.time=this.t0+(now-this.p0)/1000;
-   const end=this.end();if(this.time>=end){this.time=end;this.pause();if(this.exporting)this.finishExport();return;}
+   this.time=this.t0+(now-this.p0)/1000*this.rate;
+   if(this.time<=0&&this.rate<0){this.time=0;this.pause();return;}
+   const end=this.exporting?.until??this.end();if(this.time>=end){this.time=end;this.pause();if(this.exporting)this.finishExport();return;}
    this.sync();this.draw();this.drawHead();this.drawTime();
    requestAnimationFrame(tick);};
   requestAnimationFrame(tick);
@@ -394,16 +474,16 @@ const Ed={
   const ex=this.exporting,[W,H]=this.size(),cfg=await edVideoConfig(W,H,fps,Math.min(60e6,Math.max(4e6,Math.round(W*H*fps*.12))));
   if(!cfg){this.exporting=null;return this.exportLive(o);}
   this.pick(null);this.drawTimeline();this.drawProps();this.fit();this.drawExport('Getting ready…');
-  const frames=Math.max(1,Math.ceil(this.end()*fps-1e-6)),chunks=[];let err=null;
+  const span=o.range||{s:0,e:this.end()},frames=Math.max(1,Math.ceil((span.e-span.s)*fps-1e-6)),chunks=[];let err=null;
   try{
    await this.exportReady();
    this.drawExport('Mixing the sound…');
-   const wav=edWav(await this.mixAudio(frames/fps));if(ex.cancelled)return;
+   const wav=edWav(await this.mixAudio(span.s,frames/fps));if(ex.cancelled)return;
    const enc=ex.enc=new VideoEncoder({output:ch=>{const b=new Uint8Array(ch.byteLength);ch.copyTo(b);chunks.push({b,pts:Math.round(ch.timestamp*fps/1e6)});},error:e=>{err=e;}});
    enc.configure(cfg);
    for(let i=0;i<frames&&!ex.cancelled;i++){
     if(err)throw err;
-    const t=i/fps;this.time=t;await this.seekExact(t);if(ex.cancelled)break;this.time=t;this.draw();
+    const t=span.s+i/fps;this.time=t;await this.seekExact(t);if(ex.cancelled)break;this.time=t;this.draw();
     const f=new VideoFrame(this.dom.canvas,{timestamp:Math.round(i*1e6/fps),duration:Math.round(1e6/fps)});
     enc.encode(f,{keyFrame:i%(fps*2)===0});f.close();
     while(enc.encodeQueueSize>4&&!err)await new Promise(r=>setTimeout(r,2));
@@ -429,7 +509,7 @@ const Ed={
    if(c.text!==undefined){waits.push(document.fonts?.load(this.font(c,c.start),c.text||'a').catch(()=>{}));continue;}
    if(c.sticker||c.asAudio)continue;const m=this.mediaOf(c);if(!m)continue;
    if(m.type==='image')waits.push(this.image(m).decode().catch(()=>{throw new Error('The picture '+m.name+' could not be read');}));
-   else if(m.type==='video'){const el=this.element(c);if(el.readyState<2)waits.push(edWaitFor(el,'loadeddata',20000,'The video '+m.name+' did not load'));}
+   else if(m.type==='video')waits.push(edReady(this.element(c),m.name));
   }
   await Promise.all(waits);
  },
@@ -445,25 +525,27 @@ const Ed={
    else continue;
    const el=this.element(c);if(!el.paused)el.pause();
    if(Math.abs(el.currentTime-want)<.0005&&el.readyState>=2)continue;
-   waits.push(edSeek(el,want,m.name).then(()=>el.readyState>=2||edWaitFor(el,'canplay',15000,'The video '+m.name+' did not show its frame in time')));
+   waits.push(edSeek(el,want,m.name).then(()=>edReady(el,m.name)));
   }
   await Promise.all(waits);
  },
  /** The sound of the whole video, mixed offline: the same clips, volumes, keyframes and fades as playback.
   *  Faster or slower clips keep their pitch, as in the player (edStretch). */
- async mixAudio(dur){
+ async mixAudio(t0,dur){
   const sr=48000,oc=new OfflineAudioContext(2,Math.max(1,Math.round(dur*sr)),sr),bufs=new Map(),silent=new Set();
   for(const c of this.p.clips){
-   if(c.text!==undefined||c.sticker||!(c.dur>0)||c.start>=dur)continue;const m=this.mediaOf(c);if(!m||m.type==='image')continue;
+   const s=Math.max(c.start,t0),e=Math.min(c.start+c.dur,t0+dur);
+   if(c.text!==undefined||c.sticker||!(c.dur>0)||e-s<.001)continue;const m=this.mediaOf(c);if(!m||m.type==='image')continue;
    if(this.trackOf(c)?.muted||(c.detached&&!c.asAudio))continue;
    if(!bufs.has(m.id)){const b=await this.get(m.id).catch(()=>null);let buf=null;if(b){try{buf=await oc.decodeAudioData(await b.arrayBuffer());}catch{buf=null;}}bufs.set(m.id,buf);}
    const buf=bufs.get(m.id);if(!buf){silent.add(m.name);continue;} // a video without sound, or a file the browser cannot decode
    const sp=c.speed||1,stretch=Math.abs(sp-1)>.001,n=oc.createBufferSource(),g=oc.createGain();
    n.buffer=stretch?edStretch(oc,buf,c.in||0,c.dur*sp,sp):buf;
-   const steps=Math.max(2,Math.ceil(c.dur*120)),curve=new Float32Array(steps);
-   for(let i=0;i<steps;i++)curve[i]=this.vol(c,c.start+Math.min(c.dur*i/(steps-1),c.dur-1e-4));
-   g.gain.setValueCurveAtTime(curve,c.start,c.dur);
-   n.connect(g).connect(oc.destination);n.start(c.start,stretch?0:(c.in||0),c.dur);
+   // [s, e] is the part of the clip inside the export, in timeline time; `skip` is how far into the clip it starts.
+   const len=e-s,skip=s-c.start,steps=Math.max(2,Math.ceil(len*120)),curve=new Float32Array(steps);
+   for(let i=0;i<steps;i++)curve[i]=this.vol(c,s+Math.min(len*i/(steps-1),len-1e-4));
+   g.gain.setValueCurveAtTime(curve,s-t0,len);
+   n.connect(g).connect(oc.destination);n.start(s-t0,stretch?skip:(c.in||0)+skip,len);
   }
   if(silent.size)toast('No sound was found in '+[...silent].join(', ')+'. If it has sound, this browser could not read it.');
   return oc.startRendering();
@@ -472,7 +554,7 @@ const Ed={
   if(typeof MediaRecorder==='undefined')return toast('This browser cannot record video.',true);
   this.audio();await this.ac?.resume?.();
   const scale=o.height/Math.min(...this.base()),fps=o.fps;
-  this.exporting={scale,format:o.format,fps,name:o.name,studio:!!o.studio};this.pick(null);this.drawTimeline();this.drawProps();this.fit();this.draw();
+  this.exporting={scale,format:o.format,fps,name:o.name,studio:!!o.studio,until:o.range?.e};this.pick(null);this.drawTimeline();this.drawProps();this.fit();this.draw();
   const v=this.dom.canvas.captureStream(fps),tracks=[...v.getVideoTracks(),...(this.rec?this.rec.stream.getAudioTracks():[])];
   const type=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'].find(t=>MediaRecorder.isTypeSupported(t));
   const [W,H]=this.size(),bits=Math.round(W*H*fps*.15);
@@ -484,7 +566,7 @@ const Ed={
     catch(e){toast(e.message+'. Saved as WebM instead.',true);edSaveFile(new Blob(parts,{type:'video/webm'}),ex.name+'.webm');}}
    else if(ok){const out=new Blob(parts,{type:'video/webm'});edSaveFile(out,ex.name+'.webm');toast('Exported');if(ex.studio)this.toStudio(out,ex.name+'.webm');}
    this.exporting=null;this.drawExport();this.fit();this.draw();};
-  this.drawExport('Recording…');this.pause();this.seek(0);
+  this.drawExport('Recording…');this.pause();this.rate=1;this.seek(o.range?.s??0);
   setTimeout(()=>{rec.start(250);this.exporting.rec=rec;this.play();},400);
  },
  toStudio(blob,name){edSaveToStudio(blob,name).then(()=>toast('Saved to Studio')).catch(e=>toast(e.message,true));},
@@ -573,6 +655,10 @@ async function edVideoConfig(W,H,fps,bitrate){
  return null;
 }
 function edWaitFor(el,ev,ms,msg){return new Promise((res,rej)=>{const to=setTimeout(()=>{el.removeEventListener(ev,ok);rej(new Error(msg));},ms),ok=()=>{clearTimeout(to);res();};el.addEventListener(ev,ok,{once:true});});}
+/** Resolves once the video can show a frame (it may be loading or in the middle of a seek). */
+function edReady(el,name){if(el.readyState>=2&&!el.seeking)return Promise.resolve();
+ return new Promise((res,rej)=>{const evs=['loadeddata','canplay','seeked'],done=()=>{if(el.readyState<2||el.seeking)return;clear();res();},clear=()=>{clearTimeout(to);evs.forEach(v=>el.removeEventListener(v,done));};
+  const to=setTimeout(()=>{clear();rej(new Error('The video '+name+' did not load'));},20000);evs.forEach(v=>el.addEventListener(v,done));});}
 function edSeek(el,t,name){const p=edWaitFor(el,'seeked',15000,'The video '+name+' did not show its frame in time');try{el.currentTime=t;}catch{}return p;}
 /** Encoded frames in an IVF file: a 32-byte header, then each frame with its size and time (in frames). */
 function edIvf(chunks,W,H,fps,fourcc){

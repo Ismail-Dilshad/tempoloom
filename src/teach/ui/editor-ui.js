@@ -42,7 +42,7 @@ Object.assign(Ed,{
   const vo=$('[data-voice]',el);if(vo)vo.onclick=()=>this.recordVoice();
   el.querySelectorAll('.ed-media').forEach(t=>{t.ondragstart=e=>{e.dataTransfer.setData('text/x-ed-media',t.dataset.mid);e.dataTransfer.effectAllowed='copy';};t.ondblclick=()=>this.add(t.dataset.mid);});
  },
- drawTime(){const t=this.dom.time;if(t)t.innerHTML=`<b>${edFmt(this.time)}</b> / ${edFmt(this.end())}`;const p=this.dom.play;if(p){p.innerHTML=this.playing?I.pause:I.play;p.setAttribute('aria-label',this.playing?'Pause':'Play');}},
+ drawTime(){const t=this.dom.time;if(t)t.innerHTML=`<b>${edFmt(this.time)}</b> / ${edFmt(this.end())}${this.playing&&this.rate!==1?` <span class="ed-rate">${this.rate<0?'◀ ':''}${Math.abs(this.rate)}×</span>`:''}`;const p=this.dom.play;if(p){p.innerHTML=this.playing?I.pause:I.play;p.setAttribute('aria-label',this.playing?'Pause':'Play');}},
  drawHead(){const h=this.dom.head;if(h)h.style.transform=`translateX(${this.time*this.zoom}px)`;
   const sc=this.dom.scroll;if(this.playing&&sc){const x=this.time*this.zoom;if(x>sc.scrollLeft+sc.clientWidth-80)sc.scrollLeft=x-80;}},
  drawExport(msg){const o=this.dom.exportOverlay;if(!o)return;o.hidden=!this.exporting;const b=o.querySelector('b');if(b&&msg)b.textContent=msg;},
@@ -52,7 +52,9 @@ Object.assign(Ed,{
   this.dom.inner.style.width=len*z+'px';
   const step=z>=120?1:z>=60?2:z>=30?5:z>=12?10:30;
   this.dom.ruler.innerHTML=Array.from({length:Math.ceil(len/step)+1},(_,i)=>`<span style="left:${i*step*z}px">${edFmt(i*step).slice(0,5)}</span>`).join('')+
-   this.p.markers.map(m=>`<i class="ed-marker" style="left:${m*z}px" title="Marker ${edFmt(m)}"></i>`).join('');
+   this.p.markers.map(m=>`<i class="ed-marker" style="left:${m*z}px" title="Marker ${edFmt(m)}"></i>`).join('')+
+   (()=>{const r=this.p.range;if(!r||(r.in==null&&r.out==null))return '';const a=r.in??0,b=r.out??Math.max(this.end(),a);
+    return `<i class="ed-range" style="left:${a*z}px;width:${Math.max(2,(b-a)*z)}px" title="In ${edFmt(a)} · Out ${edFmt(b)}">${r.in!=null?'<b class="ed-rmark ed-rmark-in"></b>':''}${r.out!=null?'<b class="ed-rmark ed-rmark-out"></b>':''}</i>`;})();
   const tr=this.p.tracks;
   el.innerHTML=`<div class="ed-lane-new" data-new="top"></div>${tr.map(t=>{const cl=this.p.clips.filter(c=>c.track===t.id).sort((a,b)=>a.start-b.start);
    const joins=t.kind==='video'?cl.slice(1).filter((c,i)=>Math.abs(cl[i].start+cl[i].dur-c.start)<.05).map(c=>`<button type="button" class="ed-join${c.trans?' on':''}${this.junction===c.id?' sel':''}" data-join="${c.id}" style="left:${c.start*z}px" aria-label="Transition" title="${c.trans?ED_TRANS.find(x=>x[0]===c.trans.type)?.[1]:'Add a transition'}">${c.trans?I.trans:''}</button>`).join(''):'';
@@ -247,16 +249,17 @@ function edExportDialog(){
   <div class="ed-xrow"><span>Resolution</span><div class="ed-seg">${res.map(([h,l])=>`<button type="button" data-res="${h}" aria-pressed="${h===1080}">${l}</button>`).join('')}</div></div>
   <div class="ed-xrow"><span>Frame rate</span><div class="ed-seg">${[24,30,60].map(f=>`<button type="button" data-fps="${f}" aria-pressed="${f===30}">${f} fps</button>`).join('')}</div></div>
   <div class="ed-xrow"><span>Format</span><div class="ed-seg"><button type="button" data-fmt="mp4" aria-pressed="true">MP4</button><button type="button" data-fmt="webm" aria-pressed="false">WebM</button></div></div>
+  ${Ed.rangeSpan()?`<div class="ed-xrow"><span>Range</span><div class="ed-seg"><button type="button" data-span="range" aria-pressed="true">In to out</button><button type="button" data-span="all" aria-pressed="false">Whole video</button></div></div>`:''}
   ${typeof VideoEncoder!=='undefined'?`<div class="ed-xrow"><span>Frames</span><div class="ed-seg"><button type="button" data-mode="exact" aria-pressed="true">Exact</button><button type="button" data-mode="live" aria-pressed="false">Real time</button></div></div>`:''}
   <label class="ed-xrow ed-xcheck"><span>Studio</span><span class="ed-xopt"><input type="checkbox" role="switch" id="ex-studio" checked> Also save it to Studio</span></label>
   <p class="ed-xnote" id="ex-note"></p>
   <div class="ed-xactions"><button type="button" class="btn ghost" data-no>Cancel</button><button class="btn primary" type="submit">${I.down} Export</button></div></form>`);
- const f=$('.ed-export-form'),st={res:1080,fps:30,fmt:'mp4',mode:typeof VideoEncoder!=='undefined'?'exact':'live'};
- const note=()=>{const [w,h]=Ed.base(),k=st.res/short;$('#ex-note').textContent=`${Math.round(w*k/2)*2} × ${Math.round(h*k/2)*2} · ${edFmt(Ed.end()).slice(0,5)} · ${st.mode==='exact'?'every frame is drawn exactly; footage with few keyframes can take longer than the video.':'it plays through once while it records; a busy computer can skip frames.'}`;};note();
- f.querySelectorAll('[data-res],[data-fps],[data-fmt],[data-mode]').forEach(b=>b.onclick=()=>{const key=b.dataset.res?'res':b.dataset.fps?'fps':b.dataset.fmt?'fmt':'mode';st[key]=key==='fmt'||key==='mode'?b.dataset[key]:Number(b.dataset[key]);
+ const f=$('.ed-export-form'),st={res:1080,fps:30,fmt:'mp4',mode:typeof VideoEncoder!=='undefined'?'exact':'live',span:Ed.rangeSpan()?'range':'all'};
+ const note=()=>{const [w,h]=Ed.base(),k=st.res/short,sp=st.span==='range'&&Ed.rangeSpan();$('#ex-note').textContent=`${Math.round(w*k/2)*2} × ${Math.round(h*k/2)*2} · ${edFmt(sp?sp.e-sp.s:Ed.end()).slice(0,5)} · ${st.mode==='exact'?'every frame is drawn exactly; footage with few keyframes can take longer than the video.':'it plays through once while it records; a busy computer can skip frames.'}`;};note();
+ f.querySelectorAll('[data-res],[data-fps],[data-fmt],[data-mode],[data-span]').forEach(b=>b.onclick=()=>{const key=b.dataset.res?'res':b.dataset.fps?'fps':b.dataset.fmt?'fmt':b.dataset.mode?'mode':'span';st[key]=key==='res'||key==='fps'?Number(b.dataset[key]):b.dataset[key];
   b.parentElement.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));note();});
  f.querySelector('[data-no]').onclick=()=>closeDialog();
- f.onsubmit=e=>{e.preventDefault();const name=$('#ex-name').value.trim()||Ed.p.name,studio=$('#ex-studio').checked;closeDialog(true);Ed.exportVideo({name,height:st.res,fps:st.fps,format:st.fmt,studio,live:st.mode==='live'});};
+ f.onsubmit=e=>{e.preventDefault();const name=$('#ex-name').value.trim()||Ed.p.name,studio=$('#ex-studio').checked;closeDialog(true);Ed.exportVideo({name,height:st.res,fps:st.fps,format:st.fmt,studio,live:st.mode==='live',range:st.span==='range'?Ed.rangeSpan():null});};
 }
 function edBuild(el){
  const p=Ed.p;
@@ -283,6 +286,9 @@ function edBuild(el){
     <button type="button" class="iconbtn sm" data-split aria-label="Split" data-tooltip="Split · Ctrl+B">${I.split}</button>
     <button type="button" class="iconbtn sm" data-dup aria-label="Duplicate" data-tooltip="Duplicate · Ctrl+D">${I.copy}</button>
     <button type="button" class="iconbtn sm" data-del aria-label="Delete" data-tooltip="Delete · Del">${I.trash}</button>
+    <button type="button" class="iconbtn sm" data-trim="start" aria-label="Delete left" data-tooltip="Delete left of the playhead · Q">${I.trimL}</button>
+    <button type="button" class="iconbtn sm" data-trim="end" aria-label="Delete right" data-tooltip="Delete right of the playhead · W">${I.trimR}</button>
+    <button type="button" class="iconbtn sm" data-freeze aria-label="Freeze frame" data-tooltip="Freeze frame · Shift+F">${I.freeze}</button>
     <button type="button" class="iconbtn sm" data-track-add aria-label="Add a track" data-tooltip="Add a track" aria-haspopup="menu">${I.layers}</button>
     <button type="button" class="iconbtn sm" data-marker aria-label="Marker" data-tooltip="Marker at the playhead · M">${I.flag}</button>
     <button type="button" class="iconbtn sm" data-voice-tl aria-label="Record voice-over" data-tooltip="Record voice-over">${I.mic}</button>
@@ -310,6 +316,7 @@ function edBuild(el){
  q('[data-export]').onclick=()=>edExportDialog();q('[data-cancel-export]').onclick=()=>Ed.cancelExport();
  q('[data-play]').onclick=()=>Ed.play();
  q('[data-undo]').onclick=()=>Ed.undo();q('[data-redo]').onclick=()=>Ed.redo();q('[data-split]').onclick=()=>Ed.split();q('[data-dup]').onclick=()=>Ed.duplicate();q('[data-del]').onclick=()=>Ed.remove();
+ R.querySelectorAll('[data-trim]').forEach(b=>b.onclick=()=>Ed.trimTo(b.dataset.trim));q('[data-freeze]').onclick=()=>Ed.freeze();
  q('[data-marker]').onclick=()=>Ed.toggleMarker();q('[data-voice-tl]').onclick=()=>{Ed.tab='audio';Ed.recordVoice();};
  q('[data-snap]').onclick=e=>{Ed.snap=!Ed.snap;e.currentTarget.setAttribute('aria-pressed',String(Ed.snap));};
  q('[data-magnet]').onclick=()=>{Ed.snapshot();Ed.p.magnet=!Ed.p.magnet;Ed.after(false);toast(Ed.p.magnet?'Main track magnet on: no gaps':'Main track magnet off');};
@@ -333,7 +340,9 @@ function edBuild(el){
   if(e.dataTransfer.files.length)Ed.importFiles(e.dataTransfer.files);};
  Ed.dom.scroll.addEventListener('contextmenu',e=>{e.preventDefault();const n=e.target.closest('.ed-clip');
   if(n){const c=Ed.clip(n.dataset.cid);if(!c)return;if(!Ed.sels.has(c.id))Ed.select(c.id);edClipMenu(e.clientX,e.clientY,c);}
-  else{const r=Ed.dom.inner.getBoundingClientRect();Ed.seek(Math.max(0,(e.clientX-r.left)/Ed.zoom));edMenu(e.clientX,e.clientY,[[`Paste${Ed.clipboard?.length?` (${Ed.clipboard.length})`:''}`,'copy',()=>Ed.paste(),!Ed.clipboard?.length],['Add a marker','flag',()=>Ed.toggleMarker()],['Select all','layers',()=>Ed.selectAll()]]);}});
+  else{const r=Ed.dom.inner.getBoundingClientRect(),at=Math.max(0,(e.clientX-r.left)/Ed.zoom),lane=e.target.closest('.ed-lane[data-track]'),gap=lane&&Ed.gapAt(lane.dataset.track,at);Ed.seek(at);
+   edMenu(e.clientX,e.clientY,[...(gap?[['Delete gap','trash',()=>Ed.closeGap(lane.dataset.track,at)],'-']:[]),[`Paste${Ed.clipboard?.length?` (${Ed.clipboard.length})`:''}`,'copy',()=>Ed.paste(),!Ed.clipboard?.length],['Add a marker','flag',()=>Ed.toggleMarker()],
+    '-',['Mark in','trimL',()=>Ed.setRange('in'),false,false,'I'],['Mark out','trimR',()=>Ed.setRange('out'),false,false,'O'],['Clear in and out','x',()=>Ed.clearRange(),!Ed.p.range,false,'Alt+X'],'-',['Select all','layers',()=>Ed.selectAll()]]);}});
  Ed.dom.canvas.addEventListener('contextmenu',e=>{e.preventDefault();const c=Ed.sel&&Ed.clip(Ed.sel);if(c)edClipMenu(e.clientX,e.clientY,c);});
  Ed.dom.scroll.addEventListener('scroll',()=>{Ed.dom.heads.style.transform=`translateY(${-Ed.dom.scroll.scrollTop}px)`;});
  edWireTimeline();edWirePreview();
@@ -411,7 +420,19 @@ window.addEventListener('keydown',e=>{
  if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)||e.target.isContentEditable||$('#modal')?.innerHTML)return;
  const k=e.key.toLowerCase(),mod=e.ctrlKey||e.metaKey;let done=true;
  if(k===' '&&!mod)Ed.play();
+ else if((k==='delete'||k==='backspace')&&!mod&&e.shiftKey)Ed.rippleRemove();
  else if((k==='delete'||k==='backspace')&&!mod)Ed.remove();
+ else if(!mod&&!e.altKey&&k==='q')Ed.trimTo('start');
+ else if(!mod&&!e.altKey&&k==='w')Ed.trimTo('end');
+ else if(!mod&&!e.altKey&&k==='j')Ed.shuttle(-1);
+ else if(!mod&&!e.altKey&&k==='k')Ed.shuttle(0);
+ else if(!mod&&!e.altKey&&k==='l')Ed.shuttle(1);
+ else if(!mod&&!e.altKey&&k==='i'&&e.shiftKey){const r=Ed.p.range;if(r?.in!=null)Ed.seek(r.in);}
+ else if(!mod&&!e.altKey&&k==='o'&&e.shiftKey){const r=Ed.p.range;if(r?.out!=null)Ed.seek(r.out);}
+ else if(!mod&&!e.altKey&&k==='i')Ed.setRange('in');
+ else if(!mod&&!e.altKey&&k==='o')Ed.setRange('out');
+ else if(e.altKey&&!mod&&e.code==='KeyX')Ed.clearRange();
+ else if(!mod&&!e.altKey&&k==='f'&&e.shiftKey)Ed.freeze();
  else if(mod&&k==='z'&&e.shiftKey||mod&&k==='y')Ed.redo();
  else if(mod&&k==='z')Ed.undo();
  else if(mod&&k==='b'||!mod&&k==='s')Ed.split();
@@ -446,8 +467,17 @@ function edClipMenu(x,y,c){
   [`Paste${Ed.clipboard?.length?` (${Ed.clipboard.length})`:''}`,'copy',()=>Ed.paste(),!Ed.clipboard?.length,false,'Ctrl+V'],['Duplicate','layers',()=>Ed.duplicate(),false,false,'Ctrl+D'],'-',
   ...(video&&!many?[[c.detached?'Audio is detached':'Detach audio','detach',()=>Ed.detach(c),!!c.detached]]:[]),
   ...(!many&&c.media&&m?.type!=='image'?[['Speed 0.5×','sliders',()=>edSpeed(c,.5)],['Speed 1×','sliders',()=>edSpeed(c,1)],['Speed 2×','sliders',()=>edSpeed(c,2)]]:[]),
+  ...(!many&&video?[['Freeze frame','freeze',()=>{Ed.seek(edClamp(Ed.time,c.start,c.start+c.dur-.04));Ed.freeze();},false,false,'Shift+F']]:[]),
+  ...(!many&&c.media?[['Replace with…','refresh',()=>edReplace(x,y,c)]]:[]),
   ...(!many&&visual?[['Reset position and size','refresh',()=>{Ed.snapshot();Object.assign(c,{scale:1,x:0,y:0,rotate:0,flipH:false,flipV:false});if(c.kf)for(const k of ['scale','x','y','rotate'])delete c.kf[k];Ed.after(true);}]]:[]),
-  '-',[many?`Delete ${Ed.sels.size} clips`:'Delete','trash',()=>Ed.remove(),false,true,'Del']]);
+  '-',['Ripple delete','trash',()=>Ed.rippleRemove(),false,false,'Shift+Del'],[many?`Delete ${Ed.sels.size} clips`:'Delete','trash',()=>Ed.remove(),false,true,'Del']]);
+}
+/** Replace: pick other media of the same kind from Media, or import a file for it. */
+function edReplace(x,y,c){
+ const audio=Ed.kindOf(c)==='audio',ok=m=>m.id!==c.media&&(audio?(m.type==='audio'||m.type==='video'):(m.type==='video'||m.type==='image')),list=Ed.media.filter(ok).slice(0,12);
+ const pick=()=>{const inp=document.createElement('input');inp.type='file';inp.accept=audio?'audio/*,video/*':'video/*,image/*';
+  inp.onchange=async()=>{const [m]=await Ed.importFiles(inp.files);if(m)Ed.replaceClip(Ed.clip(c.id),m.id);};inp.click();};
+ setTimeout(()=>edMenu(x,y,[...list.map(m=>[esc(m.name),m.type==='image'?'image':m.type==='audio'?'music':'film',()=>Ed.replaceClip(Ed.clip(c.id),m.id)]),...(list.length?['-']:[]),['Import a file…','upload',pick]]),0);
 }
 function edSpeed(c,v){Ed.snapshot();const m=Ed.mediaOf(c),max=m?.dur?((m.dur-(c.in||0))/v):Infinity;c.dur=Math.max(.1,Math.min(c.dur*(c.speed||1)/v,max));c.speed=v;Ed.after(true);}
 // ---------- resizable panels: drag the lines between them; sizes are remembered ----------
@@ -468,7 +498,7 @@ function edLayout(R){
 }
 // ---------- the shortcuts sheet ----------
 function edKeys(){
- const rows=[['Space','Play or pause'],['Ctrl+B or S','Split at the playhead'],['Delete','Delete the selection'],['Ctrl+Z / Ctrl+Shift+Z','Undo / redo'],['Ctrl+C / X / V','Copy, cut, paste at the playhead'],['Ctrl+D','Duplicate'],['Ctrl+A','Select every clip'],
+ const rows=[['Space','Play or pause'],['Ctrl+B or S','Split at the playhead'],['Delete','Delete the selection'],['Shift+Delete','Ripple delete: close the space'],['Q / W','Delete left / right of the playhead'],['J / K / L','Play back, stop, play forward (again: faster)'],['I / O','Mark in / out'],['Shift+I / Shift+O','Go to in / out'],['Alt+X','Clear in and out'],['Shift+F','Freeze frame'],['Ctrl+Z / Ctrl+Shift+Z','Undo / redo'],['Ctrl+C / X / V','Copy, cut, paste at the playhead'],['Ctrl+D','Duplicate'],['Ctrl+A','Select every clip'],
   ['Shift or Ctrl + click','Add a clip to the selection'],['Drag on empty space','Select with a box'],['M','Add or remove a marker'],['← / →','One frame back / forward'],['Shift + ← / →','One second back / forward'],['Home / End','Start / end'],['Ctrl + wheel','Zoom the timeline'],['Right-click','Clip menu'],['Esc','Clear the selection'],['?','This sheet']];
  dialog(`<div class="ed-keys"><h2>Keyboard shortcuts</h2><dl>${rows.map(([k,d])=>`<dt>${k.split(' / ').map(x=>`<kbd>${esc(x)}</kbd>`).join(' / ')}</dt><dd>${esc(d)}</dd>`).join('')}</dl><div class="ed-xactions"><button type="button" class="btn primary" data-no>Done</button></div></div>`);
  $('.ed-keys [data-no]').onclick=()=>closeDialog();

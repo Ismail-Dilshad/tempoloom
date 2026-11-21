@@ -2129,6 +2129,9 @@ button.video-back{border:0;background:transparent;font:var(--type-small)}
 .ed-vol{position:absolute;left:0;right:0;height:0;border-top:1.5px solid hsl(50 100% 65% / .9);pointer-events:none}
 .ed-clip.sticker{background:hsl(330 45% 40%)}
 .ed-marker{position:absolute;top:0;width:0;height:24px;pointer-events:none}
+.ed-range{position:absolute;top:0;height:24px;background:color-mix(in srgb,var(--accent) 22%,transparent);border-bottom:2px solid var(--accent);pointer-events:none}
+.ed-range .ed-rmark{position:absolute;top:0;bottom:0;width:2px;height:auto;border-radius:0;background:var(--accent)}.ed-range .ed-rmark-in{left:0}.ed-range .ed-rmark-out{right:0}
+.ed-rate{margin-left:6px;padding:1px 6px;border-radius:var(--radius-full);background:var(--accent);color:#fff;font-weight:600}
 .ed-marker::before{content:'';position:absolute;left:-5px;top:2px;width:10px;height:10px;border-radius:2px 2px 2px 0;background:hsl(45 100% 58%);transform:rotate(-45deg)}
 .ed-marker::after{content:'';position:absolute;left:-.5px;top:10px;bottom:0;width:1px;background:hsl(45 100% 58% / .7)}
 /* properties extras */
