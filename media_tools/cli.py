@@ -106,6 +106,8 @@ def main(argv=None):
     o.add_argument('--out-dir'); o.add_argument('--allow-download', action='store_true'); o.add_argument('--alpha-matting', action='store_true')
     ov = sub.add_parser('cutout-video'); ov.add_argument('input'); ov.add_argument('--out', required=True); ov.add_argument('--model', default=None)
     ov.add_argument('--max-side', type=int, default=1280); ov.add_argument('--progress'); ov.add_argument('--allow-download', action='store_true')
+    tk = sub.add_parser('track'); tk.add_argument('input'); tk.add_argument('--box', required=True, help='x,y,w,h as fractions of the frame')
+    tk.add_argument('--start', type=float, default=0.0); tk.add_argument('--end', type=float); tk.add_argument('--every', type=int, default=2)
     v = sub.add_parser('separate'); v.add_argument('input'); v.add_argument('--model', default=None)
     v.add_argument('--stems', choices=['vocals', 'all'], default='vocals'); v.add_argument('--out-dir')
     v.add_argument('--allow-download', action='store_true'); v.add_argument('--device', choices=['auto', 'cpu', 'cuda'], default='auto')
@@ -148,6 +150,9 @@ def main(argv=None):
         result = track_faces(args.input, args.aspect, args.samples_per_second, args.allow_download)
         if args.edl_out and result['edlOperation']:
             result['edl'] = edl(result['input'], result['edlOperation'], args.edl_out)
+    elif args.command == 'track':
+        from .track import track
+        result = track(args.input, tuple(float(v) for v in args.box.split(',')), args.start, args.end, args.every)
     elif args.command == 'cutout-video':
         from .cutout import remove_background_video, DEFAULT_MODEL
         result = remove_background_video(args.input, args.out, args.model or DEFAULT_MODEL, args.allow_download, args.max_side, args.progress)

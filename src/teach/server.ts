@@ -216,11 +216,14 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
     return;}
    // The Editor's smart tools (stabilise, remove background, auto reframe) as background jobs on this computer.
    if(m==='POST'&&p==='/api/editor/tool'){const T=await import('../engine/editor-tools.js'),kind=url.searchParams.get('kind');
-    if(!['stabilize','cutout','reframe','voice','beats'].includes(String(kind)))throw new HttpError(400,'kind is stabilize, cutout, reframe, voice or beats');
+    if(!['stabilize','cutout','reframe','voice','beats','reverse','track','proxy'].includes(String(kind)))throw new HttpError(400,'Unknown tool');
     const ext=(/\.[a-z0-9]{2,5}$/i.exec(url.searchParams.get('name')||'')?.[0]||'.mp4').toLowerCase(),dir=await T.newDir(),src=path.join(dir,'source'+ext);let size=0;
     const limit=new Transform({transform(c:Buffer,_e,cb){size+=c.length;size>MAX_MB*1048576?cb(new HttpError(413,`The file is over ${MAX_MB} MB`)):cb(null,c);}});
     await pipeline(req,limit,fs.createWriteStream(src));if(!size)throw new HttpError(400,'The upload was empty');
-    const aspect=url.searchParams.get('aspect');return json(res,T.status(T.start(kind as import('../engine/editor-tools.js').ToolKind,src,dir,{...(aspect&&/^(9:16|16:9|1:1|4:5)$/.test(aspect)?{aspect}:{})}).id));}
+    const aspect=url.searchParams.get('aspect'),num=(k:string)=>{const v=Number(url.searchParams.get(k));return url.searchParams.has(k)&&Number.isFinite(v)&&v>=0?v:undefined;},box=url.searchParams.get('box');
+    const opts={...(aspect&&/^(9:16|16:9|1:1|4:5)$/.test(aspect)?{aspect}:{}),...(num('ss')!=null?{ss:num('ss')!}:{}),...(num('t')!=null?{t:num('t')!}:{}),...(num('start')!=null?{start:num('start')!}:{}),...(num('end')!=null?{end:num('end')!}:{}),
+     ...(box&&/^[0-9.]+(,[0-9.]+){3}$/.test(box)?{box}:{})};
+    return json(res,T.status(T.start(kind as import('../engine/editor-tools.js').ToolKind,src,dir,opts).id));}
    const tj=/^\/api\/editor\/tool\/([a-f0-9-]{36})(\/file)?$/.exec(p);
    if(tj){const T=await import('../engine/editor-tools.js'),id=tj[1]!;
     if(m==='GET'&&!tj[2]){const st=T.status(id);if(!st)throw new HttpError(404,'No such job');return json(res,st);}

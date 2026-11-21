@@ -9,7 +9,7 @@ import {ROOT} from './config-root.js';
 import {runPythonModule} from './audio-analysis.js';
 import {ffmpeg} from '../renderer/ffmpeg-encoder.js';
 
-export type ToolKind='stabilize'|'cutout'|'reframe'|'voice'|'beats';
+export type ToolKind='stabilize'|'cutout'|'reframe'|'voice'|'beats'|'reverse'|'track'|'proxy';
 export type ToolJob={id:string;kind:ToolKind;state:'running'|'done'|'error';started:number;progress:number|null;note?:string;error?:string;
  file?:string;mime?:string;result?:Record<string,unknown>;dir:string};
 const jobs=new Map<string,ToolJob>();
@@ -18,7 +18,7 @@ const IMAGE=/\.(png|jpe?g|webp|bmp)$/i;
 const media=(args:string[],timeoutMs=4*60*60*1000)=>runPythonModule('media_tools.cli',args,{timeoutMs,label:'Media tool',env:{FFMPEG_PATH:ffmpeg}}) as Promise<Record<string,unknown>>;
 
 /** A new job for an uploaded file (already saved at `source`). Returns at once; the work goes on in the background. */
-export function start(kind:ToolKind,source:string,dir:string,o:{aspect?:string}={}):ToolJob{
+export function start(kind:ToolKind,source:string,dir:string,o:{aspect?:string;ss?:number;t?:number;box?:string;start?:number;end?:number}={}):ToolJob{
  const job:ToolJob={id:path.basename(dir),kind,state:'running',started:Date.now(),progress:null,dir};jobs.set(job.id,job);
  const progressFile=path.join(dir,'progress.json');
  (async()=>{
@@ -28,6 +28,13 @@ export function start(kind:ToolKind,source:string,dir:string,o:{aspect?:string}=
    if(IMAGE.test(source)){const r=await media(['cutout',source,'--out-dir',dir]) as {results?:{output:string;subjectCoverage:number}[]};const o=r.results?.[0];if(!o)throw new Error('Nothing was cut out');
     Object.assign(job,{file:o.output,mime:'image/png',result:{subjectCoverage:o.subjectCoverage}});}
    else{const out=path.join(dir,'cutout.webm');const r=await media(['cutout-video',source,'--out',out,'--progress',progressFile]);Object.assign(job,{file:out,mime:'video/webm',result:r});}}
+  else if(kind==='reverse'||kind==='proxy'){const {execFile}=await import('node:child_process');const {promisify}=await import('node:util');const out=path.join(dir,kind+'.mp4');
+   // reverse: only the clip's part of the file (ffmpeg holds it in memory to play it backwards); proxy: 720p, a keyframe every half second for quick seeking
+   const args=kind==='reverse'?['-v','error','-y',...(o.ss?['-ss',String(o.ss)]:[]),...(o.t?['-t',String(o.t)]:[]),'-i',source,'-vf','reverse','-af','areverse','-c:v','libx264','-preset','veryfast','-crf','18','-pix_fmt','yuv420p','-c:a','aac','-b:a','192k','-movflags','+faststart',out]
+    :['-v','error','-y','-i',source,'-vf','scale=-2:720','-c:v','libx264','-preset','veryfast','-crf','27','-g','15','-pix_fmt','yuv420p','-c:a','aac','-b:a','128k','-movflags','+faststart',out];
+   await promisify(execFile)(ffmpeg,args,{windowsHide:true,maxBuffer:1<<24});Object.assign(job,{file:out,mime:'video/mp4'});}
+  else if(kind==='track'){const r=await media(['track',source,'--box',o.box??'0.4,0.4,0.2,0.2','--start',String(o.start??0),...(o.end!=null?['--end',String(o.end)]:[])]) as {points?:unknown[];lostFrames?:number};
+   if(!r.points?.length)throw new Error('Nothing could be followed');Object.assign(job,{note:r.lostFrames?`lost it in ${r.lostFrames} frames`:'',result:{points:r.points}});}
   else if(kind==='voice'){const {cleanVoice}=await import('../editor/voice-clean.js');const r=await cleanVoice(source,{out:path.join(dir,'clean'+path.extname(source))});
    Object.assign(job,{file:r.output,mime:/\.(wav|mp3|m4a|flac|ogg|opus)$/i.test(source)?'audio/'+(path.extname(source).slice(1)==='mp3'?'mpeg':path.extname(source).slice(1)):'video/mp4',note:(r.why||[]).slice(0,3).join('; '),result:{why:r.why}});}
   else if(kind==='beats'){const wav=path.join(dir,'beats.wav');const {execFile}=await import('node:child_process');const {promisify}=await import('node:util');

@@ -66,7 +66,7 @@ Object.assign(Ed,{
     const lines=cues.map(q=>{const ws=edWords(q.text),d=(q.e-q.s)/Math.max(1,ws.length);return {s:q.s,e:q.e,words:ws.map((w,i)=>({t:w,s:q.s+i*d,e:q.s+(i+1)*d}))};});
     const lang=this.p.capLang&&this.p.capLang!=='auto'?this.p.capLang:'auto',n=this.addCaptions(lines,lang,this.p.capLook||'clean');toast(`Imported ${n} caption${n>1?'s':''}`);};}
   const vo=$('[data-voice]',el);if(vo)vo.onclick=()=>this.recordVoice();
-  el.querySelectorAll('.ed-media').forEach(t=>{t.ondragstart=e=>{e.dataTransfer.setData('text/x-ed-media',t.dataset.mid);e.dataTransfer.effectAllowed='copy';};t.ondblclick=()=>this.add(t.dataset.mid);});
+  el.querySelectorAll('.ed-media').forEach(t=>{t.ondragstart=e=>{e.dataTransfer.setData('text/x-ed-media',t.dataset.mid);e.dataTransfer.effectAllowed='copy';};t.ondblclick=()=>{const m=this.media.find(x=>x.id===t.dataset.mid);m&&(m.type==='video'||m.type==='audio')?edSource(m):this.add(t.dataset.mid);};});
  },
  drawTime(){const t=this.dom.time;if(t)t.innerHTML=`<b>${edFmt(this.time)}</b> / ${edFmt(this.end())}${this.playing&&this.rate!==1?` <span class="ed-rate">${this.rate<0?'◀ ':''}${Math.abs(this.rate)}×</span>`:''}`;const p=this.dom.play;if(p){p.innerHTML=this.playing?I.pause:I.play;p.setAttribute('aria-label',this.playing?'Pause':'Play');}},
  /** The level meter: left and right, -60 to 0 dBFS, green, yellow from -12, red from -3, with a peak line. */
@@ -193,6 +193,7 @@ Object.assign(Ed,{
   if(!c)body=`<dl class="ed-details"><dt>Name</dt><dd dir="auto">${esc(this.p.name)}</dd><dt>Shape</dt><dd>${seg('ratio',Object.keys(ED_RATIOS).map(r=>[r,r]),this.p.ratio)}</dd>
     <dt>Resolution</dt><dd>${W} × ${H}</dd><dt>Length</dt><dd>${edFmt(this.end())}</dd><dt>Clips</dt><dd>${this.p.clips.length} on ${this.p.tracks.length} tracks</dd>
     <dt>Background</dt><dd>${seg('bgmode',[['color','Colour'],['blur','Blur']],this.p.bgMode)}</dd>${this.p.bgMode==='color'?`<dt></dt><dd><input type="color" data-bg value="${esc(this.p.bg||'#000000')}" aria-label="Background colour"></dd>`:''}
+    <dt>Proxies</dt><dd>${this.media.some(m=>m.proxy)?`<label class="ed-xopt"><input type="checkbox" data-useproxy ${this.p.useProxy===false?'':'checked'}> Play with proxies</label>`:''}${this.p.clips.some(c=>{const m=this.mediaOf(c);return m&&m.type==='video'&&!m.proxy&&Math.max(m.w||0,m.h||0)>1280;})?` <button type="button" class="ed-link" data-proxies>Make proxies for big videos</button>`:this.media.some(m=>m.proxy)?'':'None needed'}</dd>
     <dt>Markers</dt><dd>${this.p.markers.length?`${this.p.markers.length} · <button type="button" class="ed-link" data-clear-markers>Clear</button>`:'Press M to add one'}</dd></dl>
     ${this.p.markers.length?`<div class="ed-mlist">${this.p.markers.map((m,i)=>`<button type="button" class="ed-mrow" data-mgo="${i}"><i class="ed-swatch" style="background:${m.color?edLabel(m.color):'var(--warn)'}"></i><span>${edFmt(edMt(m))}</span><b dir="auto">${esc(m.name||'Marker')}</b>${m.note?`<small dir="auto">${esc(m.note)}</small>`:''}</button>`).join('')}</div>`:''}`;
   else if(t==='text')body=(c.words?sec('Caption',`<div class="ed-seg wrap">${ED_CAPS.map(([v,l])=>`<button type="button" data-caplook="${v}" aria-pressed="${(c.capLook||'clean')===v}">${l}</button>`).join('')}</div>
@@ -218,8 +219,9 @@ Object.assign(Ed,{
      ${media?`<div class="ed-row"><label>Flip</label><div class="ed-ctl"><button type="button" class="ed-tool" data-flip="flipH" aria-pressed="${!!c.flipH}">${I.flipH} Mirror</button><button type="button" class="ed-tool" data-flip="flipV" aria-pressed="${!!c.flipV}">${I.flipV} Flip</button></div></div>`:''}`,'transform')+
     (media?sec('Crop',`${['l','t','r','b'].map(s=>row('crop'+s,{l:'Left',t:'Top',r:'Right',b:'Bottom'}[s],cr[s]||0,{min:0,max:45,unit:'pct',suffix:'%'})).join('')}`,'crop'):'')+
     (media&&c.media?sec('Smart tools',this.toolJobs[c.id]?`<div class="ed-note"><span class="spin"></span> ${esc(this.toolJobs[c.id].label)}…${this.toolJobs[c.id].progress!=null?` ${Math.round(this.toolJobs[c.id].progress*100)}%`:''}<br><small>${esc(this.toolJobs[c.id].note||'Working on this computer; you can keep editing.')}</small></div>`:
-     `<div class="ed-tools-row">${m?.type==='video'?`<button type="button" class="ed-tool" data-tool="stabilize">${I.wand} Stabilise</button>`:''}<button type="button" class="ed-tool" data-tool="cutout">${I.image} Remove background</button>${m?.type==='video'?`<button type="button" class="ed-tool" data-tool="reframe">${I.crop} Auto reframe</button>`:''}</div>
+     `<div class="ed-tools-row">${m?.type==='video'?`<button type="button" class="ed-tool" data-tool="stabilize">${I.wand} Stabilise</button>`:''}<button type="button" class="ed-tool" data-tool="cutout">${I.image} Remove background</button>${m?.type==='video'?`<button type="button" class="ed-tool" data-reverse>${I.undo} Reverse</button>`:''}${this.trackOf(c)&&!this.trackOf(c).main?`<button type="button" class="ed-tool" data-trackmo>${I.flag} Track motion</button>`:''}${m?.type==='video'?`<button type="button" class="ed-tool" data-tool="reframe">${I.crop} Auto reframe</button>`:''}</div>
      <p class="ed-hint">Stabilise steadies shaky footage. Remove background cuts out the person or object. Auto reframe fills the ${esc(this.p.ratio)} frame and follows the face.</p>`):'')+
+    (!c.media&&!c.adjustment?sec('Motion tracking',this.toolJobs[c.id]?`<div class="ed-note"><span class="spin"></span> ${esc(this.toolJobs[c.id].label)}…</div>`:`<div class="ed-tools-row"><button type="button" class="ed-tool" data-trackmo>${I.flag} Track motion</button></div><p class="ed-hint">Place this over the thing to follow at the clip's start, then press: it moves with it in the video below.</p>`):'')+
     sec('Opacity and blend',row('opacity','Opacity',cur('opacity'),{min:0,max:100,unit:'pct',suffix:'%'})+`<div class="ed-row"><label for="ed-blend">Blend</label><div class="ed-ctl"><select id="ed-blend" data-k="blend" aria-label="Blend mode">${ED_BLENDS.map(([v,l])=>`<option value="${v}" ${(c.blend||'normal')===v?'selected':''}>${l}</option>`).join('')}</select></div></div>`)+(media?fades():'')+
     `<p class="ed-hint">${I.diamond} Keyframes: move the playhead, press the diamond, change the value. It animates between them.</p>`;}
   else if(t==='adjust'){const a=c.adj||{};body=sec('Filter',`<div class="ed-filters small">${ED_FILTERS.map(([id,l,f])=>`<button type="button" class="ed-filter" data-filter="${id}" aria-pressed="${JSON.stringify(a)===JSON.stringify(f)}"><span class="ed-filter-swatch" style="filter:${edCssFilter(f)}"></span><span>${l}</span></button>`).join('')}</div>`)+
@@ -276,6 +278,7 @@ Object.assign(Ed,{
    el.querySelectorAll('[data-bgmode]').forEach(b=>b.onclick=()=>{this.snapshot();this.p.bgMode=b.dataset.bgmode;this.save();this.drawProps();this.draw();});
    const bg=$('[data-bg]',el);if(bg){bg.onfocus=()=>this.snapshot();bg.oninput=()=>{this.p.bg=bg.value;this.save();this.draw();};}
    el.querySelectorAll('[data-mgo]').forEach(b=>{b.onclick=()=>this.seek(edMt(this.p.markers[Number(b.dataset.mgo)]));b.ondblclick=()=>edMarkerEdit(b,Number(b.dataset.mgo));});
+   const mp=$('[data-proxies]',el);if(mp)mp.onclick=()=>{mp.disabled=true;this.makeProxies();};const up=$('[data-useproxy]',el);if(up)up.onchange=()=>{this.p.useProxy=up.checked;this.resetElements();this.save();this.sync();this.draw();};
    const cm=$('[data-clear-markers]',el);if(cm)cm.onclick=()=>{this.snapshot();this.p.markers=[];this.after(true);};return;
   }
   const setSpeed=v=>{const mm=this.mediaOf(c),max=mm?.dur&&mm.type!=='image'?((mm.dur-(c.in||0))/(v*(c.ramp?edRampAvg(c.ramp):1))):Infinity;c.dur=Math.max(.1,Math.min(c.dur*(c.speed||1)/v,max));c.speed=v;};
@@ -301,6 +304,7 @@ Object.assign(Ed,{
   const segs={align:'align',animIn:'animIn',animOut:'animOut'};
   for(const [attr,key] of Object.entries(segs))el.querySelectorAll(`[data-${attr}]`).forEach(b=>b.onclick=()=>{this.snapshot();c[key]=b.dataset[attr];this.save();this.drawProps();this.draw();});
   el.querySelectorAll('[data-afx]').forEach(b=>b.onclick=()=>{this.snapshot();const p={voice:{low:-4,mid:3,high:4,comp:45},radio:{low:-14,mid:6,high:-10,comp:70},warm:{low:4,mid:-1,high:-3,comp:20},podcast:{low:2,mid:2,high:3,comp:60},hall:{reverb:45},flat:null}[b.dataset.afx];if(p)c.afx={...p};else delete c.afx;this.after(true);});
+  const rv=$('[data-reverse]',el);if(rv)rv.onclick=()=>this.reverseClip(c);el.querySelectorAll('[data-trackmo]').forEach(b=>b.onclick=()=>this.trackMotion(c));
   el.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>this.runTool(c,b.dataset.tool));
   el.querySelectorAll('[data-flip]').forEach(b=>b.onclick=()=>{this.snapshot();c[b.dataset.flip]=!c[b.dataset.flip];this.save();this.drawProps();this.draw();});
   el.querySelectorAll('[data-speed]').forEach(b=>b.onclick=()=>{this.snapshot();setSpeed(Number(b.dataset.speed));this.after(true);});
@@ -691,7 +695,7 @@ function edClipMenu(x,y,c){
   ...(video&&!many?[[c.detached?'Audio is detached':'Detach audio','detach',()=>Ed.detach(c),!!c.detached]]:[]),
   ...(!many&&c.media&&m?.type!=='image'?[['Speed 0.5×','sliders',()=>edSpeed(c,.5)],['Speed 1×','sliders',()=>edSpeed(c,1)],['Speed 2×','sliders',()=>edSpeed(c,2)]]:[]),
   ...(!many&&video?[['Freeze frame','freeze',()=>{Ed.seek(edClamp(Ed.time,c.start,c.start+c.dur-.04));Ed.freeze();},false,false,'Shift+F']]:[]),
-  ...(!many&&video?[['Stabilise','wand',()=>Ed.runTool(c,'stabilize')],['Auto reframe','crop',()=>Ed.runTool(c,'reframe')]]:[]),
+  ...(!many&&video?[['Reverse','undo',()=>Ed.reverseClip(c)],['Stabilise','wand',()=>Ed.runTool(c,'stabilize')],['Auto reframe','crop',()=>Ed.runTool(c,'reframe')]]:[]),
   ...(!many&&c.media&&m?.type!=='audio'&&!c.asAudio?[['Remove background','image',()=>Ed.runTool(c,'cutout')]]:[]),
   ['Label colour…','flag',()=>setTimeout(()=>edMenu(x,y,[...ED_LABELS.map(([v,l])=>[`<i class="ed-swatch" style="background:${edLabel(v)}"></i>${l}`,'',()=>{Ed.snapshot();for(const k of Ed.picked())k.label=v;Ed.after(true);}]),['None','x',()=>{Ed.snapshot();for(const k of Ed.picked())delete k.label;Ed.after(true);}]]),0)],
   ...(!many&&c.media?[['Replace with…','refresh',()=>edReplace(x,y,c)]]:[]),
@@ -781,6 +785,18 @@ function edMixer(){const tracks=Ed.p.tracks.filter(t=>t.kind==='audio'||t.kind==
   r.querySelector('[data-mm]').onclick=e=>{t.muted=!t.muted;e.target.classList.toggle('primary',!!t.muted);Ed.sync();Ed.drawTimeline();};
   r.querySelector('[data-ms]').onclick=e=>{t.solo=!t.solo;if(!t.solo)delete t.solo;e.target.classList.toggle('primary',!!t.solo);Ed.sync();};});}
 const edPanLabel=p=>Math.abs(p)<.01?'Centre':`${Math.round(Math.abs(p)*100)}% ${p<0?'left':'right'}`;
+/** Source monitor (Premiere/Resolve): watch a file, mark in and out (I, O), then insert or overwrite it at the playhead. */
+function edSource(m){let a=0,b=m.dur||0;
+ dialog(`<div class="ed-keys ed-source"><h2 dir="auto">${esc(m.name)}</h2><${m.type==='audio'?'audio':'video'} class="ed-src-player" src="${Ed.urls[m.id]}" controls preload="auto"></${m.type==='audio'?'audio':'video'}>
+  <div class="ed-src-range"><button type="button" class="btn small" data-in>${I.trimL} Mark in · I</button><span data-range></span><button type="button" class="btn small" data-out>Mark out · O ${I.trimR}</button></div>
+  <p class="ed-xnote">The part between in and out goes onto the ${m.type==='audio'?'audio':'main'} track at the playhead (${edFmt(Ed.time)}).</p>
+  <div class="ed-xactions"><button type="button" class="btn ghost" data-no>Close</button><button type="button" class="btn" data-ow>Overwrite</button><button type="button" class="btn primary" data-ins>Insert</button></div></div>`);
+ const box=$('.ed-source'),v=box.querySelector('.ed-src-player'),show=()=>{box.querySelector('[data-range]').textContent=`${edFmt(a)} → ${edFmt(b)} · ${edFmt(b-a)}`;};show();
+ const mark=w=>{const t=v.currentTime;if(w==='in'){a=Math.min(t,b-.1);}else{b=Math.max(t,a+.1);}show();};
+ box.querySelector('[data-in]').onclick=()=>mark('in');box.querySelector('[data-out]').onclick=()=>mark('out');
+ box.onkeydown=e=>{if(e.key==='i'||e.key==='I'){mark('in');e.preventDefault();}else if(e.key==='o'||e.key==='O'){mark('out');e.preventDefault();}};box.tabIndex=-1;box.focus();
+ box.querySelector('[data-no]').onclick=()=>closeDialog();
+ box.querySelector('[data-ins]').onclick=()=>{closeDialog();Ed.sourceEdit(m.id,a,b,'insert');};box.querySelector('[data-ow]').onclick=()=>{closeDialog();Ed.sourceEdit(m.id,a,b,'overwrite');};}
 function edSpeed(c,v){Ed.snapshot();const m=Ed.mediaOf(c),max=m?.dur?((m.dur-(c.in||0))/(v*(c.ramp?edRampAvg(c.ramp):1))):Infinity;c.dur=Math.max(.1,Math.min(c.dur*(c.speed||1)/v,max));c.speed=v;Ed.after(true);}
 // ---------- resizable panels: drag the lines between them; sizes are remembered ----------
 function edLayout(R){

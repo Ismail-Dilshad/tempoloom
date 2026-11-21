@@ -32,6 +32,13 @@
 - **Effects tab** (CapCut-style): sharpen (on the graphics card), glow, film grain (changing 24 times a
   second), camera shake (repeatable, so the export matches), rounded corners, a border, and a drop
   shadow that follows a cut-out's outline.
+- **Source monitor and 3-point editing**: double-click a video or sound in Media to watch it, mark in
+  and out (I, O), then **Insert** (what follows moves right) or **Overwrite** at the playhead.
+- **Reverse**: a clip's own part of the file, played backwards (a new file; the original stays).
+- **Motion tracking**: put text, a sticker or a picture over something in the video and press Track
+  motion; it follows it (OpenCV CSRT; within a few pixels on test footage) with keyframes.
+- **Proxies** (Details): 720p copies of big videos for smooth editing; playback uses them, every
+  export and saved frame uses the originals.
 - **Paste attributes** (Ctrl+Alt+V, or the clip menu): the copied clip's transform, opacity and
   blend, colour, key and mask, speed, sound or text style onto the selected clips, by group.
 

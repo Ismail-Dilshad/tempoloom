@@ -118,7 +118,8 @@ const Ed={
   this.plist=(await this.read('meta','list'))||[];this.media=(await this.read('meta','media'))||[];
   await this.fromLocal();
   this.plist=this.plist.filter(x=>this.pjson.has(x.id));
-  const kept=[];for(const m of this.media){const b=await this.get(m.id).catch(()=>null);if(b){this.urls[m.id]=URL.createObjectURL(b);kept.push(m);}}
+  const kept=[];for(const m of this.media){const b=await this.get(m.id).catch(()=>null);if(b){this.urls[m.id]=URL.createObjectURL(b);kept.push(m);
+   if(m.proxy){const pb=await this.get(m.id+':proxy').catch(()=>null);if(pb)this.urls[m.id+':proxy']=URL.createObjectURL(pb);else delete m.proxy;}}}
   this.media=kept;
   document.fonts?.load('40px Vazirmatn').catch(()=>{});document.fonts?.load('40px Fredoka').catch(()=>{});
  })());},
@@ -339,18 +340,22 @@ const Ed={
  copy(cut){const list=this.picked();if(!list.length)return;this.clipboard=JSON.parse(JSON.stringify(list.map(c=>({...c,kind:this.kindOf(c)}))));toast(cut?`Cut ${list.length}`:`Copied ${list.length}`);if(cut)this.remove();},
  // ---------- smart tools: stabilise, remove background, auto reframe (jobs on this computer) ----------
  toolJobs:{},
- async runTool(c,kind){const m=this.mediaOf(c);if(!m||this.toolJobs[c.id])return;
-  const label={stabilize:'Stabilising',cutout:'Removing the background',reframe:'Finding the face',voice:'Cleaning the voice',beats:'Finding the beats'}[kind];
+ async runTool(c,kind,o={}){const m=o.media||this.mediaOf(c);if(!m||this.toolJobs[c.id])return;
+  const label={stabilize:'Stabilising',cutout:'Removing the background',reframe:'Finding the face',voice:'Cleaning the voice',beats:'Finding the beats',reverse:'Reversing',track:'Following the motion'}[kind];
   if(kind==='cutout'&&m.type==='video'){const frames=Math.round((m.dur||c.dur)*30),min=Math.ceil(frames*6.5/60);
    if(!await ask('Remove the background of this video?',`It works frame by frame on this computer's processor: about ${min} minute${min>1?'s':''} for ${frames} frames. Photos take a few seconds.`,'Start'))return;}
   const blob=await this.get(m.id);if(!blob)return toast('The file is not in this browser any more.',true);
   this.toolJobs[c.id]={kind,label,progress:null,note:''};this.drawProps();
-  try{const r=await fetch(withKey(`/api/editor/tool?kind=${kind}&name=${encodeURIComponent(m.name)}${kind==='reframe'?'&aspect='+encodeURIComponent(this.p.ratio):''}`),{method:'POST',body:blob});
+  try{const r=await fetch(withKey(`/api/editor/tool?kind=${kind}&name=${encodeURIComponent(m.name)}${kind==='reframe'?'&aspect='+encodeURIComponent(this.p.ratio):''}${o.query?'&'+new URLSearchParams(o.query):''}`),{method:'POST',body:blob});
    let st=await r.json().catch(()=>({}));if(!r.ok)throw new Error(st.error||'Could not start');
    while(st.state==='running'){await new Promise(res=>setTimeout(res,1500));const q=await fetch(withKey('/api/editor/tool/'+st.id));st=await q.json();this.toolJobs[c.id]={...this.toolJobs[c.id],progress:st.progress,note:st.note||''};if(this.sel===c.id)this.drawProps();}
    if(st.state==='error')throw new Error(st.error||'The tool stopped');
    const clip=this.clip(c.id);if(!clip)return;
    if(kind==='reframe')this.applyReframe(clip,st.result.track);
+   else if(kind==='track'){const v=this.clip(o.video?.id);if(v)this.applyTrack(clip,v,st.result.points);}
+   else if(kind==='reverse'){const f=await fetch(withKey('/api/editor/tool/'+st.id+'/file'));if(!f.ok)throw new Error('Could not get the result');const out=await f.blob();
+    const [nm]=await this.importFiles([new File([out],m.name.replace(/\.[a-z0-9]{2,5}$/i,'')+' (reversed).mp4',{type:'video/mp4'})]);
+    if(nm){this.snapshot();clip.media=nm.id;clip.in=0;delete clip.ramp;delete clip.rampName;this.els[clip.id]?.pause?.();delete this.els[clip.id];this.after(true);toast('Reversed');}}
    else if(kind==='beats'){this.snapshot();let n=0;const have=new Set(this.p.markers.map(x=>Math.round(edMt(x)*100)));
     for(const b of st.result.beats){if(b<(clip.in||0)||b>this.srcSpan(clip)+(clip.in||0))continue;const t=Math.round(this.tlAt(clip,b)*1000)/1000,bar=st.result.bars.some(x=>Math.abs(x-b)<.01);
      if(have.has(Math.round(t*100)))continue;this.p.markers.push({t,...(bar?{color:'orange',name:'Bar'}:{color:'yellow'})});n++;}
@@ -363,6 +368,46 @@ const Ed={
    fetch(withKey('/api/editor/tool/'+st.id),{method:'DELETE'}).catch(()=>{});
   }catch(e){toast(e.message,true);}
   finally{delete this.toolJobs[c.id];this.drawProps();}},
+ /** Reverse: the clip's own part of the file, played backwards (a new file; the original stays). */
+ reverseClip(c){const sp=this.srcSpan(c);return this.runTool(c,'reverse',{query:{ss:(c.in||0).toFixed(3),t:sp.toFixed(3)}});},
+ /** The video under an overlay (text, sticker, picture) at its middle: what motion tracking follows. */
+ videoUnder(c){const t=c.start+c.dur/2,order=this.p.tracks.map(x=>x.id),me=order.indexOf(c.track);
+  return this.p.clips.filter(v=>v.id!==c.id&&!v.asAudio&&this.mediaOf(v)?.type==='video'&&t>=v.start&&t<v.start+v.dur&&order.indexOf(v.track)>me).sort((a,b)=>order.indexOf(a.track)-order.indexOf(b.track))[0];},
+ /** Motion tracking: what is under this clip in the video below is followed, and the clip moves with it. */
+ trackMotion(c){const v=this.videoUnder(c);if(!v)return toast('Put this over a video first: tracking follows what is under it.');const mv=this.mediaOf(v);
+  const [W,H]=this.base(),g=this.dom.canvas.getContext('2d'),b=this.box(g,c,...this.size(),c.start),k=this.k(),r=this.rect(v,W,H,c.start),s=this.src(v);
+  const toSrc=(x,y)=>[((x/k-(r.cx-r.w/2))/r.w*s.sw+s.sx)/(mv.w||1),((y/k-(r.cy-r.h/2))/r.h*s.sh+s.sy)/(mv.h||1)];
+  const [x0,y0]=toSrc(b.cx-b.w/2,b.cy-b.h/2),[x1,y1]=toSrc(b.cx+b.w/2,b.cy+b.h/2);
+  const cl=v=>edClamp(v,0,1),bx=[cl(x0),cl(y0),Math.max(.03,cl(x1)-cl(x0)),Math.max(.03,cl(y1)-cl(y0))];
+  return this.runTool(c,'track',{media:mv,video:v,query:{box:bx.map(x=>x.toFixed(4)).join(','),start:this.srcAt(v,c.start).toFixed(3),end:this.srcAt(v,c.start+c.dur).toFixed(3)}});},
+ applyTrack(c,v,points){const mv=this.mediaOf(v),[W,H]=this.base(),r0=this.rect(v,W,H,c.start),s=this.src(v);if(!points?.length)return;
+  const p0=points[0],ox=this.val(c,'x',c.start),oy=this.val(c,'y',c.start);
+  const toCanvas=(p,t)=>{const r=this.rect(v,W,H,t);return [(r.cx-r.w/2)+((p.x*(mv.w||1))-s.sx)/s.sw*r.w,(r.cy-r.h/2)+((p.y*(mv.h||1))-s.sy)/s.sh*r.h];};
+  const [ax,ay]=toCanvas(p0,c.start),xs=[],ys=[];let last=-1;void r0;
+  for(const p of points){if(!p.ok)continue;const tl=this.tlAt(v,p.time),lt=tl-c.start;if(lt<0||lt>c.dur||lt-last<.19)continue;last=lt;const [px,py]=toCanvas(p,tl);
+   xs.push({t:Math.round(lt*1000)/1000,v:Math.round((ox+(px-ax)/W)*10000)/10000,e:'linear'});ys.push({t:Math.round(lt*1000)/1000,v:Math.round((oy+(py-ay)/H)*10000)/10000,e:'linear'});}
+  if(xs.length<2)return toast('Nothing was followed in this part of the video.');
+  this.snapshot();c.kf={...(c.kf||{}),x:xs,y:ys};this.after(true);toast(`Tracked: ${xs.length} positions`);},
+ // ---------- proxies: a 720p copy of big videos for smooth editing; the originals are always used for export ----------
+ proxySrc(m){return !this.exporting&&!this.originals&&this.p?.useProxy!==false&&m.proxy&&this.urls[m.id+':proxy']?this.urls[m.id+':proxy']:this.urls[m.id];},
+ /** Recreates the video elements (after switching between proxies and originals). */
+ resetElements(){for(const el of Object.values(this.els))el.pause?.();this.els={};},
+ async makeProxies(){const used=new Set(this.p.clips.map(c=>c.media)),big=this.media.filter(m=>used.has(m.id)&&m.type==='video'&&!m.proxy&&Math.max(m.w||0,m.h||0)>1280);if(!big.length)return toast('No video here is bigger than 720p.');
+  for(const m of big){toast(`Making a proxy for ${m.name}…`);try{const blob=await this.get(m.id);const r=await fetch(withKey(`/api/editor/tool?kind=proxy&name=${encodeURIComponent(m.name)}`),{method:'POST',body:blob});let st=await r.json();
+   while(st.state==='running'){await new Promise(res=>setTimeout(res,1500));st=await (await fetch(withKey('/api/editor/tool/'+st.id))).json();}
+   if(st.state!=='done')throw new Error(st.error||'The proxy failed');const out=await (await fetch(withKey('/api/editor/tool/'+st.id+'/file'))).blob();
+   await this.put(m.id+':proxy',out);this.urls[m.id+':proxy']=URL.createObjectURL(out);m.proxy=true;fetch(withKey('/api/editor/tool/'+st.id),{method:'DELETE'}).catch(()=>{});}
+   catch(e){toast(m.name+': '+e.message,true);}}
+  this.resetElements();this.save();this.sync();this.draw();this.drawProps();toast('Proxies ready: playback uses them, export uses the originals');},
+ /** Source monitor edits (3-point editing): a range of a file onto the main track at the playhead.
+  *  insert: everything after the playhead moves right; overwrite: it replaces what is there. */
+ sourceEdit(mid,a,b,mode){const m=this.media.find(x=>x.id===mid);if(!m)return;const audio=m.type==='audio',tr=audio?(this.p.tracks.find(t=>t.kind==='audio')||this.addTrack('audio')):this.main(),t=this.time,d=Math.max(.1,b-a);
+  this.snapshot();const on=this.p.clips.filter(x=>x.track===tr.id);
+  if(mode==='insert'){const hit=on.find(x=>t>x.start+.02&&t<x.start+x.dur-.02);if(hit)this.splitClip(hit,t);for(const x of this.p.clips)if(x.track===tr.id&&x.start>=t-.001)x.start+=d;}
+  else{for(const x of [...on]){const e=x.start+x.dur;if(e<=t+.001||x.start>=t+d-.001)continue;
+    if(x.start<t&&e>t+d){const tail=this.splitClip(x,t+d);void tail;x.dur=t-x.start;}else if(x.start<t)x.dur=t-x.start;else if(e>t+d){const cut=t+d-x.start;x.in=this.srcAt(x,t+d);x.start=t+d;x.dur-=cut;}else this.p.clips=this.p.clips.filter(y=>y!==x);}}
+  const c={id:this.uid(),track:tr.id,media:mid,start:t,in:a,dur:d,speed:1,volume:1,scale:1,x:0,y:0,rotate:0,opacity:1,fadeIn:0,fadeOut:0};
+  this.p.clips.push(c);const magnet=this.p.magnet;if(mode==='overwrite')this.p.magnet=false;this.pick(c.id);this.after(true);this.p.magnet=magnet;this.seek(t+d);},
  /** Auto reframe: the clip fills the frame and follows the face (x, and y when there is room), with smooth keyframes every half second. */
  applyReframe(c,track){const m=this.mediaOf(c),[W,H]=this.base(),s=this.src(c),fit=Math.min(W/s.sw,H/s.sh),cover=Math.max(W/s.sw,H/s.sh),Dw=s.sw*cover,Dh=s.sh*cover;
   const maxX=Math.max(0,(Dw-W)/(2*W)),maxY=Math.max(0,(Dh-H)/(2*H)),pts=(track||[]).filter(p=>p.face&&p.x!=null);if(!pts.length)return toast('No face was found to follow.');
@@ -429,7 +474,7 @@ const Ed={
  element(c){
   let el=this.els[c.id];const m=this.mediaOf(c);
   if(!el&&m&&m.type!=='image'){
-   el=document.createElement(c.asAudio?'audio':m.type);el.src=this.urls[m.id];el.preload='auto';el.playsInline=true;el.crossOrigin='anonymous';
+   el=document.createElement(c.asAudio?'audio':m.type);el.src=m.type==='video'&&!c.asAudio?this.proxySrc(m):this.urls[m.id];el.preload='auto';el.playsInline=true;el.crossOrigin='anonymous';
    el.addEventListener('seeked',()=>{if(!this.playing)this.draw();});el.addEventListener('loadeddata',()=>{if(!this.playing)this.draw();});
    this.els[c.id]=el;if(this.ac)this.route(el);
   }
@@ -571,7 +616,8 @@ const Ed={
   if(fx.shadow&&rad){g.save();g.shadowColor=`rgba(0,0,0,${.25+fx.shadow/200})`;g.shadowBlur=fx.shadow/100*40*kk;g.shadowOffsetY=fx.shadow/100*14*kk;g.fillStyle='#000';g.beginPath();g.roundRect(-r.w/2,-r.h/2,r.w,r.h,rad);g.fill();g.restore();}
   if(rad){g.beginPath();g.roundRect(-r.w/2,-r.h/2,r.w,r.h,rad);g.clip();}
   if(fx.shadow&&!rad){g.shadowColor=`rgba(0,0,0,${.25+fx.shadow/200})`;g.shadowBlur=fx.shadow/100*40*kk;g.shadowOffsetY=fx.shadow/100*14*kk;}
-  g.filter=this.filterOf(c,o.blur);g.drawImage(src,s.sx,s.sy,s.sw,s.sh,-r.w/2,-r.h/2,r.w,r.h);g.filter='none';g.shadowColor='transparent';
+  const kq=m&&m.type==='video'&&src.videoWidth&&m.w?src.videoWidth/m.w:1;// a proxy is smaller than the original: the same part of it
+  g.filter=this.filterOf(c,o.blur);g.drawImage(src,s.sx*kq,s.sy*kq,s.sw*kq,s.sh*kq,-r.w/2,-r.h/2,r.w,r.h);g.filter='none';g.shadowColor='transparent';
   if(fx.border){g.lineWidth=fx.border*kk*2;g.strokeStyle=fx.borderColor||'#ffffff';g.beginPath();g.roundRect(-r.w/2,-r.h/2,r.w,r.h,rad);g.stroke();}
   const adj=c.adj||{};
   if(adj.temperature){g.globalCompositeOperation='soft-light';g.fillStyle=adj.temperature>0?`rgba(255,140,30,${adj.temperature/100*.7})`:`rgba(30,130,255,${-adj.temperature/100*.7})`;g.fillRect(-r.w/2,-r.h/2,r.w,r.h);g.globalCompositeOperation='source-over';}
@@ -670,7 +716,7 @@ const Ed={
   const quality={standard:.08,high:.12,best:.2}[o.quality||'high']||.12,crf={standard:23,high:19,best:16}[o.quality||'high']||19;
   const scale=o.height/Math.min(...this.base()),fps=o.fps,t0=this.time;
   this.pause();
-  this.exporting={scale,format:o.format,fps,name:o.name,studio:!!o.studio,offline:true};
+  this.exporting={scale,format:o.format,fps,name:o.name,studio:!!o.studio,offline:true};if(this.media.some(m=>m.proxy))this.resetElements();
   const ex=this.exporting,[W,H]=this.size(),cfg=await edVideoConfig(W,H,fps,Math.min(80e6,Math.max(4e6,Math.round(W*H*fps*quality))));
   if(!cfg){this.exporting=null;if(o.format==='gif')return toast('This browser cannot make a GIF (no WebCodecs).',true);return this.exportLive(o);}
   this.pick(null);this.drawTimeline();this.drawProps();this.fit();this.drawExport('Getting ready…');
@@ -699,7 +745,7 @@ const Ed={
    const out=await r.blob(),name=ex.name+'.'+ex.format;edSaveFile(out,name);toast(`Exported (${frames} frames)`);if(ex.studio)this.toStudio(out,name);
   }catch(e){if(!ex.cancelled)toast('Export stopped: '+(e?.message||e),true);}
   finally{try{if(ex.enc&&ex.enc.state!=='closed')ex.enc.close();}catch{}
-   this.exporting=null;this.drawExport();this.fit();this.time=Math.min(t0,this.end());this.sync();this.draw();this.drawHead();this.drawTime();}
+   this.exporting=null;if(this.media.some(m=>m.proxy))this.resetElements();this.drawExport();this.fit();this.time=Math.min(t0,this.end());this.sync();this.draw();this.drawHead();this.drawTime();}
  },
  /** Before the first frame: the fonts of every text, every picture decoded, every video able to show a frame. */
  // ---------- colour grading: wheels, curves and an imported look, folded into one 3D table ----------
@@ -767,7 +813,7 @@ const Ed={
   if(typeof MediaRecorder==='undefined')return toast('This browser cannot record video.',true);
   this.audio();await this.ac?.resume?.();
   const scale=o.height/Math.min(...this.base()),fps=o.fps;
-  this.exporting={scale,format:o.format,fps,name:o.name,studio:!!o.studio,until:o.range?.e};this.pick(null);this.drawTimeline();this.drawProps();this.fit();this.draw();
+  this.exporting={scale,format:o.format,fps,name:o.name,studio:!!o.studio,until:o.range?.e};if(this.media.some(m=>m.proxy))this.resetElements();this.pick(null);this.drawTimeline();this.drawProps();this.fit();this.draw();
   const v=this.dom.canvas.captureStream(fps),tracks=[...v.getVideoTracks(),...(this.rec?this.rec.stream.getAudioTracks():[])];
   const type=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'].find(t=>MediaRecorder.isTypeSupported(t));
   const [W,H]=this.size(),bits=Math.round(W*H*fps*.15);
@@ -778,16 +824,16 @@ const Ed={
     try{const r=await fetch(withKey('/api/editor/mp4?fps='+fps),{method:'POST',body:new Blob(parts,{type:'video/webm'})});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Could not make the MP4');const out=await r.blob();edSaveFile(out,ex.name+'.mp4');toast('Exported');if(ex.studio)this.toStudio(out,ex.name+'.mp4');}
     catch(e){toast(e.message+'. Saved as WebM instead.',true);edSaveFile(new Blob(parts,{type:'video/webm'}),ex.name+'.webm');}}
    else if(ok){const out=new Blob(parts,{type:'video/webm'});edSaveFile(out,ex.name+'.webm');toast('Exported');if(ex.studio)this.toStudio(out,ex.name+'.webm');}
-   this.exporting=null;this.drawExport();this.fit();this.draw();};
+   this.exporting=null;if(this.media.some(m=>m.proxy))this.resetElements();this.drawExport();this.fit();this.draw();};
   this.drawExport('Recording…');this.pause();this.rate=1;this.seek(o.range?.s??0);
   setTimeout(()=>{rec.start(250);this.exporting.rec=rec;this.play();},400);
  },
  /** The frame under the playhead as a PNG, at 1080 on the short side, without selection outlines. */
  async saveFrame(){if(!this.p.clips.length||this.exporting)return;this.pause();const t=this.time;
-  this.exporting={scale:1080/Math.min(...this.base()),still:true};
+  this.exporting={scale:1080/Math.min(...this.base()),still:true};if(this.media.some(m=>m.proxy))this.resetElements();
   try{await this.exportReady();await this.seekExact(t);this.time=t;this.draw();const blob=await new Promise(r=>this.dom.canvas.toBlob(r,'image/png'));
    if(!blob)throw new Error('Could not make the picture');edSaveFile(blob,`${this.p.name} ${edFmt(t).replace(/:/g,'.')}.png`);toast('Frame saved');}
-  catch(e){toast(e.message,true);}finally{this.exporting=null;this.fit();this.draw();}},
+  catch(e){toast(e.message,true);}finally{this.exporting=null;if(this.media.some(m=>m.proxy))this.resetElements();this.fit();this.draw();}},
  toStudio(blob,name){edSaveToStudio(blob,name).then(()=>toast('Saved to Studio')).catch(e=>toast(e.message,true));},
  finishExport(){const e=this.exporting;if(e?.rec&&e.rec.state!=='inactive')setTimeout(()=>e.rec.stop(),200);},
  cancelExport(){const e=this.exporting;if(!e)return;e.cancelled=true;if(e.offline){this.drawExport('Stopping…');return;}this.pause();if(e.rec&&e.rec.state!=='inactive')e.rec.stop();else{this.exporting=null;this.drawExport();this.fit();this.draw();}},
