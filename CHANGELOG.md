@@ -69,6 +69,12 @@
   caption is kept with its audio in `workspace/datasets/captions/<language>/` (WAV plus
   metadata.jsonl) to fine-tune a model on later. "Manage" in the Captions box lists what was learned,
   with how often, to forget one or all. Nothing leaves this computer.
+- **Cleaner Kurdish captions**: Arabic look-alike letters become Kurdish ones (ك→ک, ي/ى→ی, ھ→ه,
+  ة→ە; Arabic keeps its own); the half letters the Sorani model sometimes wrote (shown as �) are
+  repaired; words that model "heard" over silence or music (12 dB or more under the typical word)
+  are dropped, which took it from 7.3% to 3.9% wrong letters on the Sorani test set; where both
+  models agree, captions take its punctuation; only short disagreements (up to 4 words) are marked.
+  `pnpm tempoloom captions evaluate [--show]` scores each model on the captions you corrected.
 
 ## 10.2.0: Sileo notifications
 

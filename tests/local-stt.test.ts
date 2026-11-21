@@ -69,7 +69,33 @@ describe('captions that learn from corrections',()=>{
   const om=[{text:'پاش',start:0,end:.3},{text:'موسڵمانبوونی',start:.3,end:1},{text:'بکات',start:1,end:1.4}];
   const wh=[{text:'پاش',start:0,end:.3,confidence:.9},{text:'موسڵمان',start:.3,end:.6,confidence:.8},{text:'بوونی',start:.6,end:1,confidence:.8},{text:'بکات.',start:1,end:1.4,confidence:.9}];
   const r=secondOpinion(om,wh);expect(r.flags).toBe(1);
-  expect(r.words.map(w=>w.text)).toEqual(['پاش','موسڵمانبوونی','بکات']);
+  // the words stay; only the full stop Whisper wrote after an agreed word is borrowed
+  expect(r.words.map(w=>w.text)).toEqual(['پاش','موسڵمانبوونی','بکات.']);
   expect(r.words[1]).toMatchObject({alt:'موسڵمان بوونی',altSpan:1});
+ });
+});
+
+describe('cleaner Kurdish captions',()=>{
+ it('writes Kurdish letters, not their Arabic look-alikes, and leaves Arabic alone',async()=>{
+  const {tidyLetters}=await import('../src/engine/local-stt.js');
+  expect(tidyLetters('میدیایەك علي ھەموو هه\u200cر','ckb')).toBe('میدیایەک علی هەموو هەر');
+  expect(tidyLetters('علي كتاب','ar')).toBe('علي كتاب');
+  expect(tidyLetters('Hello','en')).toBe('Hello');
+ });
+ it('repairs the half letters the Sorani model sometimes writes',async()=>{
+  const {repairHalfLetters}=await import('../src/engine/local-stt.js');
+  expect(repairHalfLetters('چی\uFFFDتە بین\uFFFDرد')).toBe('چێتە بینێرد');
+ });
+ it('drops words "heard" over silence that nobody said',async()=>{
+  const {dropInventedWords}=await import('../src/engine/local-stt.js');
+  const sr=16000,x=new Float32Array(sr*5);for(let i=0;i<sr*3.3;i++)x[i]=.05*Math.sin(i/5);
+  const ws=[{text:'هاوەڵ',start:.2,end:.8},{text:'بۆ',start:.9,end:1.1},{text:'خودا',start:1.2,end:1.8},{text:'گەورەیە',start:2.6,end:3.2},{text:'موسیقی',start:3.5,end:4.2},{text:'دیگه',start:4.3,end:4.9}];
+  expect(dropInventedWords(ws,x,sr).map(w=>w.text)).toEqual(['هاوەڵ','بۆ','خودا','گەورەیە']);
+ });
+ it('marks only short disagreements and borrows punctuation where both agree',async()=>{
+  const {secondOpinion}=await import('../src/engine/local-stt.js');
+  const om=['a','b','c','d','e','f','g'].map((t,i)=>({text:t,start:i,end:i+1}));
+  const wh=[{text:'a,',start:0,end:1,confidence:.9},...['x','y','z','u','v','w'].map((t,i)=>({text:t,start:i+1,end:i+2,confidence:.9}))];
+  const r=secondOpinion(om,wh);expect(r.flags).toBe(0);expect(r.words[0]!.text).toBe('a,');
  });
 });

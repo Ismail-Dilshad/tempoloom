@@ -158,10 +158,10 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
      if(engine==='local'){
       // model=whisper: the Sorani Whisper alone; else Omnilingual, with the Sorani Whisper's second opinion on Sorani (sorani=0 turns it off)
       const r=await L.transcribeBest(src,{engine:url.searchParams.get('model')==='whisper'?'whisper':'omnilingual',sorani:url.searchParams.get('sorani')!=='0',hotwords:CL.hotwords(lang!=='auto'?lang:'ckb')});
-      const code=lang!=='auto'?lang:r.code,f=CL.applyFixes(code,r.words);
+      const code=lang!=='auto'?lang:r.code,f=CL.applyFixes(code,r.words.map(w=>({...w,text:L.tidyLetters(w.text,code),...('alt' in w&&w.alt?{alt:L.tidyLetters(String(w.alt),code)}:{})})));
       return json(res,{engine:'local',engines:r.engines,language:null,code,words:f.words,fixed:f.fixed,flags:f.words.filter(w=>(w as {alt?:string}).alt).length,audioId});}
      const known=languageSchema.safeParse(lang);const t=await transcribe(src,known.success?{language:known.data}:lang==='auto'?{}:{providerCode:lang});
-     const ew=t.words.filter(w=>w.type==='word'&&w.start!=null&&w.end!=null).map(w=>({text:w.text,start:w.start!,end:w.end!})),code=t.providerLanguage??null,f=CL.applyFixes(lang!=='auto'?lang:code,ew);
+     const code=t.providerLanguage??null,lc=lang!=='auto'?lang:code==='kur'?'ckb':code,ew=t.words.filter(w=>w.type==='word'&&w.start!=null&&w.end!=null).map(w=>({text:L.tidyLetters(w.text,lc),start:w.start!,end:w.end!})),f=CL.applyFixes(lc,ew);
      return json(res,{engine:'elevenlabs',language:t.language,code,words:f.words,fixed:f.fixed,flags:0,audioId});}
     catch(e){throw e instanceof HttpError?e:new HttpError(500,'Could not read the speech: '+(e as Error).message.slice(0,200));}
     finally{await fsp.rm(dir,{recursive:true,force:true}).catch(()=>{});}

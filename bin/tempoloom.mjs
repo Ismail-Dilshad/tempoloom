@@ -33,7 +33,9 @@ Answers the next briefing question of a session started with tempoloom brief.`},
  captions: {run: ts('src/cli/captions-cli.ts'), help: 'Captions on this computer: captions setup (one download), status, transcribe FILE', usage: `Usage: tempoloom captions status
        tempoloom captions setup [--model 1b|300m] [--yes]
        tempoloom captions transcribe FILE [--model 1b|300m] [--json]
+       tempoloom captions evaluate [--lang ckb] [--show]
 
+evaluate scores each model on the captions you corrected in the Editor (your own speech).
 Speech to text without a key or an upload: Meta's Omnilingual ASR (1,600+ languages, Kurdish Sorani
 included) run by sherpa-onnx. setup downloads the model once (1b: about 751 MB, 300m: about 279 MB).`},
  fonts: {run: ts('src/cli/fonts-cli.ts'), help: 'List or recommend fonts for a script and style', usage: `Usage: tempoloom fonts list

@@ -152,7 +152,26 @@ export async function transcribeSorani(wav:string,o:{hotwords?:string}={}):Promi
  const base=['transcribe','--audio',wav,'--output',out,'--cache',audioModels(),...(o.hotwords?['--hotwords',o.hotwords]:[])];
  let res:unknown;try{res=await runAudioPython([...base,'--device','cuda','--compute-type','int8_float16'],30*60*1000);}catch{res=await runAudioPython([...base,'--device','cpu'],60*60*1000);}
  const j=JSON.parse(await fsp.readFile(out,'utf8')) as {words:ConfWord[];backend:{device:string}};await fsp.rm(out,{force:true});void res;
- return {words:j.words.filter(w=>w.text&&Number.isFinite(w.start)&&Number.isFinite(w.end)),device:j.backend.device};}
+ const words=j.words.filter(w=>w.text&&Number.isFinite(w.start)&&Number.isFinite(w.end)).map(w=>({...w,text:repairHalfLetters(w.text)}));
+ return {words:dropInventedWords(words,await decode(wav)),device:j.backend.device};}
+/** Whisper sometimes writes words over silence or music that nobody said, with high confidence. Measured on Sorani
+ *  test clips, real words sat at -27 to -37 dB and invented ones at -44 dB and below: a word 12 dB or more quieter
+ *  than the typical word is dropped. */
+export function dropInventedWords<W extends LocalWord>(ws:W[],x:Float32Array,sr=SR):W[]{
+ if(ws.length<3)return ws;
+ const db=ws.map(w=>{const s=x.subarray(Math.max(0,Math.floor(w.start*sr)),Math.min(x.length,Math.ceil(w.end*sr)));let z=0;for(let i=0;i<s.length;i++)z+=s[i]!*s[i]!;return 20*Math.log10(Math.sqrt(z/Math.max(1,s.length))+1e-9);});
+ const median=[...db].sort((a,b)=>a-b)[Math.floor(db.length/2)]!;return ws.filter((_,i)=>db[i]!>=median-12);}
+/** The Sorani Whisper sometimes writes half of a two-byte letter (shown as U+FFFD). On Sorani test audio the lost letter
+ *  was ێ each time (ی + half -> ێ; a lone half -> ێ). */
+export const repairHalfLetters=(t:string)=>t.replace(/ی�/g,'ێ').replace(/�+/g,'ێ');
+/** Kurdish (and Persian) text in its own letters: Arabic look-alikes (ك ي ى ھ ة, ه + zero-width non-joiner for ە)
+ *  become the Kurdish ones, tatweel and Arabic vowel marks go. Used for Arabic-script Kurdish and Persian only;
+ *  Arabic itself keeps its letters. */
+export function tidyLetters(t:string,code:string|null|undefined){
+ if(!code||!/^(ckb|kmr|badini|ku|kur|fa)$/.test(code))return t;
+ let x=t.normalize('NFC').replace(/ك/g,'ک').replace(/[يى]/g,'ی').replace(/ھ/g,'ه').replace(/ـ/g,'').replace(/[ً-ْٰ]/g,'');
+ if(code!=='fa')x=x.replace(/ة/g,'ە').replace(/ه‌/g,'ە');
+ return x;}
 
 /** A word for comparing: no punctuation, the same Kurdish/Arabic letter forms, no joiners or vowel marks. */
 export const normWord=(s:string)=>s.normalize('NFC').replace(/[\p{P}\p{S}]/gu,'').replace(/[ىي]/g,'ی').replace(/ك/g,'ک').replace(/ة/g,'ە').replace(/[\u200c\u200d\u064B-\u065F\u0670]/g,'').toLowerCase();
@@ -171,8 +190,10 @@ export function secondOpinion(om:LocalWord[],wh:ConfWord[]):{words:(LocalWord&{a
   let jb=jw;while(jb<wh.length&&(wh[jb]!.start+wh[jb]!.end)/2<cut)jb++;
   const A=om.slice(s,e),B=wh.slice(jw,jb),pairs=lcs(A.map(w=>normWord(w.text)),B.map(w=>normWord(w.text)));
   let i0=0,j0=0;
-  const mark=(i1:number,j1:number)=>{if(i1>i0&&j1>j0){const alt=B.slice(j0,j1).map(w=>w.text).join(' ');const w=out[s+i0]!;w.alt=alt.replace(/[.،,؟?!]+$/,'');w.altSpan=i1-i0;flags++;}};
-  for(const [i,j] of pairs){mark(i,j);i0=i+1;j0=j+1;}mark(A.length,B.length);
+  // only short disagreements are marked: a long stretch where the two differ is not something to review word by word
+  const mark=(i1:number,j1:number)=>{if(i1>i0&&j1>j0&&i1-i0<=4&&j1-j0<=4){const alt=B.slice(j0,j1).map(w=>w.text).join(' ');const w=out[s+i0]!;w.alt=alt.replace(/[.،,؟?!]+$/,'');w.altSpan=i1-i0;flags++;}};
+  // where both heard the same word, Omnilingual's word takes the punctuation Whisper wrote after it (، . ؟ ! :)
+  for(const [i,j] of pairs){mark(i,j);const p=/[.،,؟?!:؛]+$/.exec(B[j]!.text)?.[0],w=out[s+i]!;if(p&&!/[\p{P}]$/u.test(w.text))w.text+=p;i0=i+1;j0=j+1;}mark(A.length,B.length);
   s=e;jw=jb;}
  return {words:out,flags};}
 

@@ -204,8 +204,26 @@ def transcribe_whisper(audio_path, model_path, device='auto', compute_type=None,
             from math import gcd
             g = gcd(int(rate), 16000); samples = resample_poly(samples, 16000//g, int(rate)//g).astype(np.float32)
         segments, info = model.transcribe(samples, language=record['decoderLanguage'], task='transcribe', word_timestamps=True, beam_size=5,
-                                          vad_filter=True, condition_on_previous_text=False, hotwords=(hotwords or None))
-        words = [{'text': w.word.strip(), 'start': w.start, 'end': w.end, 'confidence': w.probability} for s in segments for w in s.words or [] if w.word.strip()]
+                                          vad_filter=True, condition_on_previous_text=False, hotwords=(hotwords or None),
+                                          # skip words made up over silence or music (a known Whisper habit)
+                                          hallucination_silence_threshold=1.0, no_speech_threshold=0.6, log_prob_threshold=-1.0)
+        words = []
+        for s in segments:
+            ws = [w for w in (s.words or []) if w.word.strip()]
+            texts = [w.word.strip() for w in ws]
+            # Word pieces can cut a two-byte letter (ێ, ۆ, ڕ...) in half and show it as U+FFFD. The segment's text is
+            # decoded whole, so it is right: take the words from it and keep the word times.
+            if any('�' in t for t in texts):
+                good = s.text.split()
+                if len(good) == len(ws):
+                    texts = good
+                elif good and ws:
+                    a, b = ws[0].start, ws[-1].end; total = sum(len(g) for g in good) or 1; at = a
+                    for g in good:
+                        d = (b - a) * len(g) / total
+                        words.append({'text': g, 'start': at, 'end': at + d, 'confidence': min(w.probability for w in ws)}); at += d
+                    continue
+            words.extend({'text': t, 'start': w.start, 'end': w.end, 'confidence': w.probability} for t, w in zip(texts, ws))
         return {'words': words, 'seconds': info.duration, 'backend': {'name': 'sorani-finetuned-faster-whisper', 'model': origin['sourceModel'], 'revision': origin['revision'], 'language': 'ckb',
                 'device': chosen, 'precision': precision, 'modelLoadSeconds': load_seconds, 'inferenceSeconds': time.perf_counter()-start}}
     finally:
