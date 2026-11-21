@@ -41,3 +41,35 @@ describe('captions on this computer (Omnilingual ASR)',()=>{
   expect(L.status().models.map(m=>m.id)).toEqual(['1b','300m']);
  });
 });
+
+describe('captions that learn from corrections',()=>{
+ it('learns the changed words of an edit, including a word split in two',async()=>{
+  const {diffPairs}=await import('../src/engine/caption-learning.js');
+  expect(diffPairs('پاش موسڵمانبوونی بڕیاریدا بەرگی','پاش موسڵمان بوونی بڕیاری دا بەرگی.')).toEqual([['موسڵمانبوونی بڕیاریدا','موسڵمان بوونی بڕیاری دا']]);
+  expect(diffPairs('the cat sat','the cat sat')).toEqual([]);
+  expect(diffPairs('we ship today','we shipped it today')).toEqual([['ship','shipped it']]);
+  // deleting or adding a whole word alone is not learned
+  expect(diffPairs('um we ship','we ship')).toEqual([]);
+ });
+ it('remembers fixes per language and applies them to new words, keeping times and punctuation',async()=>{
+  const os=await import('node:os'),fs=await import('node:fs'),path=await import('node:path');
+  process.env.TEMPOLOOM_SETTINGS_DIR=fs.mkdtempSync(path.join(os.tmpdir(),'tl-fixes-'));
+  const C=await import('../src/engine/caption-learning.js');
+  C.learn('ckb','لە فرژنی دەترسن','لە فرەژنی دەترسن');C.learn('ckb','لە فرژنی دەترسن','لە فرەژنی دەترسن');
+  expect(C.list()).toEqual([expect.objectContaining({lang:'ckb',from:'فرژنی',to:'فرەژنی',n:2})]);
+  const r=C.applyFixes('ckb',[{text:'لە',start:0,end:.3},{text:'فرژنی،',start:.3,end:.9}]);
+  expect(r.fixed).toBe(1);expect(r.words.map(w=>w.text)).toEqual(['لە','فرەژنی،']);expect(r.words[1]!.start).toBeCloseTo(.3);expect(r.words[1]!.end).toBeCloseTo(.9);
+  expect(C.applyFixes('en',[{text:'فرژنی',start:0,end:1}]).fixed).toBe(0);
+  expect(C.hotwords('ckb')).toBe('فرەژنی');
+  C.remove('ckb','فرژنی');expect(C.list()).toEqual([]);
+  delete process.env.TEMPOLOOM_SETTINGS_DIR;
+ });
+ it('marks where a second model heard something else, without changing the words',async()=>{
+  const {secondOpinion}=await import('../src/engine/local-stt.js');
+  const om=[{text:'پاش',start:0,end:.3},{text:'موسڵمانبوونی',start:.3,end:1},{text:'بکات',start:1,end:1.4}];
+  const wh=[{text:'پاش',start:0,end:.3,confidence:.9},{text:'موسڵمان',start:.3,end:.6,confidence:.8},{text:'بوونی',start:.6,end:1,confidence:.8},{text:'بکات.',start:1,end:1.4,confidence:.9}];
+  const r=secondOpinion(om,wh);expect(r.flags).toBe(1);
+  expect(r.words.map(w=>w.text)).toEqual(['پاش','موسڵمانبوونی','بکات']);
+  expect(r.words[1]).toMatchObject({alt:'موسڵمان بوونی',altSpan:1});
+ });
+});

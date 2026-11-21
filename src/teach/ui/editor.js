@@ -712,13 +712,13 @@ const Ed={
   if(!src.length)return toast('Add a video or sound with speech first.');
   const busy=this.dom.lib?.querySelector('[data-captions]');if(busy){busy.disabled=true;busy.innerHTML=`<span class="spin"></span> ${this.capEngine?.()==='local'?'Listening on this computer…':'Reading the speech…'}`;}
   try{
-   const words={},lang=this.p.capLang||'auto',look=this.p.capLook||'clean';let code=lang;
+   const words={},lang=this.p.capLang||'auto',look=this.p.capLook||'clean';let code=lang,fixed=0,flags=0;
    for(const id of new Set(src.map(c=>c.media))){const m=this.media.find(x=>x.id===id),blob=await this.get(id);if(!blob)continue;
-    const r=await fetch(withKey('/api/editor/captions?name='+encodeURIComponent(m.name)+'&lang='+encodeURIComponent(lang)+'&engine='+encodeURIComponent(this.capEngine?.()||'auto')),{method:'POST',body:blob});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Could not read the speech');
-    words[id]=j.words||[];if(lang==='auto'&&j.code)code=j.code;}
+    const r=await fetch(withKey('/api/editor/captions?name='+encodeURIComponent(m.name)+'&lang='+encodeURIComponent(lang)+'&engine='+(this.capEngine?.()==='elevenlabs'?'elevenlabs':'local')+(this.capEngine?.()==='whisper'?'&model=whisper':'')+(this.p.capSorani===false?'&sorani=0':'')),{method:'POST',body:blob});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Could not read the speech');
+    words[id]=(j.words||[]).map(w=>({...w,aid:j.audioId}));if(lang==='auto'&&j.code)code=j.code;fixed+=j.fixed||0;flags+=j.flags||0;}
    const lines=[];
    for(const c of src){const a=c.in||0,b=this.srcAt(c,c.start+c.dur)+.05;
-    const ws=(words[c.media]||[]).filter(w=>w.start>=a&&w.end<=b).map(w=>({t:w.text.trim(),s:this.tlAt(c,w.start),e:this.tlAt(c,Math.min(w.end,b))})).filter(w=>w.t);
+    const ws=(words[c.media]||[]).filter(w=>w.start>=a&&w.end<=b).map(w=>({t:w.text.trim(),s:this.tlAt(c,w.start),e:this.tlAt(c,Math.min(w.end,b)),s0:w.start,e0:w.end,aid:w.aid,...(w.alt?{alt:w.alt,altSpan:w.altSpan||1}:{})})).filter(w=>w.t);
     // A line ends at a pause, after about 3 seconds, at the end of a sentence (in any language), or when it is long.
     let cur=null;const budget=w=>edNoSpace(w)?16:42;
     for(const w of ws){const txt=cur?cur.words.map(x=>x.t).join(' '):'';
@@ -728,7 +728,8 @@ const Ed={
    if(!lines.length)return toast('No speech was found.');
    // Speech models on this computer write no capitals: each caption line starts with one (in scripts that have them).
    for(const l of lines){const w=l.words[0];if(w){const loc=code&&code!=='auto'?code:undefined,f=w.t.charAt(0),F=f.toLocaleUpperCase(loc);if(F!==f)w.t=F+w.t.slice(1);}}
-   const n=this.addCaptions(lines,code,look);toast(`Added ${n} caption${n>1?'s':''}${code&&code!=='auto'?` (${edLangName(code)})`:''}`);
+   const n=this.addCaptions(lines,code,look);
+   toast(`Added ${n} caption${n>1?'s':''}${code&&code!=='auto'?` (${edLangName(code)})`:''}${fixed?` · ${fixed} fixed from your corrections`:''}${flags?` · ${flags} to check (marked)`:''}`);this.loadStt?.().then(()=>this.drawStt?.());
   }catch(e){toast(e.message,true);}
   finally{this.drawLib();}
  },
@@ -741,6 +742,7 @@ const Ed={
   return {w,h,cx:W/2+this.val(c,'x',t)*W,cy:H/2+this.val(c,'y',t)*H,ls:lines.map(l=>l.join(this.capSep(c))),lh};},
  drawCaption(g,c,W,H,t,o={}){
   const lt=t-c.start,ws=c.words,st=c.capStyle||'phrase';let cur=-1,last=-1;for(let i=0;i<ws.length;i++){if(ws[i].s<=lt)last=i;if(lt>=ws[i].s&&lt<ws[i].e)cur=i;}
+  const flagged=new Set();ws.forEach((w,i)=>{if(w.alt)for(let k=0;k<(w.altSpan||1);k++)flagged.add(i+k);});
   let show=ws.map((_,i)=>i);if(st==='word')show=[cur>=0?cur:Math.max(0,last)];else if(st==='build')show=show.filter(i=>i<=last);if(!show.length)return;
   const an=this.animApply(c,t),a=this.val(c,'opacity',t)*(o.alpha??1)*an.alpha;if(a<=0)return;
   g.save();g.font=this.font(c,t);g.letterSpacing=`${(c.spacing||0)*this.k()}px`;g.textBaseline='middle';const rtl=edRtl(c.text);g.direction=rtl?'rtl':'ltr';
@@ -757,7 +759,9 @@ const Ed={
     g.save();g.translate(at+wd[j]/2,y);g.scale(sc,sc);g.textAlign='center';g.direction=rtl?'rtl':'ltr';
     if(c.shadow&&!c.box){g.shadowColor='rgba(0,0,0,.5)';g.shadowBlur=lh*.25;g.shadowOffsetY=lh*.05;}
     if(c.stroke){g.lineJoin='round';g.lineWidth=c.stroke*this.k()*2;g.strokeStyle=c.strokeColor||'#000';g.strokeText(txt[j],0,0);g.shadowColor='transparent';}
-    g.fillStyle=on&&(st==='karaoke'||st==='build')?(c.hl||'#FFD400'):(c.color||'#fff');g.fillText(txt[j],0,0);g.restore();});});
+    g.fillStyle=on&&(st==='karaoke'||st==='build')?(c.hl||'#FFD400'):(c.color||'#fff');g.fillText(txt[j],0,0);
+    if(!this.exporting&&flagged.has(i)){g.shadowColor='transparent';g.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--warn').trim()||'orange';g.lineWidth=Math.max(2,lh*.06);g.setLineDash([lh*.08,lh*.08]);g.beginPath();g.moveTo(-wd[j]/2,lh*.42);g.lineTo(wd[j]/2,lh*.42);g.stroke();g.setLineDash([]);}
+    g.restore();});});
   g.restore();
  },
  /** A caption look on one clip. */
@@ -765,8 +769,19 @@ const Ed={
   const looks={clean:{},karaoke:{capStyle:'karaoke'},word:{capStyle:'word',upper:true,weight:800,size:Math.max(c.size||34,56),animIn:'none'},build:{capStyle:'build'},boxed:{box:true,boxColor:'#000000',stroke:0,shadow:false,animIn:'slide',animDur:.2}};
   Object.assign(c,base,looks[name]||{},{capLook:name});},
  /** New text in a caption: its words keep their times when the count is the same, else share the clip's length evenly. */
- retime(c,text){const ws=edWords(text,c.lang);if(ws.length===c.words.length){c.words=c.words.map((w,i)=>({...w,t:ws[i]}));return;}
+ retime(c,text){const ws=edWords(text,c.lang);// a reviewed caption: its "check" marks go
+  if(ws.length===c.words.length){c.words=c.words.map((w,i)=>({t:ws[i],s:w.s,e:w.e}));return;}
   const d=c.dur/Math.max(1,ws.length);c.words=ws.map((w,i)=>({t:w,s:i*d,e:(i+1)*d}));},
+ /** Learns from an edited caption: the changed words are remembered for this language, and the clip is kept for training. */
+ async learnFix(c){if(!c?.asr||c.asr===c.text)return;const from=c.asr,to=c.text;c.asr=to;this.save();
+  try{const r=await fetch(withKey('/api/editor/caption-fixes'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({lang:c.lang,from,to,audio:c.src||undefined})});
+   const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Could not learn the change');
+   if(j.learned?.length)toast(`Learned: ${j.learned.map(x=>`${x.from} → ${x.to}`).slice(0,3).join(', ')}`);if(this.stt)this.stt.learning={fixes:j.fixes,clips:j.clips};this.drawStt?.();}
+  catch(e){toast(e.message,true);}},
+ /** Uses the second model's words for a flagged span of a caption (and learns from it). */
+ useAlt(c,i){const w=c.words[i];if(!w?.alt)return;this.snapshot();const n=w.altSpan||1,alt=edWords(w.alt,c.lang),a=w.s,b=c.words[Math.min(c.words.length-1,i+n-1)].e,step=(b-a)/Math.max(1,alt.length);
+  c.words.splice(i,n,...alt.map((t,k)=>({t,s:a+k*step,e:a+(k+1)*step})));c.text=c.words.map(x=>x.t).join(edNoSpace(c.text)?'':' ');this.after(true);this.learnFix(c);},
+ keepFlag(c,i){const w=c.words[i];if(!w)return;this.snapshot();delete w.alt;delete w.altSpan;this.after(true);},
  /** Timeline time where a clip shows file time `src` (inverse of srcAt; works with speed curves). */
  tlAt(c,src){let lo=c.start,hi=c.start+c.dur;for(let i=0;i<40;i++){const m=(lo+hi)/2;if(this.srcAt(c,m)<src)lo=m;else hi=m;}return (lo+hi)/2;},
  /** Makes caption clips from lines [{s,e,words:[{t,s,e}]}] on a new text track. */
@@ -774,7 +789,10 @@ const Ed={
   this.snapshot();const tr=this.addTrack('text');let n=0;
   for(let i=0;i<lines.length;i++){const l=lines[i],next=lines[i+1];let e=l.e;if(next&&next.s-e<.3)e=next.s;// no flicker between close lines
    const text=l.words.map(w=>w.t).join(edNoSpace(l.words.map(w=>w.t).join(''))?'':' '),c=this.textClip(3,l.s,text);
-   c.dur=Math.max(.4,e-l.s);c.track=tr.id;c.lang=lang;c.cap=true;c.words=l.words.map(w=>({t:w.t,s:Math.max(0,w.s-l.s),e:Math.max(.05,w.e-l.s)}));
+   c.dur=Math.max(.4,e-l.s);c.track=tr.id;c.lang=lang;c.cap=true;
+   c.words=l.words.map((w,k)=>({t:w.t,s:Math.max(0,w.s-l.s),e:Math.max(.05,w.e-l.s),...(w.alt?{alt:w.alt,altSpan:Math.min(w.altSpan||1,l.words.length-k)}:{})}));
+   // from speech: the model's text (to learn from your changes) and where it is in the audio (for a training clip)
+   const f0=l.words[0],f1=l.words[l.words.length-1];if(f0?.aid&&f0.s0!=null){c.asr=text;c.src={id:f0.aid,s:f0.s0,e:f1.e0};}
    if(edArabicScript(text))c.font='Vazirmatn';this.capLook(c,look);this.p.clips.push(c);n++;}
   this.after(true);return n;},
  // ---------- project files: one .zip with project.json and the media it uses, to keep or open elsewhere ----------

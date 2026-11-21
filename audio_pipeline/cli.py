@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 from .core import load_audio, make_analysis, correct_analysis
-from .backends import registry, run_ctc, run_whisper, run_auto, converted_model
+from .backends import registry, run_ctc, run_whisper, run_auto, converted_model, transcribe_whisper
 from .hardware import hardware_report, model_root, precision_probe
 from .setup import install_dependencies, acquire_model, model_status, convert_whisper, validate_model
 
@@ -49,7 +49,7 @@ def doctor():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["doctor", "analyze", "correct", "setup", "precision-probe", "identity", "evaluate"])
+    parser.add_argument("command", choices=["doctor", "analyze", "correct", "setup", "precision-probe", "identity", "evaluate", "transcribe"])
     parser.add_argument("--audio")
     parser.add_argument("--script")
     parser.add_argument("--output")
@@ -70,6 +70,7 @@ def main():
     parser.add_argument("--patch")
     parser.add_argument("--reviewer")
     parser.add_argument("--reference")
+    parser.add_argument("--hotwords")
     args = parser.parse_args()
     if args.chunk_seconds is not None and not 2 <= args.chunk_seconds <= 20:
         parser.error("chunk-seconds must be between 2 and 20")
@@ -104,6 +105,12 @@ def main():
         if not all([args.analysis,args.reference,args.output]): parser.error("evaluate requires --analysis --reference --output")
         result = evaluate_samples(json.loads(Path(args.analysis).read_text(encoding="utf-8-sig")), json.loads(Path(args.reference).read_text(encoding="utf-8-sig")))
         write_json(args.output,result)
+    elif args.command == "transcribe":
+        # Free transcription with the Sorani Whisper (captions): words with times, no script needed.
+        if not all([args.audio, args.output]): parser.error("transcribe requires --audio --output")
+        result = transcribe_whisper(args.audio, args.model or converted_model(args.cache), device=args.device, compute_type=args.compute_type, hotwords=args.hotwords)
+        write_json(args.output, result)
+        result = {"file": str(Path(args.output).resolve()), "wordCount": len(result["words"]), "backend": result["backend"]}
     elif args.command == "correct":
         if not all([args.analysis, args.patch, args.reviewer, args.output]):
             parser.error("correct requires --analysis --patch --reviewer --output")

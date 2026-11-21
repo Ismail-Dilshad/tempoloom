@@ -2152,7 +2152,12 @@ button.video-back{border:0;background:transparent;font:var(--type-small)}
 .ed-capbox{display:grid;gap:8px;padding:10px;margin-bottom:12px;border-radius:8px;background:var(--ed-field)}
 .ed-capbox .ed-sub{display:flex;align-items:center;gap:6px;margin:0}.ed-capbox .ed-sub svg{width:14px;height:14px}
 .ed-caprow{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:8px;font:var(--type-caption);color:var(--text-2)}
-.ed-caprow select{min-width:0;width:100%}.ed-capnote{font:var(--type-caption);color:var(--text-2);line-height:1.45}.ed-capnote svg{width:12px;height:12px;vertical-align:-2px;color:var(--accent)}.ed-capnote .ed-caprow{margin-top:6px}.ed-caprow.two{grid-template-columns:1fr 1fr}
+.ed-caprow select{min-width:0;width:100%}.ed-caprow.check{grid-template-columns:auto 1fr}.ed-capnote .ed-link{font:inherit}
+.ed-checks{display:grid;gap:6px;margin:6px 0 10px;padding:8px;border-radius:6px;background:var(--warn-soft)}.ed-checks b{display:flex;gap:6px;align-items:center;font:var(--type-caption);font-weight:600}.ed-checks svg{width:12px;height:12px;color:var(--warn)}
+.ed-check{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;justify-content:space-between;font:var(--type-caption);padding-top:6px;border-top:1px solid color-mix(in srgb,var(--warn) 30%,transparent)}.ed-check:first-of-type{border-top:0;padding-top:0}
+.ed-check-words{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:baseline;min-width:0}.ed-check-words bdi{font-weight:600}.ed-check-words i{color:var(--text-3);font-style:normal}.ed-check-btns{display:flex;gap:4px;margin-inline-start:auto}
+.ed-tocheck{position:absolute;right:3px;top:3px;z-index:2;color:var(--warn)}.ed-tocheck svg{width:11px;height:11px}
+.ed-fixes table{width:100%;border-collapse:collapse;margin:8px 0;font:var(--type-caption)}.ed-fixes th,.ed-fixes td{padding:4px 6px;text-align:start;border-bottom:1px solid var(--line)}.ed-fixes code{font-size:11px;word-break:break-all}.ed-capnote{font:var(--type-caption);color:var(--text-2);line-height:1.45}.ed-capnote svg{width:12px;height:12px;vertical-align:-2px;color:var(--accent)}.ed-capnote .ed-caprow{margin-top:6px}.ed-caprow.two{grid-template-columns:1fr 1fr}
 .ed-curve{margin-top:8px;border-radius:6px;background:var(--ed-field);padding:4px}
 .ed-curve-svg{display:block;width:100%;height:auto;touch-action:none;cursor:copy}
 .ed-curve-svg line{stroke:color-mix(in srgb,var(--text) 12%,transparent);stroke-width:1}.ed-curve-svg line.one{stroke:color-mix(in srgb,var(--text) 30%,transparent);stroke-dasharray:3 3}

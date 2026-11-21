@@ -56,6 +56,19 @@
   corpus) 3.9% of letters were wrong, most word differences being spelling (joined or split
   words); 40 s of audio took 9 s on an 11th-gen Core i5 CPU. ElevenLabs stays available as the
   online choice.
+- **A second opinion for Kurdish Sorani**: when the speech is Sorani, the project's Sorani-trained
+  Whisper (large-v3, already set up by `audio:setup`, on the graphics card when it fits) listens too
+  and marks the words it heard differently: a dotted orange line in the player, a flag on the clip,
+  and "Check these words" with Use and Keep in the caption's panel. It never changes words by itself:
+  on 8 AsoSoft sentences letting its confidence decide made the text worse (6.9% wrong letters
+  against 3.6%), while its marks found 42% of the mistakes. It can also be chosen alone in "Listen
+  with" (it writes punctuation).
+- **Captions that learn from your corrections**: change a word in a caption made from speech (or
+  press Use) and the change is remembered for that language and fixed in the next captions at once;
+  the corrected words are also given to the Sorani Whisper as words to listen for. Each corrected
+  caption is kept with its audio in `workspace/datasets/captions/<language>/` (WAV plus
+  metadata.jsonl) to fine-tune a model on later. "Manage" in the Captions box lists what was learned,
+  with how often, to forget one or all. Nothing leaves this computer.
 
 ## 10.2.0: Sileo notifications
 

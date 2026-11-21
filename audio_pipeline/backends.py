@@ -166,6 +166,53 @@ def run_whisper(script, audio, model_path, device='auto', compute_type=None):
         gc.collect()
 
 
+def transcribe_whisper(audio_path, model_path, device='auto', compute_type=None, hotwords=None):
+    """Free transcription (no script) with the verified converted Sorani Whisper: words with times.
+
+    The same provenance, integrity and memory checks as run_whisper. Voice activity detection skips silence, and
+    `hotwords` (words the user has corrected before) bias recognition towards them."""
+    import ctranslate2
+    from faster_whisper import WhisperModel
+    folder = Path(model_path).resolve(); origin_file = folder / 'model-origin.json'
+    if not folder.is_dir() or not origin_file.is_file():
+        raise ValueError('Sorani ASR requires a converted Sorani model with model-origin.json; stock Whisper is unsupported')
+    origin = json.loads(origin_file.read_text(encoding='utf-8')); record = record_for(origin['sourceModel'])
+    if record['kind'] != 'whisper-finetune' or not origin.get('files') or not origin.get('revision'):
+        raise ValueError('Sorani conversion provenance/integrity is missing; recreate conversion without deleting originals')
+    for item in origin['files']:
+        file = (folder / item['name']).resolve()
+        if not file.is_relative_to(folder) or not file.is_file() or digest(file) != item['sha256']:
+            raise ValueError('Converted model integrity failure: ' + item['name'])
+    hw = hardware_report()
+    available = hw['memory']['availableBytes']
+    if available is not None and available < 6*GIB: raise RuntimeError('Whisper requires at least 6 GiB available system RAM')
+    precision = compute_type or 'int8_float32'
+    minimum_vram = (7 if precision == 'float32' else 5 if precision == 'float16' else 3.5)*GIB
+    safe_gpu = hw['nvidia'] and hw['nvidia'][0]['freeBytes'] >= minimum_vram
+    chosen = ('cuda' if safe_gpu else 'cpu') if device == 'auto' else device
+    if chosen == 'cuda' and precision == 'int8_float32': precision = 'int8_float16' if 'int8_float16' in ctranslate2.get_supported_compute_types('cuda') else precision
+    if precision not in ctranslate2.get_supported_compute_types(chosen): raise RuntimeError('Unsupported CTranslate2 compute type: ' + precision)
+    start = time.perf_counter()
+    model = WhisperModel(str(folder), device=chosen, compute_type=precision, cpu_threads=min(8, max(1, (hw['logicalCpus'] or 2)-1)), num_workers=1, local_files_only=True)
+    load_seconds = time.perf_counter()-start; start = time.perf_counter()
+    try:
+        # Samples, not a path: faster-whisper's own decoder (PyAV) is not used. Callers pass 16 kHz WAV (ffmpeg).
+        import numpy as np, soundfile as sf
+        samples, rate = sf.read(str(audio_path), dtype='float32', always_2d=True); samples = samples.mean(axis=1)
+        if rate != 16000:
+            from scipy.signal import resample_poly
+            from math import gcd
+            g = gcd(int(rate), 16000); samples = resample_poly(samples, 16000//g, int(rate)//g).astype(np.float32)
+        segments, info = model.transcribe(samples, language=record['decoderLanguage'], task='transcribe', word_timestamps=True, beam_size=5,
+                                          vad_filter=True, condition_on_previous_text=False, hotwords=(hotwords or None))
+        words = [{'text': w.word.strip(), 'start': w.start, 'end': w.end, 'confidence': w.probability} for s in segments for w in s.words or [] if w.word.strip()]
+        return {'words': words, 'seconds': info.duration, 'backend': {'name': 'sorani-finetuned-faster-whisper', 'model': origin['sourceModel'], 'revision': origin['revision'], 'language': 'ckb',
+                'device': chosen, 'precision': precision, 'modelLoadSeconds': load_seconds, 'inferenceSeconds': time.perf_counter()-start}}
+    finally:
+        del model
+        gc.collect()
+
+
 def run_auto(script, audio, rate, cache, model_id=None, download=False, device='auto', compute_type=None, chunk_seconds=None):
     hw = hardware_report(cache); model_id = model_id or registry()['recommended']
     failures, best = [], None

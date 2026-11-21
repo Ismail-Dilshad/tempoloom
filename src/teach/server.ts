@@ -120,7 +120,18 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
    if(rr){const TR=await import('./tool-runner.js');try{return json(res,m==='POST'&&rr[2]?TR.stopRun(rr[1]!):TR.getRun(rr[1]!));}catch(e){throw new HttpError(404,(e as Error).message);}}
    // The editor's auto captions: the words said in a video or sound file, with their times (ElevenLabs).
    // Which speech-to-text the editor can use: on this computer (Omnilingual ASR, once set up) and ElevenLabs (with a key).
-   if(m==='GET'&&p==='/api/editor/stt'){const L=await import('../engine/local-stt.js');return json(res,{local:L.status(),elevenlabs:hasApiKey()});}
+   if(m==='GET'&&p==='/api/editor/stt'){const L=await import('../engine/local-stt.js'),CL=await import('../engine/caption-learning.js');
+    return json(res,{local:L.status(),sorani:L.soraniAvailable(),elevenlabs:hasApiKey(),learning:{fixes:CL.list().length,clips:CL.clipCount()}});}
+   // Captions that learn: GET lists the remembered fixes; POST learns from one edit (and keeps it as a training clip).
+   if(p==='/api/editor/caption-fixes'){const CL=await import('../engine/caption-learning.js');
+    if(m==='GET')return json(res,{fixes:CL.list(),clips:CL.clipCount(),file:CL.fixesFile(),dataset:CL.datasetDir()});
+    if(m==='POST'){const b=await body(req),lang=typeof b.lang==='string'?b.lang:null,from=String(b.from??''),to=String(b.to??'');
+     if(!from.trim()||!to.trim()||from.length>2000||to.length>2000)throw new HttpError(400,'from and to are the old and new caption text');
+     const learned=CL.learn(lang,from,to);const a=b.audio as {id?:unknown;s?:unknown;e?:unknown}|undefined;
+     const clip=a&&typeof a.id==='string'&&Number.isFinite(Number(a.s))&&Number.isFinite(Number(a.e))?await CL.saveClip(lang,{id:a.id,s:Number(a.s),e:Number(a.e)},to,from).catch(()=>null):null;
+     return json(res,{learned,clip,fixes:CL.list().length,clips:CL.clipCount()});}}
+   if(m==='POST'&&p==='/api/editor/caption-fixes/remove'){const CL=await import('../engine/caption-learning.js'),b=await body(req);return json(res,{fixes:CL.remove(String(b.lang??''),String(b.from??''))});}
+   if(m==='POST'&&p==='/api/editor/caption-fixes/clear'){const CL=await import('../engine/caption-learning.js');return json(res,{fixes:CL.clear()});}
    // Sets up captions on this computer: downloads the model once, in the background; GET /api/editor/stt shows progress.
    if(m==='POST'&&p==='/api/editor/stt/setup'){const L=await import('../engine/local-stt.js'),mdl=url.searchParams.get('model')==='300m'?'300m':'1b';
     if(!L.status().runtime)throw new HttpError(400,'The speech runtime is missing; run pnpm install');
@@ -130,9 +141,10 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
    // elevenlabs, or auto (this computer when set up, else ElevenLabs when there is a key).
    if(m==='POST'&&p==='/api/editor/captions'){
     const L=await import('../engine/local-stt.js'),want=url.searchParams.get('engine')||'auto';
-    const engine=want==='local'||(want==='auto'&&L.installed())?'local':want==='elevenlabs'||hasApiKey()?'elevenlabs':null;
+    const soraniOnly=url.searchParams.get('model')==='whisper'&&L.soraniAvailable();
+    const engine=want==='local'||(want==='auto'&&(L.installed()||soraniOnly))?'local':want==='elevenlabs'||hasApiKey()?'elevenlabs':null;
     if(!engine)throw new HttpError(400,'Auto captions need a speech model: set up captions on this computer (one free download) or add an ElevenLabs key in Settings.');
-    if(engine==='local'&&!L.installed())throw new HttpError(400,'Captions on this computer are not set up yet: press Set up in the Captions box (one download).');
+    if(engine==='local'&&!L.installed()&&!soraniOnly)throw new HttpError(400,'Captions on this computer are not set up yet: press Set up in the Captions box (one download).');
     if(engine==='elevenlabs'&&!hasApiKey())throw new HttpError(400,'Auto captions with ElevenLabs need your key: add it in Settings, Models and keys.');
     const ext=(/\.[a-z0-9]{2,5}$/i.exec(url.searchParams.get('name')||'')?.[0]||'.webm').toLowerCase();
     const dir=path.join(ROOT,process.env.VIDEO_WORKSPACE||'workspace','cache','editor-captions',randomUUID());await fsp.mkdir(dir,{recursive:true});
@@ -142,9 +154,15 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
      // lang: "auto" (detect), one of the studio's languages (en, ar, fa, ckb, kmr, badini), or any ISO 639 code.
      const lang=(url.searchParams.get('lang')||'auto').toLowerCase(),{transcribe}=await import('../engine/transcribe.js'),{languageSchema}=await import('../engine/languages.js');
      if(lang!=='auto'&&!/^[a-z]{2,3}$/.test(lang))throw new HttpError(400,'The language is a code like en, ar, ckb or ja');
-     if(engine==='local'){const r=await L.transcribeLocal(src);return json(res,{engine:'local',model:r.model,language:null,code:lang!=='auto'?lang:r.code,words:r.words});}
+     const CL=await import('../engine/caption-learning.js'),audioId=await CL.keepAudio(await L.decode(src));
+     if(engine==='local'){
+      // model=whisper: the Sorani Whisper alone; else Omnilingual, with the Sorani Whisper's second opinion on Sorani (sorani=0 turns it off)
+      const r=await L.transcribeBest(src,{engine:url.searchParams.get('model')==='whisper'?'whisper':'omnilingual',sorani:url.searchParams.get('sorani')!=='0',hotwords:CL.hotwords(lang!=='auto'?lang:'ckb')});
+      const code=lang!=='auto'?lang:r.code,f=CL.applyFixes(code,r.words);
+      return json(res,{engine:'local',engines:r.engines,language:null,code,words:f.words,fixed:f.fixed,flags:f.words.filter(w=>(w as {alt?:string}).alt).length,audioId});}
      const known=languageSchema.safeParse(lang);const t=await transcribe(src,known.success?{language:known.data}:lang==='auto'?{}:{providerCode:lang});
-     return json(res,{engine:'elevenlabs',language:t.language,code:t.providerLanguage??null,words:t.words.filter(w=>w.type==='word').map(w=>({text:w.text,start:w.start,end:w.end}))});}
+     const ew=t.words.filter(w=>w.type==='word'&&w.start!=null&&w.end!=null).map(w=>({text:w.text,start:w.start!,end:w.end!})),code=t.providerLanguage??null,f=CL.applyFixes(lang!=='auto'?lang:code,ew);
+     return json(res,{engine:'elevenlabs',language:t.language,code,words:f.words,fixed:f.fixed,flags:0,audioId});}
     catch(e){throw e instanceof HttpError?e:new HttpError(500,'Could not read the speech: '+(e as Error).message.slice(0,200));}
     finally{await fsp.rm(dir,{recursive:true,force:true}).catch(()=>{});}
    }

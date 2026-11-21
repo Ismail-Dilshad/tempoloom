@@ -20,8 +20,10 @@ Object.assign(Ed,{
   if(this.tab==='text'){const caps=this.p.clips.filter(c=>c.cap||c.words).length;
    body=`<section class="ed-capbox"><div class="ed-sub">${I.captions} Captions</div>
     <label class="ed-caprow"><span>Spoken language</span><select data-cap-lang aria-label="Spoken language">${ED_CAP_LANGS.map(l=>`<option value="${l}" ${(this.p.capLang||'auto')===l?'selected':''} dir="auto">${esc(edLangName(l))}</option>`).join('')}</select></label>
-    <label class="ed-caprow"><span>Listen with</span><select data-cap-engine aria-label="Speech recognition"><option value="local" ${this.capEngine()==='local'?'selected':''}>This computer (free, offline)</option><option value="elevenlabs" ${this.capEngine()==='elevenlabs'?'selected':''}>ElevenLabs (online, key)</option></select></label>
+    <label class="ed-caprow"><span>Listen with</span><select data-cap-engine aria-label="Speech recognition"><option value="local" ${this.capEngine()==='local'?'selected':''}>This computer: all languages (free)</option>${this.stt?.sorani?`<option value="whisper" ${this.capEngine()==='whisper'?'selected':''}>This computer: Kurdish Sorani model</option>`:''}<option value="elevenlabs" ${this.capEngine()==='elevenlabs'?'selected':''}>ElevenLabs (online, key)</option></select></label>
     <div class="ed-capnote" data-stt-note></div>
+    ${this.stt?.sorani&&this.capEngine()==='local'?`<label class="ed-caprow check"><input type="checkbox" data-cap-sorani ${this.p.capSorani===false?'':'checked'}><span>Kurdish Sorani: a second model marks words to check</span></label>`:''}
+    <div class="ed-capnote" data-learn-note>${this.stt?.learning?`${I.brain} Learns from your corrections: ${this.stt.learning.fixes} fix${this.stt.learning.fixes===1?'':'es'}, ${this.stt.learning.clips} training clip${this.stt.learning.clips===1?'':'s'} · <button type="button" class="ed-link" data-fixes>Manage</button>`:''}</div>
     <label class="ed-caprow"><span>Look</span><select data-cap-look aria-label="Caption look">${ED_CAPS.map(([v,l])=>`<option value="${v}" ${(this.p.capLook||'clean')===v?'selected':''}>${l}</option>`).join('')}</select></label>
     <button type="button" class="btn small primary ed-wide" data-captions>${I.captions} Auto captions</button>
     <div class="ed-caprow two"><button type="button" class="btn small" data-srt-in>${I.upload} Import .srt</button><button type="button" class="btn small" data-srt-out ${caps?'':'disabled'}>${I.down} Export .srt</button></div>
@@ -50,7 +52,9 @@ Object.assign(Ed,{
   const cap=$('[data-captions]',el);if(cap)cap.onclick=()=>this.captions();
   const cl=$('[data-cap-lang]',el);if(cl)cl.onchange=()=>{this.p.capLang=cl.value;this.save();};
   const ck=$('[data-cap-look]',el);if(ck)ck.onchange=()=>{this.p.capLook=ck.value;this.save();};
-  const ce=$('[data-cap-engine]',el);if(ce){ce.onchange=()=>{this.p.capEngine=ce.value;this.save();this.drawStt();};this.drawStt(true);}
+  const ce=$('[data-cap-engine]',el);if(ce){ce.onchange=()=>{this.p.capEngine=ce.value;this.save();this.drawLib();};if(!this.stt)this.loadStt().then(()=>{if(this.tab==='text')this.drawLib();});else this.drawStt();}
+  const cs=$('[data-cap-sorani]',el);if(cs)cs.onchange=()=>{this.p.capSorani=cs.checked;this.save();};
+  const fx=$('[data-fixes]',el);if(fx)fx.onclick=()=>edFixesDialog();
   const so=$('[data-srt-out]',el);if(so)so.onclick=()=>{const list=this.p.clips.filter(c=>c.text!==undefined&&(c.cap||c.words)).sort((a,b)=>a.start-b.start);if(!list.length)return toast('There are no captions yet.');
    edSaveFile(new Blob(['\uFEFF'+edSrt(list)],{type:'application/x-subrip;charset=utf-8'}),this.p.name+'.srt');toast(`Saved ${list.length} caption${list.length>1?'s':''} as .srt`);};
   const sf=$('[data-srt-file]',el),si=$('[data-srt-in]',el);if(si&&sf){si.onclick=()=>sf.click();
@@ -78,6 +82,7 @@ Object.assign(Ed,{
   const st=this.stt,eng=this.capEngine(),lm=st.local.models,ready=lm.find(m=>m.installed),pr=st.local.progress,busy=pr&&(pr.state==='downloading'||pr.state==='unpacking');
   const sel=this.dom.lib.querySelector('[data-cap-engine]');if(sel&&sel.value!==eng)sel.value=eng;
   if(eng==='elevenlabs')el.innerHTML=st.elevenlabs?`${I.check} Ready. Audio is sent to ElevenLabs.`:`Add your ElevenLabs key in Settings, Models and keys.`;
+  else if(eng==='whisper')el.innerHTML=`${I.check} The Kurdish Sorani model (Whisper large-v3, trained on Sorani) on this computer. It writes punctuation.`;
   else if(ready)el.innerHTML=`${I.check} Ready on this computer: ${esc(ready.label)}. 1,600+ languages (Kurdish Sorani too), found automatically. Nothing is uploaded.`;
   else if(busy)el.innerHTML=`<span class="spin"></span> ${pr.state==='unpacking'?'Unpacking…':`Downloading the speech model… ${Math.floor(pr.bytes/pr.total*100)}%`}`;
   else{const d=lm.find(m=>m.id===st.local.default)||lm[0];
@@ -118,7 +123,7 @@ Object.assign(Ed,{
  clipHtml(c){
   const m=this.mediaOf(c),w=c.dur*this.zoom,sel=this.sels.has(c.id),kind=this.kindOf(c);
   let inner='';
-  if(c.text!==undefined)inner=`<span class="ed-clip-label">${c.group?`<b class="ed-linked" title="Grouped">${I.link}</b>`:''}${I.text}${esc(c.text||'Text')}</span>`;
+  if(c.text!==undefined)inner=`${c.words?.some(w=>w.alt)?`<b class="ed-tocheck" title="Words to check">${I.flag}</b>`:''}<span class="ed-clip-label">${c.group?`<b class="ed-linked" title="Grouped">${I.link}</b>`:''}${I.text}${esc(c.text||'Text')}</span>`;
   else if(c.sticker)inner=`<span class="ed-clip-label">${c.group?`<b class="ed-linked" title="Grouped">${I.link}</b>`:''}${c.sticker.type==='emoji'?c.sticker.emoji:I.shapes}${esc(c.sticker.type==='emoji'?'Sticker':ED_SHAPES.find(s=>s[0]===c.sticker.shape)?.[1]||'Shape')}</span>`;
   else if(kind==='audio'){const pk=m?.peaks||[],from=(c.in||0)/(m?.dur||1),to=((c.in||0)+c.dur*(c.speed||1))/(m?.dur||1),part=pk.slice(Math.floor(from*pk.length),Math.ceil(to*pk.length)),v=edClamp(c.volume??1,0,2);
    inner=`<svg class="ed-wave" viewBox="0 0 ${Math.max(1,part.length)} 100" preserveAspectRatio="none">${part.map((x,i)=>`<rect x="${i}" y="${50-x*46*Math.min(1,v)}" width=".6" height="${Math.max(2,x*92*Math.min(1,v))}"/>`).join('')}</svg>
@@ -164,6 +169,7 @@ Object.assign(Ed,{
     <dt>Markers</dt><dd>${this.p.markers.length?`${this.p.markers.length} · <button type="button" class="ed-link" data-clear-markers>Clear</button>`:'Press M to add one'}</dd></dl>`;
   else if(t==='text')body=(c.words?sec('Caption',`<div class="ed-seg wrap">${ED_CAPS.map(([v,l])=>`<button type="button" data-caplook="${v}" aria-pressed="${(c.capLook||'clean')===v}">${l}</button>`).join('')}</div>
      ${c.capStyle==='karaoke'||c.capStyle==='build'?`<div class="ed-row"><label>Highlight</label><div class="ed-ctl"><input type="color" data-k="hl" value="${esc(c.hl||'#FFD400')}" aria-label="Highlight colour"></div></div>`:''}
+     ${c.words.some(w=>w.alt)?`<div class="ed-checks"><b>${I.flag} Check these words</b>${c.words.map((w,i)=>w.alt?`<div class="ed-check"><span class="ed-check-words"><bdi>${esc(c.words.slice(i,i+(w.altSpan||1)).map(x=>x.t).join(' '))}</bdi><i>other model heard</i><bdi>${esc(w.alt)}</bdi></span><span class="ed-check-btns"><button type="button" class="btn small" data-alt="${i}">Use</button><button type="button" class="btn small ghost" data-keep="${i}">Keep</button></span></div>`:'').join('')}</div>`:''}
      <div class="ed-row"><label>Capitals</label><div class="ed-ctl"><input type="checkbox" role="switch" data-k="upper" ${c.upper?'checked':''} aria-label="Capitals"></div></div>
      <div class="ed-row"><label>Language</label><div class="ed-ctl"><span class="ed-val" dir="auto">${esc(edLangName(c.lang||'auto'))}</span></div></div>
      <div class="ed-row"><label></label><div class="ed-ctl"><button type="button" class="ed-tool" data-cap-all>${I.layers} Use this look on every caption</button></div></div>`):'')+sec('Text',`<textarea data-k="text" rows="3" dir="auto" aria-label="Text">${esc(c.text||'')}</textarea>`)+
@@ -225,7 +231,7 @@ Object.assign(Ed,{
   el.querySelectorAll('[data-k]').forEach(inp=>{
    const k=inp.dataset.k,u=inp.dataset.u||'raw';
    const snap=()=>{if(!inp._snap){this.snapshot();inp._snap=true;}};inp.addEventListener('focus',snap);inp.addEventListener('pointerdown',snap);
-   inp.addEventListener('change',()=>{inp._snap=false;this.save();if(['speed','text','box','font'].includes(k))this.drawTimeline();if(k==='box'||k==='key_on'||k==='upper')this.drawProps();if(k==='font')document.fonts?.load(`40px "${c.font}"`).then(()=>this.draw()).catch(()=>{});this.drawTime();if(k==='speed')this.after(false);});
+   inp.addEventListener('change',()=>{inp._snap=false;this.save();if(k==='text'&&c?.words?.length)this.learnFix(c);if(['speed','text','box','font'].includes(k))this.drawTimeline();if(k==='box'||k==='key_on'||k==='upper')this.drawProps();if(k==='font')document.fonts?.load(`40px "${c.font}"`).then(()=>this.draw()).catch(()=>{});this.drawTime();if(k==='speed')this.after(false);});
    inp.addEventListener('input',()=>{
     let v=inp.type==='checkbox'?inp.checked:inp.type==='range'||inp.type==='number'?Number(inp.value):inp.value;
     if(inp.type==='number'&&!Number.isFinite(v))return;
@@ -257,6 +263,8 @@ Object.assign(Ed,{
   const lr=$('[data-loud-reset]',el);if(lr)lr.onclick=()=>{this.snapshot();delete c.gainDb;this.after(true);};
   const dk=$('[data-duck]',el);if(dk)dk.onchange=()=>this.setDuck(c,dk.checked);
   el.querySelectorAll('[data-caplook]').forEach(b=>b.onclick=()=>{this.snapshot();this.capLook(c,b.dataset.caplook);this.after(true);});
+  el.querySelectorAll('[data-alt]').forEach(b=>b.onclick=()=>this.useAlt(c,Number(b.dataset.alt)));
+  el.querySelectorAll('[data-keep]').forEach(b=>b.onclick=()=>this.keepFlag(c,Number(b.dataset.keep)));
   const ca=$('[data-cap-all]',el);if(ca)ca.onclick=()=>{this.snapshot();const keys=['capLook','capStyle','font','size','weight','color','hl','stroke','strokeColor','shadow','box','boxColor','upper','align','y','animIn','animOut','animDur','spacing'];
    const all=this.p.clips.filter(x=>x!==c&&x.words?.length);for(const x of all)for(const k of keys){if(c[k]===undefined)delete x[k];else x[k]=c[k];}
    // Arabic-script captions keep a font that has every letter
@@ -320,6 +328,17 @@ function edProjects(el){
 async function edExportProject(id,name){
  toast('Packing the project…');
  try{edSaveFile(await Ed.packProject(id),(name||'Project')+'.zip');toast('Project file saved');}catch(e){toast(e.message,true);}
+}
+/** What the captions learned from your corrections: each fix, with how often you made it; remove one or all. */
+async function edFixesDialog(){
+ const r=await fetch(withKey('/api/editor/caption-fixes'));const j=await r.json().catch(()=>({fixes:[]}));const fx=j.fixes||[];
+ dialog(`<div class="ed-keys ed-fixes"><h2>Learned from your corrections</h2>
+  <p class="ed-xnote">When you change a caption, the changed words are remembered for that language and fixed in the next captions. Your corrected captions are also kept with their audio (${j.clips||0} so far) in <code>${esc(j.dataset||'')}</code>, to train a model on later. Nothing leaves this computer.</p>
+  ${fx.length?`<table><thead><tr><th>Language</th><th>Heard</th><th>Written</th><th>Times</th><th></th></tr></thead><tbody>${fx.map((f,i)=>`<tr><td>${esc(edLangName(f.lang))}</td><td dir="auto">${esc(f.from)}</td><td dir="auto">${esc(f.to)}</td><td>${f.n}</td><td><button type="button" class="iconbtn sm" data-rm="${i}" aria-label="Forget">${I.x}</button></td></tr>`).join('')}</tbody></table>`:'<p>Nothing yet. Change a word in a caption made from speech and it is learned.</p>'}
+  <div class="ed-xactions">${fx.length?'<button type="button" class="btn ghost danger-text" data-clear>Forget all</button>':''}<button type="button" class="btn primary" data-no>Done</button></div></div>`);
+ const box=$('.ed-fixes');box.querySelector('[data-no]').onclick=()=>closeDialog();
+ box.querySelectorAll('[data-rm]').forEach(b=>b.onclick=async()=>{const f=fx[Number(b.dataset.rm)];await fetch(withKey('/api/editor/caption-fixes/remove'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({lang:f.lang,from:f.from})});closeDialog();await Ed.loadStt();Ed.drawLib();edFixesDialog();});
+ const cl=box.querySelector('[data-clear]');if(cl)cl.onclick=async()=>{if(!await ask('Forget every learned fix?','The training clips stay.','Forget all',true))return;await fetch(withKey('/api/editor/caption-fixes/clear'),{method:'POST'});closeDialog();await Ed.loadStt();Ed.drawLib();};
 }
 function edRename(btn,id){
  const x=Ed.list().find(p=>p.id===id);if(!x)return;

@@ -133,3 +133,60 @@ export async function transcribeLocal(file:string,o:{model?:LocalModel;onProgres
   else{const ws=t.split(/\s+/),d=(b-a)/ws.length;ws.forEach((w,i)=>words.push({text:w,start:a+i*d,end:a+(i+1)*d}));}}
  o.onProgress?.(chunks.length,chunks.length);
  return {engine:'omnilingual' as const,model:m,code:guessCode(text),text,words,seconds:x.length/SR};}
+
+// ---------- Kurdish Sorani: a second model, and the two combined ----------
+// The project's Sorani-trained Whisper (rzgar/whisper-large-v3-sorani-kurdish-ckb-v2, set up by `audio:setup`)
+// makes different mistakes from Omnilingual and writes punctuation. Both run; where they agree the word stays,
+// where they differ Whisper's version is taken only when it is confident.
+const audioModels=()=>path.resolve(process.env.VIDEO_MODEL_DIR||path.join(ROOT,'workspace','cache','audio-models'));
+export function soraniAvailable(){try{return fs.readdirSync(path.join(audioModels(),'installed')).some(f=>/sorani.*-ct2\.json$/i.test(f));}catch{return false;}}
+export type ConfWord=LocalWord&{confidence?:number};
+/** Writes mono 16 kHz samples as a 16-bit WAV. */
+export async function writeWav(file:string,x:Float32Array,sr=SR){
+ const b=Buffer.alloc(44+x.length*2);b.write('RIFF',0);b.writeUInt32LE(36+x.length*2,4);b.write('WAVEfmt ',8);b.writeUInt32LE(16,16);b.writeUInt16LE(1,20);b.writeUInt16LE(1,22);
+ b.writeUInt32LE(sr,24);b.writeUInt32LE(sr*2,28);b.writeUInt16LE(2,32);b.writeUInt16LE(16,34);b.write('data',36);b.writeUInt32LE(x.length*2,40);
+ for(let i=0;i<x.length;i++)b.writeInt16LE(Math.max(-32768,Math.min(32767,Math.round(x[i]!*32767))),44+i*2);await fsp.writeFile(file,b);}
+/** The Sorani Whisper on a 16 kHz WAV: on the graphics card when it fits (int8/float16), else the processor. */
+export async function transcribeSorani(wav:string,o:{hotwords?:string}={}):Promise<{words:ConfWord[];device:string}>{
+ const {runAudioPython}=await import('./audio-analysis.js'),out=wav.replace(/\.wav$/i,'')+'-whisper.json';
+ const base=['transcribe','--audio',wav,'--output',out,'--cache',audioModels(),...(o.hotwords?['--hotwords',o.hotwords]:[])];
+ let res:unknown;try{res=await runAudioPython([...base,'--device','cuda','--compute-type','int8_float16'],30*60*1000);}catch{res=await runAudioPython([...base,'--device','cpu'],60*60*1000);}
+ const j=JSON.parse(await fsp.readFile(out,'utf8')) as {words:ConfWord[];backend:{device:string}};await fsp.rm(out,{force:true});void res;
+ return {words:j.words.filter(w=>w.text&&Number.isFinite(w.start)&&Number.isFinite(w.end)),device:j.backend.device};}
+
+/** A word for comparing: no punctuation, the same Kurdish/Arabic letter forms, no joiners or vowel marks. */
+export const normWord=(s:string)=>s.normalize('NFC').replace(/[\p{P}\p{S}]/gu,'').replace(/[ىي]/g,'ی').replace(/ك/g,'ک').replace(/ة/g,'ە').replace(/[\u200c\u200d\u064B-\u065F\u0670]/g,'').toLowerCase();
+function lcs(a:string[],b:string[]):[number,number][]{
+ const n=a.length,m=b.length,d=Array.from({length:n+1},()=>new Uint16Array(m+1));
+ for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)d[i]![j]=a[i]===b[j]?d[i+1]![j+1]!+1:Math.max(d[i+1]![j]!,d[i]![j+1]!);
+ const out:[number,number][]=[];let i=0,j=0;while(i<n&&j<m){if(a[i]===b[j]){out.push([i,j]);i++;j++;}else if(d[i+1]![j]!>=d[i]![j+1]!)i++;else j++;}return out;}
+/** A second opinion: Omnilingual's words, with the places where the Sorani Whisper heard something else marked.
+ *  Measured on 8 AsoSoft Sorani sentences, letting Whisper's confidence decide made the text worse (Whisper is often
+ *  sure and wrong), so nothing is changed: a disagreement puts `alt` (Whisper's words) on the first word of the
+ *  span and `altSpan` (how many words it would replace) for the person to check. */
+export function secondOpinion(om:LocalWord[],wh:ConfWord[]):{words:(LocalWord&{alt?:string;altSpan?:number})[];flags:number}{
+ const out:(LocalWord&{alt?:string;altSpan?:number})[]=om.map(w=>({...w}));if(!wh.length)return {words:out,flags:0};let flags=0,jw=0;
+ for(let s=0;s<om.length;){
+  const e=Math.min(om.length,s+300),cut=e<om.length?om[e-1]!.end:Infinity;
+  let jb=jw;while(jb<wh.length&&(wh[jb]!.start+wh[jb]!.end)/2<cut)jb++;
+  const A=om.slice(s,e),B=wh.slice(jw,jb),pairs=lcs(A.map(w=>normWord(w.text)),B.map(w=>normWord(w.text)));
+  let i0=0,j0=0;
+  const mark=(i1:number,j1:number)=>{if(i1>i0&&j1>j0){const alt=B.slice(j0,j1).map(w=>w.text).join(' ');const w=out[s+i0]!;w.alt=alt.replace(/[.،,؟?!]+$/,'');w.altSpan=i1-i0;flags++;}};
+  for(const [i,j] of pairs){mark(i,j);i0=i+1;j0=j+1;}mark(A.length,B.length);
+  s=e;jw=jb;}
+ return {words:out,flags};}
+
+/** Captions on this computer: Omnilingual for every language. For Kurdish Sorani the Sorani Whisper also listens
+ *  (unless `sorani` is false or it is not set up) and marks the words it heard differently. engine "whisper" uses the
+ *  Sorani Whisper alone. `keepWav` keeps the 16 kHz audio (for learning from corrections). */
+export async function transcribeBest(file:string,o:{sorani?:boolean;engine?:'omnilingual'|'whisper';hotwords?:string;keepWav?:string;model?:LocalModel}={}){
+ const x=await decode(file),wav=o.keepWav??path.join(os.tmpdir(),'tl-'+Date.now()+'-'+Math.random().toString(36).slice(2)+'.wav');
+ const needWav=o.engine==='whisper'||!!o.keepWav||(o.sorani!==false&&soraniAvailable());if(needWav)await writeWav(wav,x);
+ try{
+  if(o.engine==='whisper'){if(!soraniAvailable())throw new Error('The Sorani Whisper model is not set up (pnpm audio:setup)');
+   const w=await transcribeSorani(wav,{hotwords:o.hotwords});return {engine:'whisper' as const,code:'ckb',text:w.words.map(v=>v.text).join(' '),words:w.words.map(({text,start,end})=>({text,start,end})),seconds:x.length/SR,engines:['sorani-whisper:'+w.device],flags:0};}
+  const r=await transcribeLocal(file,{model:o.model});
+  if(!(o.sorani!==false&&r.code==='ckb'&&soraniAvailable()))return {...r,engines:['omnilingual'],flags:0};
+  const w=await transcribeSorani(wav,{hotwords:o.hotwords}),c=secondOpinion(r.words,w.words);
+  return {...r,words:c.words,engines:['omnilingual','sorani-whisper:'+w.device],flags:c.flags};
+ }finally{if(!o.keepWav&&needWav)await fsp.rm(wav,{force:true}).catch(()=>{});}}
