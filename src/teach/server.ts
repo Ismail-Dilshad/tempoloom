@@ -215,6 +215,13 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
     finally{await fsp.rm(dir,{recursive:true,force:true}).catch(()=>{});}
     return;}
    // The Editor's smart tools (stabilise, remove background, auto reframe) as background jobs on this computer.
+   if(m==='POST'&&p==='/api/editor/scenes'){const T=await import('../engine/editor-tools.js');
+    const ext=(/\.[a-z0-9]{2,5}$/i.exec(url.searchParams.get('name')||'')?.[0]||'.mp4').toLowerCase(),dir=await T.newDir(),src=path.join(dir,'source'+ext);let size=0;
+    const limit=new Transform({transform(c:Buffer,_e,cb){size+=c.length;size>MAX_MB*1048576?cb(new HttpError(413,`The file is over ${MAX_MB} MB`)):cb(null,c);}});
+    try{await pipeline(req,limit,fs.createWriteStream(src));if(!size)throw new HttpError(400,'The upload was empty');
+     const n=(k:string,d:number)=>{const v=Number(url.searchParams.get(k));return Number.isFinite(v)&&v>=0?v:d;};
+     return json(res,{cuts:await T.detectScenes(src,Math.min(.9,Math.max(.05,n('thr',.3))),n('ss',0),n('t',0))});}
+    finally{await fsp.rm(dir,{recursive:true,force:true}).catch(()=>{});}}
    if(m==='POST'&&p==='/api/editor/tool'){const T=await import('../engine/editor-tools.js'),kind=url.searchParams.get('kind');
     if(!['stabilize','cutout','reframe','voice','beats','reverse','track','proxy'].includes(String(kind)))throw new HttpError(400,'Unknown tool');
     const ext=(/\.[a-z0-9]{2,5}$/i.exec(url.searchParams.get('name')||'')?.[0]||'.mp4').toLowerCase(),dir=await T.newDir(),src=path.join(dir,'source'+ext);let size=0;

@@ -94,6 +94,21 @@ describe('remove silences',()=>{
  });
 });
 
+describe('colour tools',()=>{
+ it('HSL changes only the chosen colour, and leaves grey alone',()=>{
+  const hsl=f<(v:number[],h:object)=>number[]>('edHslAdjust');
+  const red=hsl([.9,.1,.1],{red:{s:-100}});expect(Math.abs(red[0]-red[1])).toBeLessThan(.02);
+  expect(hsl([.1,.2,.9],{red:{s:-100}})).toEqual([.1,.2,.9]);expect(hsl([.5,.5,.5],{red:{h:30,s:100}})).toEqual([.5,.5,.5]);
+  const shifted=hsl([.9,.1,.1],{red:{h:30}});expect(shifted[1]).toBeGreaterThan(.2);
+  expect(f<(g:unknown)=>boolean>('edGraded')({hsl:{red:{s:-40}}})).toBe(true);
+ });
+ it('colour match maps the target levels onto the reference',()=>{
+  const img=(v:number[])=>{const d=new Uint8ClampedArray(100*4);for(let i=0;i<100;i++){const k=i/99;d.set([Math.round(v[0]*k*255),Math.round(v[1]*k*255),Math.round(v[2]*k*255),255],i*4);}return d;};
+  const pts=f<(a:Uint8ClampedArray,b:Uint8ClampedArray)=>number[][][]>('edMatchCurves')(img([.5,.5,.5]),img([1,1,1]));
+  const mid=pts[0]!.find(p=>Math.abs(p[0]!-.25)<.02);expect(mid?.[1]).toBeCloseTo(.5,1);expect(pts[0]![0]).toEqual([0,0]);expect(pts[0]!.at(-1)).toEqual([1,1]);
+ });
+});
+
 describe('captions and words',()=>{
  it('splits words in every script, and knows direction',()=>{
   const words=f<(t:string,l?:string)=>string[]>('edWords');

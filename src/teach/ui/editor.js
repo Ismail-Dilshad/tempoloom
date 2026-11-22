@@ -8,12 +8,16 @@ const ED_VISUAL=new Set(['video','sticker','text']);
 const ED_TEXTS=[['Title',72,800,false],['Subtitle',44,600,false],['Body text',32,500,false],['Caption',34,700,true]];
 /** Transitions for sound at a cut between two audio clips. */
 const ED_ATRANS=[['crossfade','Crossfade']];
-const ED_TRANS=[['dissolve','Dissolve'],['fade','Fade to black'],['slide','Slide'],['push','Push up'],['zoom','Zoom'],['wipe','Wipe'],['blur','Blur']];
+const ED_TRANS=[['dissolve','Dissolve'],['fade','Fade to black'],['white','Fade to white'],['slide','Slide'],['push','Push up'],['zoom','Zoom'],['zoomblur','Zoom blur'],['wipe','Wipe'],['iris','Circle'],['blur','Blur'],['whip','Whip pan'],['spin','Spin'],['flash','Flash'],['glitch','Glitch'],['shake','Shake']];
 const ED_ADJ=[['brightness','Brightness',-100,100],['contrast','Contrast',-100,100],['saturation','Saturation',-100,100],['hue','Hue',-180,180],['temperature','Temperature',-100,100],['vignette','Vignette',0,100],['blur','Blur',0,30]];
 const ED_FILTERS=[['none','Original',{}],['vivid','Vivid',{saturation:35,contrast:15}],['warm','Warm',{temperature:40,saturation:10}],['cool','Cool',{temperature:-40,saturation:5}],['bw','Black & white',{saturation:-100,contrast:15}],
  ['vintage','Vintage',{saturation:-30,temperature:30,contrast:-10,vignette:45}],['faded','Faded',{contrast:-25,brightness:8,saturation:-15}],['drama','Dramatic',{contrast:35,saturation:-10,vignette:55,brightness:-5}]];
 const ED_FONTS=[['Tempoloom UI','Sans'],['Fredoka','Rounded'],['Vazirmatn','Kurdish & Arabic'],['Georgia','Serif'],['Impact','Impact'],['Courier New','Mono']];
 const ED_ANIMS=[['none','None'],['fade','Fade'],['pop','Pop'],['slide','Slide'],['zoom','Zoom'],['blur','Blur'],['type','Typewriter'],['words','Word by word']];
+/** In and out animations for video and photo clips (as CapCut's): text keeps its own list above. */
+const ED_CLIP_ANIMS=[['none','None'],['fade','Fade'],['zoom','Zoom in'],['zoomout','Zoom out'],['pop','Pop'],['bounce','Bounce'],['left','Slide left'],['right','Slide right'],['slide','Slide up'],['down','Slide down'],['spin','Spin'],['swing','Swing'],['blur','Blur'],['shake','Shake']];
+/** Style effects for a clip (one at a time, with an amount), drawn on its layer. */
+const ED_STYLES=[['none','None'],['rgb','RGB split'],['glitch','Glitch'],['vhs','VHS'],['leak','Light leak'],['burn','Film burn'],['flash','Flash'],['mirror','Mirror'],['kaleido','Kaleidoscope'],['pixel','Pixelate'],['zoomblur','Zoom blur'],['motion','Motion blur'],['invert','Invert']];
 /** Speed curves: [position in the clip 0..1, speed multiplier], straight lines between points. */
 const ED_RAMPS=[['montage','Montage',[[0,2.5],[.3,2.5],[.45,.5],[.55,.5],[.7,2.5],[1,2.5]]],['hero','Hero',[[0,1.5],[.4,1.5],[.5,.3],[.6,1.5],[1,1.5]]],
  ['bullet','Bullet',[[0,2],[.35,2],[.5,.2],[.65,2],[1,2]]],['jump','Jump cut',[[0,1],[.45,1],[.5,6],[.55,1],[1,1]]],['flashin','Flash in',[[0,6],[.35,1],[1,1]]],['flashout','Flash out',[[0,1],[.65,1],[1,6]]]];
@@ -42,6 +46,27 @@ function edSyncOffset(A,B,rate=100,minOv=1){const z=x=>{const m=x.reduce((s,v)=>
 function edSilences(env,rate,thrDb,minLen,pad){const out=[],lim=Math.pow(10,thrDb/20);let a=-1;
  for(let i=0;i<=env.length;i++){const q=i<env.length&&env[i]<lim;if(q&&a<0)a=i;else if(!q&&a>=0){const s=a/rate+(a>0?pad:0),e=i/rate-(i<env.length?pad:0);if(i-a>=minLen*rate&&e-s>.05)out.push([s,e]);a=-1;}}
  return out;}
+/** Colour match: per channel, curve points taking the target's shadows, middle and highlights (2, 25, 50, 75, 98%) to the reference's. */
+function edMatchCurves(A,B){const pct=(d,ch)=>{const h=new Uint32Array(256);let n=0;for(let i=ch;i<d.length;i+=4){if(d[i-ch+3]<8)continue;h[d[i]]++;n++;}const q=p=>{let s=0;for(let v=0;v<256;v++){s+=h[v];if(s>=p*n)return v/255;}return 1;};return [.02,.25,.5,.75,.98].map(q);};
+ return [0,1,2].map(ch=>{const a=pct(A,ch),b=pct(B,ch),pts=[[0,0]];a.forEach((x,i)=>{if(x>pts.at(-1)[0]+.02&&x<.98)pts.push([Math.round(x*1000)/1000,Math.round(Math.max(pts.at(-1)[1],b[i])*1000)/1000]);});pts.push([1,1]);return pts;});}
+/** Built-in sound effects, made here from oscillators and noise (no files to download, no licences). */
+const ED_SFX=[['whoosh','Whoosh'],['pop','Pop'],['click','Click'],['ding','Ding'],['riser','Riser'],['boom','Boom'],['shutter','Camera'],['notify','Notification'],['swipe','Swipe'],['glitch','Glitch']];
+async function edMakeSfx(kind){const sr=48000,dur={whoosh:.9,pop:.25,click:.08,ding:1.6,riser:2.5,boom:1.8,shutter:.35,notify:.7,swipe:.5,glitch:.6}[kind]||1,ac=new OfflineAudioContext(2,Math.round(sr*dur),sr);
+ const noise=()=>{const b=ac.createBuffer(1,Math.round(sr*dur),sr),d=b.getChannelData(0);let s=7;for(let i=0;i<d.length;i++){s=(s*16807)%2147483647;d[i]=s/2147483647*2-1;}const n=ac.createBufferSource();n.buffer=b;return n;};
+ const env=(g,a,peak,hold,rel)=>{g.gain.setValueAtTime(0,0);g.gain.linearRampToValueAtTime(peak,a);g.gain.setValueAtTime(peak,a+hold);g.gain.exponentialRampToValueAtTime(.0001,a+hold+rel);};
+ const tone=(type,f0,f1,a,peak,hold,rel,t0=0)=>{const o=ac.createOscillator(),g=ac.createGain();o.type=type;o.frequency.setValueAtTime(f0,t0);if(f1)o.frequency.exponentialRampToValueAtTime(f1,t0+a+hold+rel);env(g,a,peak,hold,rel);if(t0){g.gain.cancelScheduledValues(0);g.gain.setValueAtTime(0,0);g.gain.setValueAtTime(0,t0);g.gain.linearRampToValueAtTime(peak,t0+a);g.gain.exponentialRampToValueAtTime(.0001,t0+a+hold+rel);}o.connect(g).connect(ac.destination);o.start(t0);o.stop(dur);};
+ const swept=(f0,f1,q,a,peak,hold,rel)=>{const n=noise(),f=ac.createBiquadFilter(),g=ac.createGain();f.type='bandpass';f.Q.value=q;f.frequency.setValueAtTime(f0,0);f.frequency.exponentialRampToValueAtTime(f1,dur*.95);env(g,a,peak,hold,rel);n.connect(f).connect(g).connect(ac.destination);n.start();};
+ if(kind==='whoosh')swept(300,3500,1.2,.35,.9,.05,.45);
+ else if(kind==='swipe')swept(1800,500,2,.06,.8,.02,.35);
+ else if(kind==='pop')tone('sine',900,140,.003,.9,.01,.2);
+ else if(kind==='click'){const n=noise(),f=ac.createBiquadFilter(),g=ac.createGain();f.type='highpass';f.frequency.value=2500;env(g,.001,.9,.004,.05);n.connect(f).connect(g).connect(ac.destination);n.start();}
+ else if(kind==='ding'){tone('sine',1320,0,.004,.5,.02,1.5);tone('sine',2640,0,.004,.18,.01,.9);}
+ else if(kind==='riser'){swept(200,6000,3,2.2,.6,.05,.2);tone('sawtooth',110,880,2.2,.08,.05,.2);}
+ else if(kind==='boom'){tone('sine',110,32,.005,1,.05,1.6);swept(400,60,.7,.005,.6,.02,.6);}
+ else if(kind==='shutter'){const n=noise(),f=ac.createBiquadFilter(),g=ac.createGain();f.type='bandpass';f.frequency.value=3000;g.gain.setValueAtTime(0,0);for(const t of [0,.12]){g.gain.setValueAtTime(.9,t);g.gain.exponentialRampToValueAtTime(.001,t+.07);}n.connect(f).connect(g).connect(ac.destination);n.start();}
+ else if(kind==='notify'){tone('sine',880,0,.005,.45,.05,.25);tone('sine',1320,0,.005,.45,.05,.35,.16);}
+ else if(kind==='glitch'){for(let i=0;i<8;i++){const t0=i*.07,o=ac.createOscillator(),g=ac.createGain();o.type='square';o.frequency.value=200+((i*7919)%1600);g.gain.setValueAtTime(0,0);g.gain.setValueAtTime(.18,t0);g.gain.setValueAtTime(0,t0+.04);o.connect(g).connect(ac.destination);o.start(0);o.stop(dur);}}
+ return ac.startRendering();}
 /** Every clip of a list, the clips inside nested clips too (for media in use, project files, proxies). */
 const edAll=cl=>(cl||[]).flatMap(c=>c.nest?[c,...edAll(c.nest.clips)]:[c]);
 const edEase=u=>u<.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2;
@@ -83,7 +108,7 @@ const edLabel=id=>ED_LABELS.find(l=>l[0]===id)?.[2];
 const edMt=m=>typeof m==='number'?m:m.t;
 const ED_BLENDS=[['normal','Normal'],['multiply','Multiply'],['screen','Screen'],['overlay','Overlay'],['darken','Darken'],['lighten','Lighten'],['color-dodge','Colour dodge'],['color-burn','Colour burn'],
  ['hard-light','Hard light'],['soft-light','Soft light'],['difference','Difference'],['exclusion','Exclusion'],['hue','Hue'],['saturation','Saturation'],['color','Colour'],['luminosity','Luminosity']];
-const ED_MASKS=[['none','None'],['rect','Rectangle'],['circle','Ellipse'],['linear','Linear']];
+const ED_MASKS=[['none','None'],['rect','Rectangle'],['circle','Ellipse'],['linear','Linear'],['band','Mirror band'],['heart','Heart'],['star','Star']];
 const Ed={
  p:null,media:[],urls:{},els:{},imgs:{},time:0,playing:false,sel:null,sels:new Set(),junction:null,zoom:40,snap:true,tab:'media',ptab:null,
  past:[],future:[],dom:{},ready:null,exporting:null,clipboard:null,guides:false,recording:null,
@@ -212,7 +237,7 @@ const Ed={
  undo(){if(!this.past.length)return;this.future.push(JSON.stringify(this.p));this.p=JSON.parse(this.past.pop());this.after(true);this.fit();},
  redo(){if(!this.future.length)return;this.past.push(JSON.stringify(this.p));this.p=JSON.parse(this.future.pop());this.after(true);this.fit();},
  /** Players of clips that are gone (deleted, nested, broken apart, undone) stop and are let go. */
- prune(){const keep=new Set(),walk=(cl,pre)=>{for(const c of cl){keep.add(pre+c.id);if(c.nest)walk(c.nest.clips,pre+c.id+'/');}};walk(this.p?.clips||[],'');
+ prune(){const keep=new Set(),walk=(cl,pre)=>{for(const c of cl){keep.add(pre+c.id);keep.add(pre+c.id+'#b');if(c.nest)walk(c.nest.clips,pre+c.id+'/');}};walk(this.p?.clips||[],'');
   for(const k of Object.keys(this.els))if(!keep.has(k)){this.els[k].pause?.();delete this.els[k];}},
  after(all){this._dk=null;this.pack();this.tidy();this.prune();for(const id of [...this.sels])if(!this.clip(id))this.sels.delete(id);if(this.sel&&!this.clip(this.sel))this.sel=[...this.sels].pop()||null;if(this.junction&&!this.clip(this.junction))this.junction=null;
   this.save();this.drawTimeline();if(all)this.drawProps();this.sync();this.draw();this.drawTime();},
@@ -395,6 +420,14 @@ const Ed={
    // the pause goes (at the very start of the clip, that is what is left of the clip itself), and what follows closes up
    this.p.clips=this.p.clips.filter(x=>x!==mid);this.shiftTrack(tr,b,-(b-a));}}
   this.after(true);toast(`Removed ${n} pause${n===1?'':'s'} (${secs.toFixed(1)} s)`);return n;},
+ /** Split screen: the selected pictures (2 to 4) fill the cells of a layout, each cropped to its cell (as CapCut's layouts). */
+ layout(kind){const list=this.picked().filter(c=>c.media&&this.mediaOf(c)?.type!=='audio'&&!c.asAudio&&!this.trackOf(c)?.locked).sort((a,b)=>this.p.tracks.findIndex(t=>t.id===a.track)-this.p.tracks.findIndex(t=>t.id===b.track));
+  const cells={'2h':[[0,0,.5,1],[.5,0,.5,1]],'2v':[[0,0,1,.5],[0,.5,1,.5]],'3':[[0,0,.5,1],[.5,0,.5,.5],[.5,.5,.5,.5]],'3v':[[0,0,1,.5],[0,.5,.5,.5],[.5,.5,.5,.5]],'4':[[0,0,.5,.5],[.5,0,.5,.5],[0,.5,.5,.5],[.5,.5,.5,.5]]}[kind];
+  if(!cells)return;if(list.length<2)return toast('Select two to four videos or photos that play at the same time.');const [W,H]=this.size();this.snapshot();
+  list.slice(0,cells.length).forEach((c,i)=>{const [x0,y0,cw,ch]=cells[i],m=this.mediaOf(c),A=cw*W/(ch*H),S=(m.w||16)/(m.h||9),cr={l:0,r:0,t:0,b:0};
+   if(S>A){cr.l=cr.r=(1-A/S)/2;}else{cr.t=cr.b=(1-S/A)/2;}c.crop=cr;const sw=(m.w||16)*(1-cr.l-cr.r),sh=(m.h||9)*(1-cr.t-cr.b),fit=Math.min(W/sw,H/sh);
+   c.scale=Math.round(cw*W/(sw*fit)*1000)/1000;c.x=Math.round((x0+cw/2-.5)*1000)/1000;c.y=Math.round((y0+ch/2-.5)*1000)/1000;c.rotate=0;if(c.kf)for(const k of ['scale','x','y','rotate'])delete c.kf[k];});
+  this.after(true);toast(`Split screen: ${Math.min(list.length,cells.length)} pictures`);},
  splitAll(){const t=this.time,list=this.p.clips.filter(x=>t>x.start+.05&&t<x.start+x.dur-.05&&!this.trackOf(x)?.locked);
   if(!list.length)return toast('Nothing under the playhead to split.');this.snapshot();const parts=list.map(c=>this.splitClip(c,t));this.regroup(parts);this.pick(null);this.after(true);toast(`Split ${list.length} clip${list.length>1?'s':''} on every track`);},
  /** Move the selected clips by whole frames (Alt + arrows); stops at the start and at other clips. */
@@ -441,12 +474,12 @@ const Ed={
  /** Setting a value: with keyframes, it goes into the keyframe at the playhead (made if there is none). */
  setVal(c,k,v){const f=c.kf?.[k];if(f?.length){const lt=edClamp(this.time-c.start,0,c.dur),i=this.kfAt(c,k);if(i>=0)f[i].v=v;else{f.push({t:lt,v});f.sort((a,b)=>a.t-b.t);}}else c[k]=v;},
  // ---------- playback ----------
- element(c){
-  const key=(this._nk||'')+c.id;let el=this.els[key];const m=this.mediaOf(c);
+ element(c,extra=''){
+  const key=(this._nk||'')+c.id+extra;let el=this.els[key];const m=this.mediaOf(c);
   if(!el&&m&&m.type!=='image'){
    el=document.createElement(c.asAudio?'audio':m.type);el.src=m.type==='video'&&!c.asAudio?this.proxySrc(m):this.urls[m.id];el.preload='auto';el.playsInline=true;el.crossOrigin='anonymous';
    el.addEventListener('seeked',()=>{if(!this.playing)this.draw();});el.addEventListener('loadeddata',()=>{if(!this.playing)this.draw();});
-   this.els[key]=el;if(this.ac)this.route(el);
+   this.els[key]=el;if(extra)el.muted=true;else if(this.ac)this.route(el);
   }
   return el;
  },
@@ -486,7 +519,7 @@ const Ed={
   const bl=(a.blur||0)+(extra||0);if(bl)f.push(`blur(${bl*k}px)`);return f.join(' ')||'none';},
  /** One picture, sticker or text at time t, with what a transition adds (alpha, offset, zoom, wipe, blur). */
  /** Does this clip need its own layer (blend mode, green screen or mask)? */
- layered(c){return !!(c.fx&&(c.fx.glow||c.fx.sharpen||c.fx.grain))||(c.blend&&c.blend!=='normal')||c.key?.on||(c.mask&&c.mask.shape&&c.mask.shape!=='none')||edGraded(c.grade);},
+ layered(c){return !!(c.fx&&(c.fx.glow||c.fx.sharpen||c.fx.grain||(c.fx.style&&c.fx.style!=='none')))||(c.blend&&c.blend!=='normal')||c.key?.on||(c.mask&&c.mask.shape&&c.mask.shape!=='none')||edGraded(c.grade);},
  /** Draws the clip alone on a layer, keys out its colour, cuts it with its mask, then blends the layer onto the frame. */
  drawLayered(g,c,t,o){
   const [W,H]=this.size(),L=this._layer||(this._layer=document.createElement('canvas'));if(L.width!==W||L.height!==H){L.width=W;L.height=H;}
@@ -499,14 +532,18 @@ const Ed={
    if(x1>x0&&y1>y0){const im=lg.getImageData(x0,y0,x1-x0,y1-y0);edKey(im.data,c.key);lg.putImageData(im,x0,y0);}}
   if(c.adjustment)this._adjFrame=this._adjFrame;// (the frame was kept before the layer was cleared)
   if(edGraded(c.grade)){const lut=this.gradeLut(c.grade);if(lut){const out=EdGL.apply(L,lut);if(out){lg.save();lg.setTransform(1,0,0,1,0,0);lg.globalCompositeOperation='copy';lg.drawImage(out,0,0);lg.restore();}}}
-  if(c.fx&&(c.fx.glow||c.fx.sharpen||c.fx.grain))edLayerFx(L,lg,c.fx,t,this.k());
+  if(c.fx&&(c.fx.glow||c.fx.sharpen||c.fx.grain||(c.fx.style&&c.fx.style!=='none')))edLayerFx(L,lg,c.fx,t,this.k());
   const mk=c.mask;
   if(mk&&mk.shape&&mk.shape!=='none'){lg.save();lg.globalCompositeOperation=mk.invert?'destination-out':'destination-in';lg.translate(cx,cy);lg.rotate(rot);lg.scale(k,k);
    const mw=b.w*(mk.w??.8),mh=b.h*(mk.h??.8),mx=b.w*(mk.x||0),my=b.h*(mk.y||0),fe=(mk.feather||0)*this.k();
    if(mk.shape==='linear'){const a=(mk.angle||0)*Math.PI/180,R=Math.hypot(b.w,b.h),dx=Math.sin(a),dy=-Math.cos(a),half=Math.max(.5,fe);
     const gr=lg.createLinearGradient(mx-dx*half,my-dy*half,mx+dx*half,my+dy*half);gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,'rgba(0,0,0,1)');lg.fillStyle=gr;lg.fillRect(-R,-R,2*R,2*R);}
    else{if(fe)lg.filter=`blur(${fe}px)`;lg.fillStyle='#000';lg.beginPath();
-    if(mk.shape==='circle')lg.ellipse(mx,my,mw/2,mh/2,0,0,Math.PI*2);else lg.roundRect(mx-mw/2,my-mh/2,mw,mh,Math.min(mw,mh)/2*(mk.round||0));lg.fill();}
+    if(mk.shape==='circle')lg.ellipse(mx,my,mw/2,mh/2,0,0,Math.PI*2);
+    else if(mk.shape==='band'){const R=Math.hypot(b.w,b.h);lg.save();lg.translate(mx,my);lg.rotate((mk.angle||0)*Math.PI/180);lg.rect(-R,-mh/2,2*R,mh);lg.restore();}
+    else if(mk.shape==='heart'){const x0=mx,y0=my-mh*.2;lg.moveTo(x0,y0);lg.bezierCurveTo(x0,y0-mh*.3,x0-mw*.5,y0-mh*.3,x0-mw*.5,y0+mh*.02);lg.bezierCurveTo(x0-mw*.5,y0+mh*.35,x0,y0+mh*.55,x0,y0+mh*.7);lg.bezierCurveTo(x0,y0+mh*.55,x0+mw*.5,y0+mh*.35,x0+mw*.5,y0+mh*.02);lg.bezierCurveTo(x0+mw*.5,y0-mh*.3,x0,y0-mh*.3,x0,y0);}
+    else if(mk.shape==='star'){for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,rr=i%2?.4:1;lg.lineTo(mx+Math.cos(a)*mw/2*rr,my+Math.sin(a)*mh/2*rr);}lg.closePath();}
+    else lg.roundRect(mx-mw/2,my-mh/2,mw,mh,Math.min(mw,mh)/2*(mk.round||0));lg.fill();}
    lg.restore();}
   g.save();g.globalCompositeOperation=c.blend&&c.blend!=='normal'?c.blend:'source-over';g.drawImage(L,0,0);g.restore();
  },
@@ -519,16 +556,21 @@ const Ed={
   if(c.adjustment&&!o.flat){const S=this._adjSnap||(this._adjSnap=document.createElement('canvas'));if(S.width!==W||S.height!==H){S.width=W;S.height=H;}const sg=S.getContext('2d');sg.clearRect(0,0,W,H);sg.drawImage(g.canvas,0,0);this._adjFrame=S;}
   const m=this.mediaOf(c);if(!m&&!c.adjustment&&!c.nest)return;const src=c.nest?this.nestFrame(c,t):c.adjustment?this._adjFrame:m.type==='image'?this.image(m):this.element(c);
   if(!src||(m&&m.type==='video'&&src.readyState<2)||(m&&m.type==='image'&&!src.complete))return;
+  const an=(c.animIn&&c.animIn!=='none')||(c.animOut&&c.animOut!=='none')?this.animApply(c,t):null;
+  if(an){o={...o,dx:(o.dx||0)+an.dx*W,dy:(o.dy||0)+an.dy*H,k:(o.k||1)*an.k,alpha:(o.alpha??1)*an.alpha,rot:(o.rot||0)+an.rot,blur:Math.max(o.blur||0,an.blur)};}
   const r=this.rect(c,W,H,t),s=this.src(c),a=this.val(c,'opacity',t)*this.fade(c,t)*(o.alpha??1);if(a<=0)return;
   const fx=c.fx||{},sh=edShake(fx,t,W),rad=(fx.radius||0)/100*Math.min(r.w,r.h)/2,kk=this.k();
-  g.save();if(o.clipX!=null){g.beginPath();g.rect(0,0,o.clipX,H);g.clip();}
-  g.globalAlpha=edClamp(a,0,1);g.translate(r.cx+(o.dx||0)+sh[0],r.cy+(o.dy||0)+sh[1]);g.rotate(this.val(c,'rotate',t)*Math.PI/180+sh[2]);g.scale((c.flipH?-1:1)*(o.k||1),(c.flipV?-1:1)*(o.k||1));
+  g.save();if(o.clipX!=null){g.beginPath();g.rect(0,0,o.clipX,H);g.clip();}if(o.clipR!=null){g.beginPath();g.arc(W/2,H/2,Math.max(.1,o.clipR),0,Math.PI*2);g.clip();}
+  g.globalAlpha=edClamp(a,0,1);g.translate(r.cx+(o.dx||0)+sh[0],r.cy+(o.dy||0)+sh[1]);g.rotate((this.val(c,'rotate',t)+(o.rot||0))*Math.PI/180+sh[2]);g.scale((c.flipH?-1:1)*(o.k||1),(c.flipV?-1:1)*(o.k||1));
   // shadow: under a rounded box, or (no rounding) following the picture's own outline, so a cut-out casts its shape
   if(fx.shadow&&rad){g.save();g.shadowColor=`rgba(0,0,0,${.25+fx.shadow/200})`;g.shadowBlur=fx.shadow/100*40*kk;g.shadowOffsetY=fx.shadow/100*14*kk;g.fillStyle='#000';g.beginPath();g.roundRect(-r.w/2,-r.h/2,r.w,r.h,rad);g.fill();g.restore();}
   if(rad){g.beginPath();g.roundRect(-r.w/2,-r.h/2,r.w,r.h,rad);g.clip();}
   if(fx.shadow&&!rad){g.shadowColor=`rgba(0,0,0,${.25+fx.shadow/200})`;g.shadowBlur=fx.shadow/100*40*kk;g.shadowOffsetY=fx.shadow/100*14*kk;}
   const kq=m&&m.type==='video'&&src.videoWidth&&m.w?src.videoWidth/m.w:1;// a proxy is smaller than the original: the same part of it
-  g.filter=this.filterOf(c,o.blur);g.drawImage(src,s.sx*kq,s.sy*kq,s.sw*kq,s.sh*kq,-r.w/2,-r.h/2,r.w,r.h);g.filter='none';g.shadowColor='transparent';
+  g.filter=this.filterOf(c,o.blur);g.drawImage(src,s.sx*kq,s.sy*kq,s.sw*kq,s.sh*kq,-r.w/2,-r.h/2,r.w,r.h);
+  // smooth slow motion: the next frame mixed in by how far between the two this moment is
+  if(c.frameBlend&&m?.type==='video'&&!c.asAudio){const e2=this.els[(this._nk||'')+c.id+'#b'];if(e2?.readyState>=2){const fr=(this.srcAt(c,t)*30)%1;if(fr>.02){const ga=g.globalAlpha;g.globalAlpha=ga*fr;g.drawImage(e2,s.sx*kq,s.sy*kq,s.sw*kq,s.sh*kq,-r.w/2,-r.h/2,r.w,r.h);g.globalAlpha=ga;}}}
+  g.filter='none';g.shadowColor='transparent';
   if(fx.border){g.lineWidth=fx.border*kk*2;g.strokeStyle=fx.borderColor||'#ffffff';g.beginPath();g.roundRect(-r.w/2,-r.h/2,r.w,r.h,rad);g.stroke();}
   const adj=c.adj||{};
   if(adj.temperature){g.globalCompositeOperation='soft-light';g.fillStyle=adj.temperature>0?`rgba(255,140,30,${adj.temperature/100*.7})`:`rgba(30,130,255,${-adj.temperature/100*.7})`;g.fillRect(-r.w/2,-r.h/2,r.w,r.h);g.globalCompositeOperation='source-over';}
@@ -543,12 +585,22 @@ const Ed={
   else if(type==='zoom'){d(A,{k:1+p*.5,alpha:1-p});d(B,{k:.85+.15*p,alpha:p});}
   else if(type==='wipe'){d(A,{});d(B,{clipX:edEase(p)*W});}
   else if(type==='blur'){d(A,{blur:p*30});d(B,{blur:(1-p)*30,alpha:edEase(p)});}
+  else if(type==='white'){if(p<.5)d(A,{});else d(B,{});g.save();g.globalAlpha=1-Math.abs(p*2-1);g.fillStyle='#fff';g.fillRect(0,0,W,H);g.restore();}
+  else if(type==='zoomblur'){if(p<.5)d(A,{k:1+p*1.2,blur:p*40});else d(B,{k:1.6-(p-.5)*1.2,blur:(1-p)*40});}
+  else if(type==='iris'){d(A,{});d(B,{clipR:edEase(p)*Math.hypot(W,H)/2});}
+  else if(type==='whip'){const e=edEase(p);d(A,{dx:-e*W,blur:Math.sin(p*Math.PI)*40});d(B,{dx:(1-e)*W,blur:Math.sin(p*Math.PI)*40});}
+  else if(type==='spin'){if(p<.5)d(A,{rot:p*360,k:1-p*.8,alpha:1-p});else d(B,{rot:(p-1)*360,k:.2+(p-.5)*1.6,alpha:p});}
+  else if(type==='flash'){if(p<.5)d(A,{});else d(B,{});g.save();g.globalCompositeOperation='lighter';g.globalAlpha=Math.max(0,1-Math.abs(p-.5)*4);g.fillStyle='#fff';g.fillRect(0,0,W,H);g.restore();}
+  else if(type==='glitch'){const s=Math.sin(t*97)*W*.04*(1-Math.abs(p*2-1)),X=p<.5?A:B;d(X,{dx:s});g.save();g.globalCompositeOperation='lighter';d(X,{dx:-s*1.5,alpha:.35});g.restore();}
+  else if(type==='shake'){const s=(1-Math.abs(p*2-1))*W*.03;d(A,{dx:Math.sin(t*71)*s,dy:Math.cos(t*53)*s});d(B,{dx:Math.sin(t*67)*s,dy:Math.cos(t*59)*s,alpha:p});}
   else{d(A,{});d(B,{alpha:p});}
  },
  draw(){if(this.scopesOn&&!this.exporting)requestAnimationFrame(()=>this.drawScopes?.());
   const cv=this.dom.canvas;if(!cv||!this.p)return;const [W,H]=this.size();if(cv.width!==W||cv.height!==H){cv.width=W;cv.height=H;}
   const g=cv.getContext('2d'),t=this.time;g.save();g.fillStyle=this.p.bg||'#000';g.fillRect(0,0,W,H);
   // A blurred, enlarged copy of the main picture fills the frame behind it (for a horizontal clip in a vertical video).
+  if(this.p.bgMode==='gradient'){const gr=g.createLinearGradient(0,0,W,H);gr.addColorStop(0,this.p.bg||'#000000');gr.addColorStop(1,this.p.bg2||'#3a1c71');g.fillStyle=gr;g.fillRect(0,0,W,H);}
+  if(this.p.bgMode==='image'){const m=this.media.find(x=>x.id===this.p.bgImage&&x.type==='image'),im=m&&this.image(m);if(im?.complete&&im.naturalWidth){const f=Math.max(W/im.naturalWidth,H/im.naturalHeight);g.drawImage(im,(W-im.naturalWidth*f)/2,(H-im.naturalHeight*f)/2,im.naturalWidth*f,im.naturalHeight*f);}}
   if(this.p.bgMode==='blur'){const mc=this.p.clips.find(c=>c.track===this.main()?.id&&t>=c.start&&t<c.start+c.dur);const m=mc&&this.mediaOf(mc);
    const src=m&&(m.type==='image'?this.image(m):this.element(mc));if(src&&(m.type!=='video'||src.readyState>=2)){const s=this.src(mc),f=Math.max(W/s.sw,H/s.sh)*1.1;g.save();g.filter=`blur(${40*this.k()}px) brightness(.7)`;g.drawImage(src,s.sx,s.sy,s.sw,s.sh,(W-s.sw*f)/2,(H-s.sh*f)/2,s.sw*f,s.sh*f);g.restore();}}
   this.paint(g,t);
@@ -655,9 +707,13 @@ const Ed={
   this.sels=new Set(back);this.sel=back.at(-1)||null;this.after(true);toast(c.nest.multi?`Multicam flattened: ${back.length} clips`:`Broke apart: ${back.length} clip${back.length===1?'':'s'}`);},
  /** How far a clip's in or out animation is (0 to 1, 1 = fully shown). */
  anim(c,t){const d=Math.max(.1,c.animDur||.5),lt=t-c.start,rt=c.start+c.dur-t;return {i:c.animIn&&c.animIn!=='none'?edClamp(lt/d,0,1):1,o:c.animOut&&c.animOut!=='none'?edClamp(rt/d,0,1):1};},
- animApply(c,t){const {i,o}=this.anim(c,t),r={alpha:1,k:1,dy:0,chars:1,blur:0,words:1};
+ animApply(c,t){const {i,o}=this.anim(c,t),r={alpha:1,k:1,dx:0,dy:0,rot:0,chars:1,blur:0,words:1};
   const one=(type,p)=>{if(p>=1)return;const e=edEase(p);if(type==='fade')r.alpha*=e;else if(type==='pop'){const b=1-Math.pow(1-p,3);r.k*=.5+.5*b+Math.sin(p*Math.PI)*.12;r.alpha*=Math.min(1,p*3);}else if(type==='slide'){r.dy+=(1-e)*.08;r.alpha*=e;}else if(type==='type')r.chars=Math.min(r.chars,p);
-   else if(type==='zoom'){r.k*=1+(1-e)*.6;r.alpha*=e;}else if(type==='blur'){r.blur=Math.max(r.blur||0,(1-e)*24);r.alpha*=e;}else if(type==='words')r.words=p;};
+   else if(type==='zoom'){r.k*=1+(1-e)*.6;r.alpha*=e;}else if(type==='blur'){r.blur=Math.max(r.blur||0,(1-e)*24);r.alpha*=e;}else if(type==='words')r.words=p;
+   else if(type==='zoomout'){r.k*=1-(1-e)*.4;r.alpha*=e;}else if(type==='left'){r.dx+=(1-e)*.6;}else if(type==='right'){r.dx-=(1-e)*.6;}else if(type==='down'){r.dy-=(1-e)*.6;}
+   else if(type==='bounce'){const b=1-Math.pow(1-p,2)*Math.cos(p*Math.PI*3.5);r.k*=Math.max(.05,b);r.alpha*=Math.min(1,p*4);}
+   else if(type==='spin'){r.rot+=(1-e)*-180;r.k*=.3+.7*e;r.alpha*=e;}else if(type==='swing'){r.rot+=Math.sin(p*Math.PI*3)*(1-p)*14;r.alpha*=Math.min(1,p*3);}
+   else if(type==='shake'){r.dx+=Math.sin(p*60)*(1-p)*.03;r.dy+=Math.cos(p*47)*(1-p)*.03;r.alpha*=Math.min(1,p*4);}};
   one(c.animIn,i);one(c.animOut,o);return r;},
  lines(g,c,W){const tx=String(c.text||'');if(edNoSpace(tx))return edPack(g,edWords(tx,c.lang),'',W*.86).map(l=>l.join(''));const words=tx.split(/\s+/);const out=[];let line='';for(const w of words){const next=line?line+' '+w:w;if(g.measureText(next).width>W*.86&&line){out.push(line);line=w;}else line=next;}if(line)out.push(line);return out.length?out:[''];},
  font(c,t){return `${c.weight||600} ${Math.round((c.size||40)*this.val(c,'scale',t)*this.k())}px "${c.font||'Tempoloom UI'}", "Tempoloom UI", system-ui, sans-serif`;},
@@ -666,14 +722,25 @@ const Ed={
  drawText(g,c,W,H,t=this.time,o={}){
   if(c.words?.length)return this.drawCaption(g,c,W,H,t,o);
   const b=this.textBox(g,c,W,H,t),an=this.animApply(c,t),a=this.val(c,'opacity',t)*(o.alpha??1)*an.alpha;if(a<=0)return;
-  g.save();g.globalAlpha=a;g.translate(b.cx+(o.dx||0),b.cy+(o.dy||0)+an.dy*H);g.rotate(this.val(c,'rotate',t)*Math.PI/180);g.scale(an.k,an.k);if(an.blur)g.filter=`blur(${an.blur*this.k()}px)`;g.font=this.font(c,t);g.letterSpacing=`${(c.spacing||0)*this.k()}px`;g.textBaseline='middle';g.direction=edRtl(c.text)?'rtl':'ltr';
-  if(c.box){g.fillStyle=c.boxColor||'#000';g.globalAlpha=a*.72;g.beginPath();g.roundRect(-b.w/2,-b.h/2,b.w,b.h,b.lh*.25);g.fill();g.globalAlpha=a;}
+  g.save();g.globalAlpha=a;g.translate(b.cx+(o.dx||0)+an.dx*W,b.cy+(o.dy||0)+an.dy*H);g.rotate((this.val(c,'rotate',t)+an.rot)*Math.PI/180);g.scale(an.k,an.k);if(an.blur)g.filter=`blur(${an.blur*this.k()}px)`;g.font=this.font(c,t);g.letterSpacing=`${(c.spacing||0)*this.k()}px`;g.textBaseline='middle';g.direction=edRtl(c.text)?'rtl':'ltr';
+  if(c.bubble){const r=b.lh*.45,tx=-b.w/2+b.w*.22;g.fillStyle=c.boxColor&&c.boxColor!=='#000000'?c.boxColor:'#ffffff';g.beginPath();g.roundRect(-b.w/2,-b.h/2,b.w,b.h,r);g.moveTo(tx,b.h/2-1);g.lineTo(tx-b.lh*.15,b.h/2+b.lh*.55);g.lineTo(tx+b.lh*.45,b.h/2-1);g.closePath();g.fill();}
+  else if(c.box){g.fillStyle=c.boxColor||'#000';g.globalAlpha=a*.72;g.beginPath();g.roundRect(-b.w/2,-b.h/2,b.w,b.h,b.lh*.25);g.fill();g.globalAlpha=a;}
   g.textAlign=c.align||'center';const x=c.align==='left'?-b.w/2+b.lh*.3:c.align==='right'?b.w/2-b.lh*.3:0;
   let ls=b.ls;if(an.chars<1){let n=Math.round(ls.join(' ').length*an.chars);ls=ls.map(l=>{const s=l.slice(0,Math.max(0,n));n-=l.length+1;return s;});}
+  const kk=this.k(),fill=y=>{if(!c.grad)return c.color||'#fff';const gr=g.createLinearGradient(0,y-b.lh*.45,0,y+b.lh*.45);gr.addColorStop(0,c.color||'#fff');gr.addColorStop(1,c.color2||'#ffb000');return gr;};
   const paint=(l,x,y)=>{
-   if(c.shadow&&!c.box){g.shadowColor='rgba(0,0,0,.5)';g.shadowBlur=b.lh*.25;g.shadowOffsetY=b.lh*.05;}
-   if(c.stroke){g.lineJoin='round';g.lineWidth=c.stroke*this.k()*2;g.strokeStyle=c.strokeColor||'#000';g.strokeText(l,x,y);g.shadowColor='transparent';}
-   g.fillStyle=c.color||'#fff';g.fillText(l,x,y);};
+   // 3D: copies stepping down and right, darker, under the letters
+   if(c.depth){const n=Math.round(c.depth*kk);g.fillStyle=c.depthColor||'#000000';if(c.stroke){g.lineJoin='round';g.lineWidth=c.stroke*kk*2;g.strokeStyle=c.depthColor||'#000000';}for(let i=n;i>=1;i--){if(c.stroke)g.strokeText(l,x+i,y+i);g.fillText(l,x+i,y+i);}}
+   if(c.shadow&&!c.box&&!c.bubble){g.shadowColor='rgba(0,0,0,.5)';g.shadowBlur=b.lh*.25;g.shadowOffsetY=b.lh*.05;}
+   if(c.stroke){g.lineJoin='round';g.lineWidth=c.stroke*kk*2;g.strokeStyle=c.strokeColor||'#000';g.strokeText(l,x,y);g.shadowColor='transparent';}
+   if(c.glow){g.save();g.shadowColor=c.glowColor||c.color||'#fff';g.shadowBlur=c.glow/100*b.lh*.9;g.shadowOffsetY=0;g.fillStyle=fill(y);g.fillText(l,x,y);g.fillText(l,x,y);g.restore();}
+   g.fillStyle=c.bubble&&!c.color?'#000':fill(y);g.fillText(l,x,y);};
+  // curved text: each letter along an arc (up for a positive curve, down for a negative one); not for joined scripts
+  const curved=c.curve&&!edRtl(c.text)&&an.words>=1&&an.chars>=1;
+  if(curved){const s=Math.sign(c.curve),th=Math.min(Math.PI*1.6,Math.abs(c.curve)/100*Math.PI);g.textAlign='center';
+   ls.forEach((l,i)=>{const y0=-b.h/2+b.lh*.15+b.lh*(i+.5),chars=[...l],wd=chars.map(ch=>g.measureText(ch).width),tot=wd.reduce((p,v)=>p+v,0)||1,R=tot/th;let acc=0;
+    chars.forEach((ch,j)=>{const an2=-th/2+(acc+wd[j]/2)/R;acc+=wd[j];g.save();g.translate(R*Math.sin(an2),y0+s*R*(1-Math.cos(an2)));g.rotate(s*an2);paint(ch,0,0);g.restore();});});
+   g.restore();return;}
   if(an.words<1){// word by word: each whole word rises in after the one before (right to left for Arabic-script text)
    const rtl=/[\u0590-\u08FF\uFB1D-\uFEFF]/.test(c.text||''),all=ls.map(l=>l.split(' ')),N=all.flat().length||1,sp=g.measureText(' ').width;let n=0;
    g.textAlign='left';
@@ -687,7 +754,7 @@ const Ed={
  },
  drawSticker(g,c,W,H,t=this.time,o={}){
   const r=this.rect(c,W,H,t),an=this.animApply(c,t),a=this.val(c,'opacity',t)*(o.alpha??1)*an.alpha;if(a<=0)return;
-  g.save();g.globalAlpha=a;g.translate(r.cx+(o.dx||0),r.cy+(o.dy||0)+an.dy*H);g.rotate(this.val(c,'rotate',t)*Math.PI/180);g.scale(an.k,an.k);if(an.blur)g.filter=`blur(${an.blur*this.k()}px)`;
+  g.save();g.globalAlpha=a;g.translate(r.cx+(o.dx||0)+an.dx*W,r.cy+(o.dy||0)+an.dy*H);g.rotate((this.val(c,'rotate',t)+an.rot)*Math.PI/180);g.scale(an.k,an.k);if(an.blur)g.filter=`blur(${an.blur*this.k()}px)`;
   const s=c.sticker,w=r.w,h=r.h;
   if(s.type==='emoji'){g.font=`${Math.round(w*.85)}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;g.textAlign='center';g.textBaseline='middle';g.fillText(s.emoji,0,w*.04);}
   else{g.fillStyle=c.color||'#ffd23f';g.beginPath();const R=w/2;

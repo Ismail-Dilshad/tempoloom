@@ -8,7 +8,7 @@ import {chromium} from 'playwright';
 import {chromiumExecutable} from '../src/renderer/browser-path.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-declare const Ed:any;declare const edParseSubs:any;declare const edHandleAt:any;declare const ED_TTPL:any;
+declare const Ed:any;declare const edParseSubs:any;declare const edHandleAt:any;declare const ED_TTPL:any;declare const ED_STYLES:any;declare const ED_TRANS:any;
 
 it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('the Editor: import, edit, grade, caption, mix, export, project file, reload',async()=>{
  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'tl-editor-')),before={...process.env};
@@ -31,8 +31,11 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('the Editor: import, edit, grade,
   // and a sound with a pause in the middle (a tone, one second of silence, a tone), for removing silences
   const talk=path.join(tmp,'talk.wav');
   await run(ffmpeg,['-v','error','-f','lavfi','-i','sine=frequency=330:duration=3:sample_rate=48000','-af',"volume='if(between(t,1,2),0,0.5)':eval=frame",talk]);
-  await page.locator('.editor > input[type=file]').setInputFiles([clip,noise,talk]);
-  await page.waitForFunction(()=>['clip.mp4','noise.mp4','talk.wav'].every(n=>Ed.media.some((m:any)=>m.name===n&&m.dur>1.9)));
+  // and a video with one hard cut (red, then blue), for scene detection
+  const cut=path.join(tmp,'cut.mp4');
+  await run(ffmpeg,['-v','error','-f','lavfi','-i','color=c=red:s=320x240:d=1:r=30','-f','lavfi','-i','color=c=blue:s=320x240:d=1:r=30','-filter_complex','[0][1]concat=n=2:v=1','-c:v','libx264','-pix_fmt','yuv420p',cut]);
+  await page.locator('.editor > input[type=file]').setInputFiles([clip,noise,talk,cut]);
+  await page.waitForFunction(()=>['clip.mp4','noise.mp4','talk.wav','cut.mp4'].every(n=>Ed.media.some((m:any)=>m.name===n&&m.dur>1.9)));
 
   const r=await page.evaluate(async()=>{
    const out:any={},m=Ed.media.find((x:any)=>x.name==='clip.mp4'),c=Ed.add(m.id),main=()=>Ed.p.clips.filter((x:any)=>x.track===Ed.main().id).length;
@@ -111,6 +114,25 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('the Editor: import, edit, grade,
     Ed.sels=new Set(['s1']);Ed.sel='s1';out.removed=await Ed.removeSilences({thr:-38,min:.6,pad:.1});
     const parts=Ed.p.clips.filter((x:any)=>x.media===tw.id&&x.id!=='s2').sort((a:any,b:any)=>a.start-b.start);out.silence={parts:parts.length,dur:Math.round(parts.reduce((s:number,x:any)=>s+x.dur,0)*100)/100,next:Math.round(Ed.clip('s2').start*100)/100,joined:Math.round((parts[1].start-(parts[0].start+parts[0].dur))*1000)};
     Ed.p.clips=Ed.p.clips.filter((x:any)=>x.media!==tw.id);Ed.after(true);}
+   // CapCut-style tools: clip animations, a style effect, every transition, text effects, backgrounds, split screen,
+   // frame blending, scene detection, colour match, sound effects
+   {const mc6=Ed.p.clips.find((x:any)=>x.media===m.id),g6=Ed.dom.canvas.getContext('2d'),[W6,H6]=Ed.size(),px6=(x=W6>>1,y=H6>>1)=>[...g6.getImageData(x,y,1,1).data].slice(0,3);
+    mc6.animIn='left';mc6.animDur=.5;out.animDx=Ed.animApply(mc6,.05).dx;delete mc6.animIn;delete mc6.animDur;
+    Ed.select(null);Ed.seek(.5);await Ed.seekExact(.5);Ed.draw();const before=px6();mc6.fx={style:'invert',amount:100};Ed.draw();const inv=px6();delete mc6.fx;Ed.draw();
+    out.invert=before.map((v:number,i:number)=>Math.abs(255-v-inv[i])<=3);
+    for(const st of ED_STYLES.map((x:any)=>x[0]))if(st!=='none'){mc6.fx={style:st,amount:70};Ed.draw();}delete mc6.fx;
+    const A2={...JSON.parse(JSON.stringify(mc6)),id:'tA'},B2={...A2,id:'tB'};for(const [ty] of ED_TRANS)for(const p of [.2,.5,.8])Ed.drawTrans(g6,A2,{...B2,trans:{type:ty,dur:.6}},ty,p,.5);
+    const tx=Ed.addText(0);const tc=Ed.p.clips.find((x:any)=>x.text!==undefined&&!x.words&&!x.cap&&x.id===Ed.sel);Object.assign(tc,{curve:60,depth:6,glow:50,grad:true,color2:'#00ffff',bubble:true,text:'Curved title'});Ed.draw();Object.assign(tc,{curve:0,bubble:false});Ed.draw();void tx;
+    Ed.p.clips=Ed.p.clips.filter((x:any)=>x!==tc);
+    Ed.p.bgMode='gradient';Ed.p.bg='#ff0000';Ed.p.bg2='#0000ff';Ed.time=40;Ed.draw();out.bgCorner=px6(1,1);Ed.p.bgMode='color';Ed.p.bg='#000000';delete Ed.p.bg2;Ed.time=.5;
+    const tv=Ed.addTrack('video'),L1={...JSON.parse(JSON.stringify(mc6)),id:'L1',track:tv.id},L2={...L1,id:'L2',track:Ed.addTrack('video').id};Ed.p.clips.push(L1,L2);Ed.sels=new Set(['L1','L2']);Ed.layout('2h');
+    out.layout=['L1','L2'].map(id=>{const c=Ed.clip(id);return [c.x,c.y];});Ed.p.clips=Ed.p.clips.filter((x:any)=>!['L1','L2'].includes(x.id));
+    mc6.speed=.5;mc6.frameBlend=true;Ed.seek(.3);await Ed.seekExact(.3);Ed.draw();out.blendEl=Object.keys(Ed.els).some(k=>k.endsWith('#b'));delete mc6.frameBlend;mc6.speed=1;
+    const cm=Ed.media.find((x:any)=>x.name==='cut.mp4'),cc={id:'cc',media:cm.id,track:tv.id,start:30,in:0,dur:2,scale:1,x:0,y:0,rotate:0,opacity:1};Ed.p.clips.push(cc);Ed.after(true);
+    out.scenes=await Ed.detectScenes(Ed.clip('cc'));out.sceneAt=Ed.p.clips.filter((x:any)=>x.media===cm.id).map((x:any)=>Math.round(x.start*10)/10).sort();
+    Ed.seek(30.5);out.matched=await Ed.colorMatch(Ed.p.clips.find((x:any)=>x.media===cm.id),mc6);out.matchCurves=!!Ed.p.clips.find((x:any)=>x.media===cm.id).grade?.curves?.r;
+    Ed.p.clips=Ed.p.clips.filter((x:any)=>x.media!==cm.id);Ed.p.tracks=Ed.p.tracks.filter((t:any)=>t.main||t.kind!=='video'||Ed.p.clips.some((c:any)=>c.track===t.id));
+    Ed.seek(45);const sfx=await Ed.addSfx('pop');out.sfx=[!!Ed.media.find((x:any)=>x.name==='SFX Pop.wav'),!!sfx];Ed.p.clips=Ed.p.clips.filter((x:any)=>x!==sfx&&x.id!==sfx?.id);Ed.after(true);}
    Ed.seek(.5);Ed.setRange('in');Ed.seek(1);Ed.setRange('out');Ed.playRange();out.span=Ed.span&&[Ed.span.s,Ed.span.e];out.playingRange=Ed.playing;Ed.pause();Ed.clearRange();Ed.select(null);
    // export an exact MP4 (the file is handed back here instead of downloaded)
    let file:Blob|null=null;(window as any).edSaveFile=(bl:Blob)=>{file=bl;};
@@ -139,6 +161,9 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('the Editor: import, edit, grade,
   expect(r.angles).toEqual([true,true]);expect(r.angleOn).toEqual([false,true]);
   expect(r.spans).toEqual([[10,11.2],[10.8,12]]);expect(r.xfade).toBeGreaterThan(.5);expect(r.xfade).toBeLessThan(1.6);
   expect(r.removed).toBe(1);expect(r.silence.parts).toBe(2);expect(r.silence.joined).toBe(0);expect(Math.abs(r.silence.dur-2.2)).toBeLessThan(.04);expect(Math.abs(r.silence.next-23.2)).toBeLessThan(.04);
+  expect(r.animDx).toBeGreaterThan(.3);expect(r.invert).toEqual([true,true,true]);expect(r.bgCorner[0]).toBeGreaterThan(200);expect(r.bgCorner[2]).toBeLessThan(40);
+  expect(r.layout).toEqual([[-.25,0],[.25,0]]);expect(r.blendEl).toBe(true);expect(r.scenes).toBe(1);expect(r.sceneAt).toEqual([30,31]);
+  expect(r.matched).toBe(true);expect(r.matchCurves).toBe(true);expect(r.sfx).toEqual([true,true]);
   expect(r.span).toEqual([.5,1]);expect(r.playingRange).toBe(true);
   expect(r.reopened).toBe(r.original);
   expect(r.mp4,JSON.stringify(r.toasts)).toBeTruthy();const out=path.join(tmp,'out.mp4');fs.writeFileSync(out,Buffer.from(r.mp4,'base64'));

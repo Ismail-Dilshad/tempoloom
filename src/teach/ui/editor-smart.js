@@ -56,6 +56,22 @@ Object.assign(Ed,{
  proxySrc(m){return !this.exporting&&!this.originals&&this.p?.useProxy!==false&&m.proxy&&this.urls[m.id+':proxy']?this.urls[m.id+':proxy']:this.urls[m.id];},
  /** Recreates the video elements (after switching between proxies and originals). */
  resetElements(){for(const el of Object.values(this.els))el.pause?.();this.els={};},
+ /** Scene detection: the clip is split wherever its picture cuts (measured by ffmpeg on this computer). */
+ async detectScenes(c,thr=.3){const m=this.mediaOf(c);if(!c||m?.type!=='video'||c.asAudio)return toast('Select a video clip.'),0;if(c.ramp)return toast('This clip has a speed curve; remove it first.'),0;
+  const blob=await this.get(m.id).catch(()=>null);if(!blob)return toast('The file is missing.',true),0;const sp=c.speed||1;toast('Looking for the cuts in '+m.name+'…');
+  let cuts;try{const r=await fetch(withKey(`/api/editor/scenes?name=${encodeURIComponent(m.name)}&thr=${thr}&ss=${c.in||0}&t=${c.dur*sp}`),{method:'POST',body:blob}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Could not look for cuts');cuts=j.cuts||[];}
+  catch(e){toast(e.message,true);return 0;}
+  if(!this.p.clips.includes(c))return 0;const at=cuts.map(x=>c.start+x/sp).filter(x=>x>c.start+.2&&x<c.start+c.dur-.2);if(!at.length){toast('No cuts found in this clip.');return 0;}
+  this.snapshot();for(const x of at.reverse())this.splitClip(c,x);this.after(true);toast(`Split into ${at.length+1} scenes`);return at.length;},
+ /** Colour match: the target's red, green and blue curves set so its shadows, middle and highlights match the reference's. */
+ async colorMatch(target,ref){if(!target||!ref)return toast('Select two clips: the one to change, then the one it should look like.'),false;
+  const grab=async c=>{const m=this.mediaOf(c);if(!m||m.type==='audio')return null;const cv=document.createElement('canvas');cv.width=160;cv.height=90;const g=cv.getContext('2d',{willReadFrequently:true});
+   const at=this.srcAt(c,edClamp(this.time,c.start,c.start+c.dur-.04));
+   if(m.type==='image'){const im=this.image(m);if(!im.complete)await new Promise(r=>{im.onload=r;im.onerror=r;});g.drawImage(im,0,0,160,90);}
+   else{const v=document.createElement('video');v.muted=true;v.preload='auto';v.src=this.urls[m.id];await new Promise((r,j)=>{v.onloadeddata=r;v.onerror=()=>j(new Error('Could not read '+m.name));});await edSeek(v,at,m.name);g.drawImage(v,0,0,160,90);v.removeAttribute('src');v.load();}
+   return g.getImageData(0,0,160,90).data;};
+  let A,B;try{[A,B]=await Promise.all([grab(target),grab(ref)]);}catch(e){toast(e.message,true);return false;}if(!A||!B)return toast('Colour match works on videos and photos.'),false;
+  const pts=edMatchCurves(A,B);this.snapshot();const g={...(target.grade||{})};g.curves={...(g.curves||{}),r:pts[0],g:pts[1],b:pts[2]};target.grade=g;this.after(true);toast('Colour matched');return true;},
  async makeProxies(){const used=new Set(edAll(this.p.clips).map(c=>c.media)),big=this.media.filter(m=>used.has(m.id)&&m.type==='video'&&!m.proxy&&Math.max(m.w||0,m.h||0)>1280);if(!big.length)return toast('No video here is bigger than 720p.');
   for(const m of big){toast(`Making a proxy for ${m.name}…`);try{const blob=await this.get(m.id);const r=await fetch(withKey(`/api/editor/tool?kind=proxy&name=${encodeURIComponent(m.name)}`),{method:'POST',body:blob});let st=await r.json();
    while(st.state==='running'){await new Promise(res=>setTimeout(res,1500));st=await (await fetch(withKey('/api/editor/tool/'+st.id))).json();}

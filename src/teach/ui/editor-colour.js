@@ -43,6 +43,7 @@ Object.assign(Ed,{
    const el=this.element(c);if(!el.paused)el.pause();
    if(Math.abs(el.currentTime-want)<.0005&&el.readyState>=2)continue;
    waits.push(edSeek(el,want,m.name).then(()=>edReady(el,m.name)));
+   if(c.frameBlend){const e2=this.element(c,'#b');if(!e2.paused)e2.pause();waits.push(edSeek(e2,want+1/30,m.name).then(()=>edReady(e2,m.name)));}
   }
  },
  /** The sound of the whole video, mixed offline: the same clips, volumes, keyframes and fades as playback.
@@ -112,6 +113,7 @@ let edNoise=null;
 /** Glow (a blurred copy screened on top), sharpen (unsharp mask on the graphics card) and film grain (noise that
  *  changes 24 times a second, mixed in only where the clip is). */
 function edLayerFx(L,lg,fx,t,k){const W=L.width,H=L.height;
+ if(fx.style&&fx.style!=='none')edStyleFx(L,lg,fx.style,(fx.amount??60)/100,t,k);
  if(fx.sharpen){const out=EdGL.sharpen(L,fx.sharpen/100*1.5);if(out){lg.save();lg.setTransform(1,0,0,1,0,0);lg.globalCompositeOperation='copy';lg.drawImage(out,0,0);lg.restore();}}
  if(fx.glow){const T=edTmp(W,H),tg=T.getContext('2d');tg.clearRect(0,0,W,H);tg.filter=`blur(${Math.round(6+fx.glow/100*24)*k}px) brightness(1.2)`;tg.drawImage(L,0,0);tg.filter='none';
   lg.save();lg.setTransform(1,0,0,1,0,0);lg.globalCompositeOperation='screen';lg.globalAlpha=fx.glow/100*.85;lg.drawImage(T,0,0);lg.restore();}
@@ -121,10 +123,42 @@ function edLayerFx(L,lg,fx,t,k){const W=L.width,H=L.height;
   tg.globalCompositeOperation='overlay';tg.globalAlpha=Math.min(1,fx.grain/100*1.2);tg.fillStyle=tg.createPattern(edNoise,'repeat');tg.save();tg.translate(-((f*97)%256),-((f*61)%256));tg.fillRect(0,0,W+256,H+256);tg.restore();
   tg.globalAlpha=1;tg.globalCompositeOperation='destination-in';tg.drawImage(L,0,0);
   lg.save();lg.setTransform(1,0,0,1,0,0);lg.globalCompositeOperation='copy';lg.drawImage(T,0,0);lg.restore();}}
+/** One style effect on a layer (amount 0 to 1): what CapCut calls video effects. The same at the same time, so the export matches. */
+function edStyleFx(L,lg,st,a,t,k){const W=L.width,H=L.height,put=T=>{lg.save();lg.setTransform(1,0,0,1,0,0);lg.globalCompositeOperation='copy';lg.globalAlpha=1;lg.filter='none';lg.drawImage(T,0,0);lg.restore();};
+ const T=edTmp2(W,H),tg=T.getContext('2d',{willReadFrequently:true});tg.setTransform(1,0,0,1,0,0);tg.globalCompositeOperation='source-over';tg.globalAlpha=1;tg.filter='none';tg.clearRect(0,0,W,H);
+ const rnd=n=>{const x=Math.sin(n*12.9898+78.233)*43758.5453;return x-Math.floor(x);},f=Math.floor(t*12);
+ const shift=(o,rows)=>{const im=lg.getImageData(0,0,W,H),d=im.data,out=tg.createImageData(W,H),q=out.data;
+  for(let y=0;y<H;y++){const dx=Math.round(o+(rows?rows(y):0));for(let x=0;x<W;x++){const i=(y*W+x)*4,xr=Math.min(W-1,Math.max(0,x+dx)),xb=Math.min(W-1,Math.max(0,x-dx)),ir=(y*W+xr)*4,ib=(y*W+xb)*4;
+   q[i]=d[ir];q[i+1]=d[i+1];q[i+2]=d[ib+2];q[i+3]=Math.max(d[i+3],d[ir+3],d[ib+3]);}}tg.putImageData(out,0,0);put(T);};
+ if(st==='rgb')shift(Math.max(1,a*W*.012));
+ else if(st==='glitch'){const on=rnd(f)<.35+a*.4;if(!on)return;const n=3+Math.floor(rnd(f+1)*5),cuts=Array.from({length:n},(_,i)=>[Math.floor(rnd(f+i*3)*H),Math.floor(rnd(f+i*3+1)*H*.08)+4,(rnd(f+i*3+2)-.5)*W*.1*a]);
+  shift(a*W*.008,y=>{for(const [y0,h,dx] of cuts)if(y>=y0&&y<y0+h)return dx;return 0;});}
+ else if(st==='vhs'){shift(Math.max(1,a*W*.004),y=>Math.sin(y*.05+t*9)*a*1.5+(rnd(f+y)<.004*a?W*.02:0));lg.save();lg.setTransform(1,0,0,1,0,0);lg.globalCompositeOperation='source-atop';lg.globalAlpha=.18*a;lg.fillStyle='#000';for(let y=(f%2);y<H;y+=Math.max(2,Math.round(3*k)))lg.fillRect(0,y,W,1);
+  lg.globalAlpha=.08*a;lg.fillStyle='#fff';lg.fillRect(0,(t*120*k)%H,W,Math.round(14*k));lg.restore();}
+ else if(st==='leak'||st==='burn'){const x=W*(.3+.4*Math.sin(t*.7)),y=H*(.3+.3*Math.cos(t*.5)),gr=lg.createRadialGradient(x,y,0,x,y,Math.max(W,H)*(st==='burn'?.55:.8));
+  if(st==='burn'){gr.addColorStop(0,`rgba(255,240,200,${.9*a})`);gr.addColorStop(.35,`rgba(255,120,20,${.7*a})`);gr.addColorStop(1,'rgba(120,0,0,0)');}else{gr.addColorStop(0,`rgba(255,170,90,${.75*a})`);gr.addColorStop(.5,`rgba(255,60,120,${.35*a})`);gr.addColorStop(1,'rgba(255,0,80,0)');}
+  lg.save();lg.setTransform(1,0,0,1,0,0);lg.globalCompositeOperation='source-atop';lg.fillStyle=gr;lg.globalCompositeOperation=st==='burn'?'source-atop':'source-atop';lg.fillRect(0,0,W,H);lg.restore();}
+ else if(st==='flash'){const v=Math.pow(Math.max(0,Math.sin(t*Math.PI*2*(.5+a*2))),8)*a;lg.save();lg.setTransform(1,0,0,1,0,0);lg.globalCompositeOperation='source-atop';lg.globalAlpha=v;lg.fillStyle='#fff';lg.fillRect(0,0,W,H);lg.restore();}
+ else if(st==='mirror'){tg.drawImage(L,0,0,W/2,H,0,0,W/2,H);tg.save();tg.translate(W,0);tg.scale(-1,1);tg.drawImage(L,0,0,W/2,H,0,0,W/2,H);tg.restore();put(T);}
+ else if(st==='kaleido'){const w=W/2,h=H/2;for(const [sx,sy] of [[1,1],[-1,1],[1,-1],[-1,-1]]){tg.save();tg.translate(W/2,H/2);tg.scale(sx,sy);tg.drawImage(L,W/2-w/2,H/2-h/2,w,h,-w,-h,w,h);tg.restore();}put(T);}
+ else if(st==='pixel'){const s=Math.max(2,Math.round((4+a*36)*k)),w=Math.max(1,Math.round(W/s)),h=Math.max(1,Math.round(H/s));tg.imageSmoothingEnabled=false;tg.drawImage(L,0,0,w,h);tg.drawImage(T,0,0,w,h,0,0,W,H);tg.imageSmoothingEnabled=true;put(T);}
+ else if(st==='zoomblur'){tg.drawImage(L,0,0);tg.globalAlpha=.22;for(let i=1;i<=6;i++){const s=1+i*.012*a*2;tg.drawImage(L,W/2-W*s/2,H/2-H*s/2,W*s,H*s);}put(T);}
+ else if(st==='motion'){tg.globalAlpha=1/7;for(let i=-3;i<=3;i++)tg.drawImage(L,i*a*W*.006,0);put(T);}
+ else if(st==='invert'){tg.filter='invert(1)';tg.drawImage(L,0,0);tg.filter='none';if(a<1){tg.globalAlpha=1-a;tg.drawImage(L,0,0);}put(T);}
+}
+let edTmpC2=null;function edTmp2(W,H){if(!edTmpC2)edTmpC2=document.createElement('canvas');if(edTmpC2.width!==W||edTmpC2.height!==H){edTmpC2.width=W;edTmpC2.height=H;}return edTmpC2;}
 let edTmpC=null;function edTmp(W,H){if(!edTmpC)edTmpC=document.createElement('canvas');if(edTmpC.width!==W||edTmpC.height!==H){edTmpC.width=W;edTmpC.height=H;}
  const g=edTmpC.getContext('2d');g.setTransform(1,0,0,1,0,0);g.globalCompositeOperation='source-over';g.globalAlpha=1;g.filter='none';return edTmpC;}// a clean state for every use
 // ---------- colour grading helpers ----------
-const edGraded=g=>!!(g&&(['lift','gamma','gain'].some(k=>g[k]&&(g[k].l||g[k].x||g[k].y))||['m','r','g','b'].some(k=>g.curves?.[k]?.length>2||g.curves?.[k]?.some(([x,y])=>Math.abs(x-y)>1e-3))||(g.lut?.id&&(g.lut.mix??1)>0)));
+/** The colours HSL works on (hue centres in degrees), as in CapCut and Resolve. */
+const ED_HSL=[['red','Red',0],['orange','Orange',30],['yellow','Yellow',60],['green','Green',120],['aqua','Aqua',180],['blue','Blue',230],['purple','Purple',275],['magenta','Magenta',320]];
+/** One colour's change ({band:{h: degrees, s and l: -100..100}}): each band reaches 45° around its hue, softly, and grey is left alone. */
+function edHslAdjust(v,hsl){const [r,g,b]=v,mx=Math.max(r,g,b),mn=Math.min(r,g,b),l=(mx+mn)/2,d=mx-mn;if(d<1e-4)return v;
+ const s=l>.5?d/(2-mx-mn):d/(mx+mn);let h=mx===r?((g-b)/d+(g<b?6:0)):mx===g?(b-r)/d+2:(r-g)/d+4;h*=60;
+ let dh=0,ds=0,dl=0;for(const [k,,c] of ED_HSL){const x=hsl[k];if(!x)continue;let dist=Math.abs(h-c);dist=Math.min(dist,360-dist);if(dist>=45)continue;const w=(Math.cos(dist/45*Math.PI)+1)/2*Math.min(1,s*3);dh+=(x.h||0)*w;ds+=(x.s||0)/100*w;dl+=(x.l||0)/100*w;}
+ if(!dh&&!ds&&!dl)return v;const H=(((h+dh)%360)+360)%360/360,S=Math.max(0,Math.min(1,s*(1+ds))),Lm=Math.max(0,Math.min(1,l+dl*.5*Math.min(1,s*2)));
+ const q=Lm<.5?Lm*(1+S):Lm+S-Lm*S,p=2*Lm-q,f=t=>{t=(t%1+1)%1;return t<1/6?p+(q-p)*6*t:t<.5?q:t<2/3?p+(q-p)*(2/3-t)*6:p;};return [f(H+1/3),f(H),f(H-1/3)];}
+const edGraded=g=>!!(g&&(g.hsl&&Object.values(g.hsl).some(x=>x&&(x.h||x.s||x.l))||['lift','gamma','gain'].some(k=>g[k]&&(g[k].l||g[k].x||g[k].y))||['m','r','g','b'].some(k=>g.curves?.[k]?.length>2||g.curves?.[k]?.some(([x,y])=>Math.abs(x-y)>1e-3))||(g.lut?.id&&(g.lut.mix??1)>0)));
 /** A smooth curve through points [[x,y],...] that never overshoots (monotone cubic, Fritsch-Carlson). */
 function edCurveFn(pts){const p=[...(pts||[[0,0],[1,1]])].sort((a,b)=>a[0]-b[0]);const n=p.length;if(n<2)return x=>x;
  const d=[],m=[];for(let i=0;i<n-1;i++)d.push((p[i+1][1]-p[i][1])/((p[i+1][0]-p[i][0])||1e-6));m[0]=d[0];m[n-1]=d[n-2];
@@ -149,9 +183,10 @@ function edBuildLut(g,look){const N=33,out=new Uint8Array(N*N*N*4);
  const lp=push(g.lift),mp=push(g.gamma),hp=push(g.gain),ll=g.lift?.l||0,ml=g.gamma?.l||0,hl=g.gain?.l||0;
  const lift=[0,1,2].map(c=>ll*.25+lp[c]*.12),gain=[0,1,2].map(c=>1+hl*.5+hp[c]*.25),gam=[0,1,2].map(c=>1/Math.max(.2,1+ml*.8+mp[c]*.3));
  const cv=g.curves||{},M=edCurveFn(cv.m),C=[edCurveFn(cv.r),edCurveFn(cv.g),edCurveFn(cv.b)],mix=look?Math.min(1,Math.max(0,g.lut?.mix??1)):0;
- const cl=x=>x<0?0:x>1?1:x;
+ const cl=x=>x<0?0:x>1?1:x,hsl=g.hsl&&Object.values(g.hsl).some(x=>x&&(x.h||x.s||x.l))?g.hsl:null;
  for(let b=0;b<N;b++)for(let gg=0;gg<N;gg++)for(let r=0;r<N;r++){let v=[r/(N-1),gg/(N-1),b/(N-1)];
   v=v.map((x,c)=>Math.pow(cl(x*gain[c]+lift[c]*(1-x)),gam[c]));v=v.map((x,c)=>cl(C[c](cl(M(x)))));
+  if(hsl)v=edHslAdjust(v,hsl);
   if(mix){const l=edSampleCube(look,v[0],v[1],v[2]);v=v.map((x,c)=>x+(l[c]-x)*mix);}
   const o=((b*N+gg)*N+r)*4;out[o]=Math.round(cl(v[0])*255);out[o+1]=Math.round(cl(v[1])*255);out[o+2]=Math.round(cl(v[2])*255);out[o+3]=255;}
  return {n:N,data:out};}

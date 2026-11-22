@@ -15,6 +15,12 @@ export type ToolJob={id:string;kind:ToolKind;state:'running'|'done'|'error';star
 const jobs=new Map<string,ToolJob>();
 const workDir=()=>path.resolve(ROOT,process.env.VIDEO_WORKSPACE||'workspace','cache','editor-tools');
 const IMAGE=/\.(png|jpe?g|webp|bmp)$/i;
+/** Scene cuts in a video: times (seconds from `ss`) where the picture changes by more than `thr` (0..1), found by ffmpeg. */
+export async function detectScenes(src:string,thr:number,ss=0,t=0):Promise<number[]>{
+ const args=['-hide_banner','-nostats',...(ss>0?['-ss',String(ss)]:[]),'-i',src,...(t>0?['-t',String(t)]:[]),'-an','-sn','-vf',`scale=320:-2,select='gt(scene,${thr})',showinfo`,'-f','null','-'];
+ const {execFile}=await import('node:child_process'),{promisify}=await import('node:util');const {stderr}=await promisify(execFile)(ffmpeg,args,{windowsHide:true,maxBuffer:1<<26,timeout:30*60*1000});
+ const out:number[]=[];for(const m of String(stderr).matchAll(/showinfo.*?pts_time:\s*([0-9.]+)/g)){const v=Number(m[1]);if(Number.isFinite(v)&&(!out.length||v-out[out.length-1]!>.4))out.push(Math.round(v*1000)/1000);}
+ return out;}
 const media=(args:string[],timeoutMs=4*60*60*1000)=>runPythonModule('media_tools.cli',args,{timeoutMs,label:'Media tool',env:{FFMPEG_PATH:ffmpeg}}) as Promise<Record<string,unknown>>;
 
 /** A new job for an uploaded file (already saved at `source`). Returns at once; the work goes on in the background. */

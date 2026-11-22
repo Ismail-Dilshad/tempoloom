@@ -36,6 +36,26 @@
   their sound lines them up (to 10 ms). Press 1–9 to cut between angles, also live while it plays;
   choose which angle's sound is heard; double-click to nudge an angle; Break apart flattens it into
   the cut (the chosen pictures, and one sound clip).
+- **CapCut-style tools, all without AI:**
+  - **Animations for video and photo clips** (Animation tab): zoom in or out, pop, bounce, slide in four
+    directions, spin, swing, blur, shake, fade; in and out.
+  - **Effects** (Effects tab): RGB split, glitch, VHS, light leak, film burn, flash, mirror,
+    kaleidoscope, pixelate, zoom blur, motion blur, invert, each with an amount.
+  - **Transitions**: fade to white, zoom blur, circle, whip pan, spin, flash, glitch and shake join
+    the seven before (15 in all).
+  - **Masks**: mirror band, heart and star.
+  - **HSL** (Colour tab): pick one of eight colours and shift only its hue, saturation and lightness;
+    folded into the grade, so it costs nothing extra to play.
+  - **Text effects**: gradient fill, glow, 3D depth, curved text and a speech bubble.
+  - **Backgrounds**: a gradient or a photo behind the video, besides a colour or a blur.
+  - **Split screen** (select 2 to 4 clips, right-click): side by side, top and bottom, one big and
+    two small, or four in a grid; each picture is cropped to its cell.
+  - **Smooth slow motion** (Speed tab): frame blending below 1×.
+  - **Detect scenes** (right-click a video): ffmpeg finds the cuts and the clip is split there.
+  - **Colour match** (select two clips, right-click): the clip's red, green and blue curves are set
+    so its shadows, middle and highlights match the other clip.
+  - **Sound effects** (Audio): whoosh, swipe, pop, click, ding, riser, boom, camera, notification
+    and glitch, made on this computer, added at the playhead.
 - **Audio crossfades**: click the cut between two clips on an audio track and choose Crossfade (or
   use it on every cut). The two sounds overlap over the crossfade's length (as far as their files
   allow) with constant power, in the player and the export.

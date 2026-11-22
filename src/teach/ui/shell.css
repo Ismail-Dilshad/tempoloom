@@ -2126,6 +2126,11 @@ button.video-back{border:0;background:transparent;font:var(--type-small)}
 .ed-filter:not(:disabled):hover .ed-filter-swatch,.ed-filter:hover .ed-trans-swatch,.ed-filter[aria-pressed=true] :is(.ed-filter-swatch,.ed-trans-swatch){box-shadow:0 0 0 2px var(--accent)}
 .ed-filter[aria-pressed=true]{color:var(--text)}
 .ed-trans-swatch{position:relative;overflow:hidden;background:hsl(200 60% 45%)}
+.ed-style-swatch{display:block;aspect-ratio:16/11;border-radius:6px;background:linear-gradient(135deg,hsl(270 60% 50%),hsl(190 80% 50%) 55%,hsl(330 75% 55%))}
+.ed-style-swatch.s-none{background:var(--surface-2)}
+.ed-hsl{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 8px}
+.ed-hsl button{width:24px;height:24px;padding:0;border-radius:50%;border:2px solid transparent;background:var(--hc);cursor:pointer}
+.ed-hsl button[aria-pressed=true]{border-color:var(--text)}
 .ed-trans-swatch::after{content:'';position:absolute;inset:0;background:hsl(30 85% 58%)}
 .t-none::after{display:none}
 .t-dissolve::after{opacity:.5}

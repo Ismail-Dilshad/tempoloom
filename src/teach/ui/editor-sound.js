@@ -41,7 +41,10 @@ Object.assign(Ed,{
     el.playbackRate=edClamp(this.rateAt(c,t)*(fwd?this.rate:1),.0625,16);const v=this.vol(c,t);if(el._gain){el.volume=1;el._gain.gain.value=v;if(el._pan)el._pan.pan.value=edClamp(this.trackOf(c)?.pan||0,-1,1);if(el._fx)el._fx.set(c.afx);}else el.volume=Math.min(1,v);
     if(fwd){if(el.paused){try{el.currentTime=want;}catch{}el.play().catch(()=>{});}else if(Math.abs(el.currentTime-want)>.3*Math.max(1,this.rate))el.currentTime=want;}
     else{if(!el.paused)el.pause();if(Math.abs(el.currentTime-want)>.03){try{el.currentTime=want;}catch{}}}
-   }else{if(!el.paused)el.pause();
+    if(c.frameBlend&&m.type==='video'&&!c.asAudio){const e2=this.element(c,'#b'),w2=want+1/30;e2.playbackRate=el.playbackRate;
+     if(fwd){if(e2.paused){try{e2.currentTime=w2;}catch{}e2.play().catch(()=>{});}else if(Math.abs(e2.currentTime-w2)>.3*Math.max(1,this.rate))e2.currentTime=w2;}
+     else{if(!e2.paused)e2.pause();if(Math.abs(e2.currentTime-w2)>.03){try{e2.currentTime=w2;}catch{}}}}
+   }else{if(!el.paused)el.pause();const e2=this.els[(this._nk||'')+c.id+'#b'];if(e2&&!e2.paused)e2.pause();
     // Just before or after its turn, a clip waits on its first or last frame (for transitions).
     const pre=c.start-t>0&&c.start-t<1.5,post=t-(c.start+c.dur)>=0&&t-(c.start+c.dur)<1.5;
     if(pre||post){const w=pre?(c.in||0):this.srcAt(c,c.start+c.dur)-.05;if(Math.abs(el.currentTime-w)>.06){try{el.currentTime=Math.max(0,w);}catch{}}}}
@@ -80,6 +83,10 @@ Object.assign(Ed,{
    g.setTransform(1,0,0,1,0,0);g.fillStyle='#000';g.fillRect(0,0,cv.width,cv.height);cv.parentElement.classList.toggle('on',on&&cur===i);if(!on)return;
    g.setTransform(cv.width/W,0,0,cv.width/W,0,0);const keep=[this._layer,this._adjSnap,this._adjFrame];
    try{this.withNest(c,()=>{const T=this.p.tracks,v=T.filter(x=>x.kind==='video');this.p.tracks=v[i]?[v[i]]:[];try{this.paint(g,lt);}finally{this.p.tracks=T;}});}finally{[this._layer,this._adjSnap,this._adjFrame]=keep;}});},
+ /** A built-in sound effect at the playhead: made once, then kept in Media like any sound. */
+ async addSfx(kind){const name=`SFX ${ED_SFX.find(x=>x[0]===kind)?.[1]||kind}.wav`;let m=this.media.find(x=>x.name===name&&x.type==='audio');
+  if(!m){const buf=await edMakeSfx(kind),made=await this.importFiles([new File([edWav(buf)],name,{type:'audio/wav'})]);m=made?.[0];}
+  if(!m)return null;return this.add(m.id);},
  /** Play only between the in and out marks (Ctrl+Shift+Space); with loop on, round and round. */
  playRange(){const r=this.rangeSpan();if(!r)return toast('Mark an in and an out first (I, O).');if(this.playing)this.pause();this.span=r;this.time=r.s;this.rate=1;this.start();},
  toggleLoop(){this.loop=!this.loop;this.drawTime();toast(this.loop?'Loop on':'Loop off');},
