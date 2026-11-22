@@ -26,8 +26,8 @@ Object.assign(Ed,{
     <span class="ed-num"><input type="number" id="ed-${key}" data-k="${key}" data-u="${unit}" min="${min}" max="${max}" step="${step}" value="${show(val)}">${suffix?`<i>${suffix}</i>`:''}</span>${kfBtn(key)}</div></div>`;};
   const sec=(title,body,reset)=>`<section class="ed-sec"><header><h4>${title}</h4>${reset?`<button type="button" class="iconbtn sm" data-reset="${reset}" aria-label="Reset ${title}" data-tooltip="Reset">${I.refresh}</button>`:''}</header>${body}</section>`;
   const seg=(attr,list,val)=>`<div class="ed-seg">${list.map(([v,l])=>`<button type="button" data-${attr}="${v}" aria-pressed="${val===v}">${l}</button>`).join('')}</div>`;
-  const kind=!c?'':c.nest?'nest':c.adjustment?'adjustment':c.text!==undefined?'text':c.sticker?'sticker':this.kindOf(c)==='audio'?'audio':m?.type||'video';
-  const tabs=!c?[['details','Details']]:kind==='text'?[['text','Text'],['anim','Animation'],['basic','Basic']]:kind==='sticker'?[['sticker','Sticker'],['anim','Animation'],['basic','Basic']]:kind==='audio'?[['audio','Audio'],['speed','Speed']]:kind==='adjustment'?[['adjust','Adjust'],['colour','Colour'],['effects','Effects'],['mask','Mask'],['basic','Basic']]:kind==='nest'?[['basic','Basic'],['adjust','Adjust'],['colour','Colour'],['effects','Effects'],['mask','Mask']]:kind==='image'?[['basic','Basic'],['adjust','Adjust'],['colour','Colour'],['effects','Effects'],['mask','Mask'],['anim','Animation']]:[['basic','Basic'],['adjust','Adjust'],['colour','Colour'],['effects','Effects'],['mask','Mask'],['anim','Animation'],['audio','Audio'],['speed','Speed']];
+  const kind=!c?'':c.title?'title':c.nest?'nest':c.adjustment?'adjustment':c.text!==undefined?'text':c.sticker?'sticker':this.kindOf(c)==='audio'?'audio':m?.type||'video';
+  const tabs=!c?[['details','Details']]:kind==='title'?[['title','Title'],['anim','Animation'],['basic','Basic']]:kind==='text'?[['text','Text'],['anim','Animation'],['basic','Basic']]:kind==='sticker'?[['sticker','Sticker'],['anim','Animation'],['basic','Basic']]:kind==='audio'?[['audio','Audio'],['speed','Speed']]:kind==='adjustment'?[['adjust','Adjust'],['colour','Colour'],['effects','Effects'],['mask','Mask'],['basic','Basic']]:kind==='nest'?[['basic','Basic'],['adjust','Adjust'],['colour','Colour'],['effects','Effects'],['mask','Mask']]:kind==='image'?[['basic','Basic'],['adjust','Adjust'],['colour','Colour'],['effects','Effects'],['mask','Mask'],['anim','Animation']]:[['basic','Basic'],['adjust','Adjust'],['colour','Colour'],['effects','Effects'],['mask','Mask'],['anim','Animation'],['audio','Audio'],['speed','Speed']];
   if(!tabs.some(([id])=>id===this.ptab))this.ptab=tabs[0][0];
   const t=this.ptab,locked=c&&this.trackOf(c)?.locked;let body='';
   const fades=()=>sec('Fade',`${row('fadeIn','Fade in',c.fadeIn||0,{min:0,max:Math.min(5,+(c.dur/2).toFixed(1)),step:.1,suffix:'s'})}${row('fadeOut','Fade out',c.fadeOut||0,{min:0,max:Math.min(5,+(c.dur/2).toFixed(1)),step:.1,suffix:'s'})}`);
@@ -92,6 +92,9 @@ Object.assign(Ed,{
     sec('Look (LUT)',`<div class="ed-row"><label>Look</label><div class="ed-ctl"><select data-lut aria-label="Look"><option value="">None</option>${luts.map(l=>`<option value="${l.id}" ${g.lut?.id===l.id?'selected':''}>${esc(l.name)}</option>`).join('')}</select></div></div>
      ${g.lut?.id?row('lutmix','Intensity',g.lut.mix??1,{min:0,max:100,unit:'pct',suffix:'%'}):''}
      <div class="ed-row"><label></label><div class="ed-ctl"><button type="button" class="ed-tool" data-lut-import>${I.upload} Import .cube</button><input type="file" accept=".cube" data-lut-file hidden></div></div>`);}
+  else if(t==='title'){body=sec('Title',`<div class="ed-row"><label></label><div class="ed-ctl"><button type="button" class="btn small primary" data-title-ed>${I.text} Open the title editor</button></div></div>
+     ${c.title.layers.map((l,i)=>l.type==='text'?`<div class="ed-row"><label for="ed-tl${i}">Text ${i+1}</label><div class="ed-ctl"><textarea id="ed-tl${i}" data-title-text="${i}" rows="1" dir="auto">${esc(l.text||'')}</textarea></div></div>`:'').join('')}
+     <p class="ed-hint">Change the words here; move, size and add layers in the title editor (or double-click the clip).</p>`);}
   else if(t==='mask'){const mk=c.mask||{shape:'none'},sh=mk.shape||'none';
    body=sec('Shape',`<div class="ed-seg wrap">${ED_MASKS.map(([v,l])=>`<button type="button" data-mask="${v}" aria-pressed="${sh===v}">${l}</button>`).join('')}</div>`,sh!=='none'?'mask':'')+
     (sh==='none'?`<p class="ed-hint">A mask shows only part of the clip: a box, an ellipse, or one side of a line. Feather softens its edge.</p>`:
@@ -200,6 +203,8 @@ Object.assign(Ed,{
    svg.ondblclick=()=>setG(g=>{delete g[k];});});
   el.querySelectorAll('[data-wl]').forEach(r=>{r.onpointerdown=r.onfocus=()=>{if(!r._s){this.snapshot();r._s=true;}};r.oninput=()=>setG(g=>{g[r.dataset.wl]={...(g[r.dataset.wl]||{}),l:Number(r.value)/100};},false);r.onchange=()=>{r._s=false;};});
   el.querySelectorAll('[data-wreset]').forEach(b=>b.onclick=()=>{setG(g=>{delete g[b.dataset.wreset];});this.drawProps();});
+  const tle=$('[data-title-ed]',el);if(tle)tle.onclick=()=>edTitleEditor(c);
+  el.querySelectorAll('[data-title-text]').forEach(x=>{x.onfocus=()=>this.snapshot();x.oninput=()=>{const l=c.title.layers[+x.dataset.titleText];if(l){l.text=x.value;this.draw();}};x.onchange=()=>{this.save();this.drawTimeline();};});
   el.querySelectorAll('[data-hsl]').forEach(b=>b.onclick=()=>{this.hslBand=b.dataset.hsl;this.drawProps();});
   el.querySelectorAll('[data-style]').forEach(b=>b.onclick=()=>{this.snapshot();const v=b.dataset.style;c.fx={...(c.fx||{})};if(v==='none'){delete c.fx.style;delete c.fx.amount;}else c.fx.style=v;if(!Object.values(c.fx).some(Boolean))delete c.fx;this.after(true);});
   el.querySelectorAll('[data-curvech]').forEach(b=>b.onclick=()=>{this.curveCh=b.dataset.curvech;this.drawProps();});

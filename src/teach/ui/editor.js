@@ -151,10 +151,10 @@ const Ed={
   if(!Array.isArray(p.tracks)||!p.tracks.length)p.tracks=ED_TRACKS0();
   if(!p.tracks.some(t=>t.main&&t.kind==='video'))(p.tracks.find(t=>t.kind==='video')||p.tracks[p.tracks.push({id:'video',kind:'video'})-1]).main=true;
   const ids=new Set(this.media.map(m=>m.id));
-  const keep=c=>c.text!==undefined||c.sticker||c.adjustment||(c.nest&&Array.isArray(c.nest.clips))||ids.has(c.media);
+  const keep=c=>c.text!==undefined||c.sticker||c.title||c.adjustment||(c.nest&&Array.isArray(c.nest.clips))||ids.has(c.media);
   const fix=cl=>(cl||[]).filter(keep).map(c=>{if(c.nest){c.nest.clips=fix(c.nest.clips);if(!Array.isArray(c.nest.tracks))c.nest.tracks=ED_TRACKS0();}return c;});
   p.clips=fix(p.clips);
-  for(const c of p.clips)if(!p.tracks.some(t=>t.id===c.track)){const kind=c.text!==undefined?'text':c.sticker?'sticker':this.media.find(m=>m.id===c.media)?.type==='audio'||c.asAudio?'audio':'video';c.track=(p.tracks.find(t=>t.kind===kind)||this.addTrackTo(p,kind)).id;}
+  for(const c of p.clips)if(!p.tracks.some(t=>t.id===c.track)){const kind=c.text!==undefined||c.title?'text':c.sticker?'sticker':this.media.find(m=>m.id===c.media)?.type==='audio'||c.asAudio?'audio':'video';c.track=(p.tracks.find(t=>t.kind===kind)||this.addTrackTo(p,kind)).id;}
   if(p.magnet===undefined)p.magnet=true;p.markers=(p.markers||[]).map(m=>typeof m==='number'?{t:m}:m);p.bgMode=p.bgMode||'color';p.v=3;return p;
  },
  open(id){
@@ -171,7 +171,7 @@ const Ed={
  uid:()=>Math.random().toString(36).slice(2,10),
  mediaOf(c){return this.media.find(m=>m.id===c.media);},
  trackOf(c){return this.p.tracks.find(t=>t.id===c.track);},
- kindOf(c){return this.trackOf(c)?.kind||(c.text!==undefined?'text':c.sticker?'sticker':'video');},
+ kindOf(c){return this.trackOf(c)?.kind||(c.text!==undefined||c.title?'text':c.sticker?'sticker':'video');},
  main(){return this.p.tracks.find(t=>t.main);},
  end(){return this.p.clips.reduce((a,c)=>Math.max(a,c.start+c.dur),0);},
  trackEnd(id){return this.p.clips.filter(c=>c.track===id).reduce((a,c)=>Math.max(a,c.start+c.dur),0);},
@@ -424,6 +424,7 @@ const Ed={
  k(){return this.size()[0]/this.base()[0];},
  src(c){if(c.adjustment||c.nest){const [W,H]=this.size();return {sx:0,sy:0,sw:W,sh:H};}const m=this.mediaOf(c),w=m?.w||1,h=m?.h||1,cr=c.crop||{},l=cr.l||0,t=cr.t||0,r=cr.r||0,b=cr.b||0;return {sx:l*w,sy:t*h,sw:Math.max(1,w*(1-l-r)),sh:Math.max(1,h*(1-t-b))};},
  rect(c,W,H,t=this.time){
+  if(c.title){const s=this.val(c,'scale',t);return {w:W*s,h:H*s,cx:W/2+this.val(c,'x',t)*W,cy:H/2+this.val(c,'y',t)*H};}
   if(c.sticker&&!c.nest){const s=220*this.k()*this.val(c,'scale',t),line=c.sticker.type==='shape'&&c.sticker.shape==='line';return {w:line?s*1.4:s,h:line?s*.2:s,cx:W/2+this.val(c,'x',t)*W,cy:H/2+this.val(c,'y',t)*H};}
   const s=this.src(c),fit=Math.min(W/s.sw,H/s.sh)*this.val(c,'scale',t);return {w:s.sw*fit,h:s.sh*fit,cx:W/2+this.val(c,'x',t)*W,cy:H/2+this.val(c,'y',t)*H};},
  box(g,c,W,H,t=this.time){return c.text!==undefined?this.textBox(g,c,W,H,t):this.rect(c,W,H,t);},
@@ -467,6 +468,7 @@ const Ed={
   if(!o.flat&&this.layered(c))return this.drawLayered(g,c,t,o);
   const [W,H]=this.size();
   if(c.text!==undefined)return this.drawText(g,c,W,H,t,o);
+  if(c.title)return c._hide?undefined:this.drawTitle(g,c,W,H,t,o);
   if(c.sticker)return this.drawSticker(g,c,W,H,t,o);
   // an adjustment layer's picture is everything drawn under it so far
   if(c.adjustment&&!o.flat){const S=this._adjSnap||(this._adjSnap=document.createElement('canvas'));if(S.width!==W||S.height!==H){S.width=W;S.height=H;}const sg=S.getContext('2d');sg.clearRect(0,0,W,H);sg.drawImage(g.canvas,0,0);this._adjFrame=S;}

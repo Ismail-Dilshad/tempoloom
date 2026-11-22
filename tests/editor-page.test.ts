@@ -8,7 +8,7 @@ import {chromium} from 'playwright';
 import {chromiumExecutable} from '../src/renderer/browser-path.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-declare const Ed:any;declare const edParseSubs:any;declare const edHandleAt:any;declare const ED_TTPL:any;declare const ED_STYLES:any;declare const ED_TRANS:any;
+declare const Ed:any;declare const edParseSubs:any;declare const edHandleAt:any;declare const ED_TTPL:any;declare const ED_STYLES:any;declare const ED_TITLES:any;declare const edTitleEditor:any;declare const ED_TRANS:any;
 
 it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('the Editor: import, edit, grade, caption, mix, export, project file, reload',async()=>{
  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'tl-editor-')),before={...process.env};
@@ -133,6 +133,11 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('the Editor: import, edit, grade,
     Ed.seek(30.5);out.matched=await Ed.colorMatch(Ed.p.clips.find((x:any)=>x.media===cm.id),mc6);out.matchCurves=!!Ed.p.clips.find((x:any)=>x.media===cm.id).grade?.curves?.r;
     Ed.p.clips=Ed.p.clips.filter((x:any)=>x.media!==cm.id);Ed.p.tracks=Ed.p.tracks.filter((t:any)=>t.main||t.kind!=='video'||Ed.p.clips.some((c:any)=>c.track===t.id));
     Ed.seek(45);const sfx=await Ed.addSfx('pop');out.sfx=[!!Ed.media.find((x:any)=>x.name==='SFX Pop.wav'),!!sfx];Ed.p.clips=Ed.p.clips.filter((x:any)=>x!==sfx&&x.id!==sfx?.id);Ed.after(true);}
+   // titles: a lower third drawn over the video; the title editor adds a layer and saves it as one undo step
+   {Ed.seek(50);const tt=Ed.addTitle(ED_TITLES[0],false);out.titleTrack=Ed.trackOf(tt)?.kind;Ed.time=51.5;Ed.draw();const g7=Ed.dom.canvas.getContext('2d'),[W7,H7]=Ed.size();
+    out.titleBox=[...g7.getImageData(Math.round(W7*.3),Math.round(H7*.86),1,1).data].slice(0,3);out.titleLabel=!!document.querySelector(`[data-cid="${tt.id}"] .ed-clip-label`)?.textContent?.includes('Lower third');
+    await edTitleEditor(tt);const n0=tt.title.layers.length;(document.querySelector('.ed-title-ed [data-tadd="text"]') as HTMLElement).click();(document.querySelector('.ed-title-ed [data-save]') as HTMLElement).click();
+    const now=Ed.clip(tt.id);out.titleLayers=[n0,now.title.layers.length];Ed.undo();out.titleUndo=Ed.clip(tt.id).title.layers.length;Ed.p.clips=Ed.p.clips.filter((x:any)=>x.id!==tt.id);Ed.after(true);Ed.time=.5;}
    Ed.seek(.5);Ed.setRange('in');Ed.seek(1);Ed.setRange('out');Ed.playRange();out.span=Ed.span&&[Ed.span.s,Ed.span.e];out.playingRange=Ed.playing;Ed.pause();Ed.clearRange();Ed.select(null);
    // export an exact MP4 (the file is handed back here instead of downloaded)
    let file:Blob|null=null;(window as any).edSaveFile=(bl:Blob)=>{file=bl;};
@@ -164,6 +169,7 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('the Editor: import, edit, grade,
   expect(r.animDx).toBeGreaterThan(.3);expect(r.invert).toEqual([true,true,true]);expect(r.bgCorner[0]).toBeGreaterThan(200);expect(r.bgCorner[2]).toBeLessThan(40);
   expect(r.layout).toEqual([[-.25,0],[.25,0]]);expect(r.blendEl).toBe(true);expect(r.scenes).toBe(1);expect(r.sceneAt).toEqual([30,31]);
   expect(r.matched).toBe(true);expect(r.matchCurves).toBe(true);expect(r.sfx).toEqual([true,true]);
+  expect(r.titleTrack).toBe('text');expect(Math.max(...r.titleBox)).toBeLessThan(60);expect(r.titleLabel).toBe(true);expect(r.titleLayers).toEqual([4,5]);expect(r.titleUndo).toBe(4);
   expect(r.span).toEqual([.5,1]);expect(r.playingRange).toBe(true);
   expect(r.reopened).toBe(r.original);
   expect(r.mp4,JSON.stringify(r.toasts)).toBeTruthy();const out=path.join(tmp,'out.mp4');fs.writeFileSync(out,Buffer.from(r.mp4,'base64'));

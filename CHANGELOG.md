@@ -36,6 +36,12 @@
   their sound lines them up (to 10 ms). Press 1–9 to cut between angles, also live while it plays;
   choose which angle's sound is heard; double-click to nudge an angle; Break apart flattens it into
   the cut (the chosen pictures, and one sound clip).
+- **Title editor**: titles made of layers (text and boxes) laid out on the frame. Six ready-made ones
+  under Text, Titles (lower third, headline card, name tag, quote card, end card, subscribe button)
+  or a new one; the editor shows the video under the title: click a layer, drag it, drag its corner to
+  size it, and set its words, font, size, colours, rounded corners, outline, wrap width, how it comes
+  in and after how long. Double-click a title clip to edit it again; its words can also be changed in
+  its Title tab. The whole title moves, scales, turns and animates like any clip.
 - **CapCut-style tools, all without AI:**
   - **Animations for video and photo clips** (Animation tab): zoom in or out, pop, bounce, slide in four
     directions, spin, swing, blur, shake, fade; in and out.

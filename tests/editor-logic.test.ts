@@ -109,6 +109,16 @@ describe('colour tools',()=>{
  });
 });
 
+describe('titles',()=>{
+ it('wrap their text where asked, keep their own line breaks, and bring layers in after their delay',()=>{
+  const g={measureText:(x:string)=>({width:x.length*10})},lines=f<(g:object,l:object,W:number)=>string[]>('edTitleLines');
+  expect(lines(g,{text:'one two three four',w:.1},1000)).toEqual(['one two','three four']);expect(lines(g,{text:'a'+String.fromCharCode(10)+'b'},1000)).toEqual(['a','b']);
+  const an=f<(l:object,lt:number,fade:number)=>{a:number;dx:number}>('edTitleAnim');
+  expect(an({anim:'fade',delay:.5},.4,1).a).toBe(0);expect(an({anim:'fade',delay:.5},2,1).a).toBe(1);expect(an({anim:'left'},0,1).dx).toBeLessThan(0);expect(an({anim:'none'},0,.5).a).toBe(.5);
+  expect(get<unknown[]>('ED_TITLES').length).toBeGreaterThanOrEqual(5);
+ });
+});
+
 describe('captions and words',()=>{
  it('splits words in every script, and knows direction',()=>{
   const words=f<(t:string,l?:string)=>string[]>('edWords');

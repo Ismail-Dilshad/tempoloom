@@ -38,7 +38,7 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
    if(url.pathname==='/api/state')return route.fulfill({json:{videos:[],topics:[],can:{maxMB:2048,speech:false}}});
    if(url.pathname==='/logo.svg')return route.fulfill({body:await fs.readFile('assets/brand/logo/svg/tempoloom-wordmark-for-dark.svg'),contentType:'image/svg+xml'});
    const name=url.pathname==='/'?'index.html':path.basename(url.pathname);
-   if(!['index.html','tokens.css','app.css','shell.css','core.js','shell.js','icons.js','create.js','learn.js','brain.js','editor.js','editor-ui.js','editor-sound.js','editor-colour.js','editor-export.js','editor-captions.js','editor-smart.js','editor-files.js','editor-widgets.js','editor-pitch.js','editor-edit.js','editor-nest.js','editor-text.js','editor-props.js','editor-input.js','editor-dialogs.js','places.js','teach.js','studio.js','settings.js'].includes(name))return route.fulfill({status:204});
+   if(!['index.html','tokens.css','app.css','shell.css','core.js','shell.js','icons.js','create.js','learn.js','brain.js','editor.js','editor-ui.js','editor-sound.js','editor-colour.js','editor-export.js','editor-captions.js','editor-smart.js','editor-files.js','editor-widgets.js','editor-pitch.js','editor-title.js','editor-edit.js','editor-nest.js','editor-text.js','editor-props.js','editor-input.js','editor-dialogs.js','places.js','teach.js','studio.js','settings.js'].includes(name))return route.fulfill({status:204});
    return route.fulfill({body:await fs.readFile(path.resolve('src/teach/ui',name)),contentType:name.endsWith('.js')?'text/javascript':name.endsWith('.css')?'text/css':'text/html'});
   });
   await page.goto('http://dashboard.test/#/studio/new');

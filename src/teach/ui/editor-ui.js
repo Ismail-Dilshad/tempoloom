@@ -32,6 +32,8 @@ Object.assign(Ed,{
     <input type="file" accept=".srt,.vtt,text/vtt,application/x-subrip" data-srt-file hidden></section>
    <div class="ed-sub">Add text</div>
    <div class="ed-text-presets">${ED_TEXTS.map(([l,size,weight,box],i)=>`<button type="button" class="ed-text-preset${box?' box':''}" data-text="${i}"><span style="font-size:${Math.round(size/2.4)}px;font-weight:${weight}">${l}</span><i>${I.add}</i></button>`).join('')}</div>
+   <div class="ed-sub">Titles</div>
+   <div class="ed-text-presets">${ED_TITLES.map((t,i)=>`<button type="button" class="ed-text-preset" data-title="${i}" title="${esc(t.name)}: opens in the title editor"><span style="font-size:13px;font-weight:700">${esc(t.name)}</span><i>${I.add}</i></button>`).join('')}<button type="button" class="ed-text-preset" data-title="new"><span style="font-size:13px;font-weight:700">New title</span><i>${I.add}</i></button></div>
    <div class="ed-sub">Templates</div>
    <div class="ed-text-presets">${[...ED_TTPL.map((t,i)=>['builtin:'+i,t]),...(this.tpls||[]).map(t=>[t.id,t])].map(([id,t])=>`<button type="button" class="ed-text-preset${t.style?.box?' box':''}" data-tpl="${esc(id)}" title="${esc(t.name)}${id.startsWith('builtin:')?'':' (yours: right-click to delete)'}"><span style="font-size:${Math.round(Math.min(96,t.style?.size||40)/3.2)}px;font-weight:${t.style?.weight||600}">${esc(t.name)}</span><i>${I.add}</i></button>`).join('')}</div>
    <p class="ed-hint">Select a text clip and choose Save style as a template to add your own.</p>`;}
@@ -53,6 +55,7 @@ Object.assign(Ed,{
   el.querySelectorAll('[data-add]').forEach(b=>b.onclick=e=>{e.stopPropagation();this.add(b.dataset.add);});
   el.querySelectorAll('[data-del]').forEach(b=>b.onclick=e=>{e.stopPropagation();this.removeMedia(b.dataset.del);});
   el.querySelectorAll('[data-text]').forEach(b=>b.onclick=()=>this.addText(+b.dataset.text));
+  el.querySelectorAll('[data-title]').forEach(b=>b.onclick=()=>this.addTitle(b.dataset.title==='new'?null:ED_TITLES[+b.dataset.title]));
   el.querySelectorAll('[data-tpl]').forEach(b=>{const id=b.dataset.tpl,t=id.startsWith('builtin:')?ED_TTPL[+id.slice(8)]:this.tpls?.find(x=>x.id===id);if(!t)return;b.onclick=()=>this.addTemplate(t);
    if(!id.startsWith('builtin:'))b.oncontextmenu=e=>{e.preventDefault();edMenu(e.clientX,e.clientY,[['Delete template','trash',async()=>{if(!await ask(`Delete the template “${t.name}”?`,'Text already made with it stays.','Delete',true))return;await this.dropTemplate(id);this.drawLib();},false,true]]);};});
   el.querySelectorAll('[data-shape]').forEach(b=>b.onclick=()=>this.addSticker({type:'shape',shape:b.dataset.shape}));
@@ -169,6 +172,7 @@ Object.assign(Ed,{
   let inner='';
   if(c.adjustment)inner=`<span class="ed-clip-label">${I.layers}Adjustment layer</span>`;
   else if(c.text!==undefined)inner=`${c.words?.some(w=>w.alt)?`<b class="ed-tocheck" title="Words to check">${I.flag}</b>`:''}<span class="ed-clip-label">${c.group?`<b class="ed-linked" title="Grouped">${I.link}</b>`:''}${I.text}${esc(c.text||'Text')}</span>`;
+  else if(c.title)inner=`<span class="ed-clip-label">${c.group?`<b class="ed-linked" title="Grouped">${I.link}</b>`:''}${I.text}${esc(c.title.name||'Title')}</span>`;
   else if(c.sticker)inner=`<span class="ed-clip-label">${c.group?`<b class="ed-linked" title="Grouped">${I.link}</b>`:''}${c.sticker.type==='emoji'?c.sticker.emoji:I.shapes}${esc(c.sticker.type==='emoji'?'Sticker':ED_SHAPES.find(s=>s[0]===c.sticker.shape)?.[1]||'Shape')}</span>`;
   else if(kind==='audio'){const pk=m?.peaks||[],from=(c.in||0)/(m?.dur||1),to=((c.in||0)+c.dur*(c.speed||1))/(m?.dur||1),part=pk.slice(Math.floor(from*pk.length),Math.ceil(to*pk.length)),v=edClamp(c.volume??1,0,2);
    inner=`<svg class="ed-wave" viewBox="0 0 ${Math.max(1,part.length)} 100" preserveAspectRatio="none">${part.map((x,i)=>`<rect x="${i}" y="${50-x*46*Math.min(1,v)}" width=".6" height="${Math.max(2,x*92*Math.min(1,v))}"/>`).join('')}</svg>

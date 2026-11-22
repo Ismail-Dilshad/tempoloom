@@ -4,7 +4,7 @@
 function edWireTimeline(){
  const sc=Ed.dom.scroll,inner=Ed.dom.inner;
  // double-click a nested clip to open it
- Ed.dom.tracks.addEventListener('dblclick',e=>{const n=e.target.closest('.ed-clip'),c=n&&Ed.clip(n.dataset.cid);if(c?.nest)Ed.enterNest(c);});
+ Ed.dom.tracks.addEventListener('dblclick',e=>{const n=e.target.closest('.ed-clip'),c=n&&Ed.clip(n.dataset.cid);if(c?.nest)Ed.enterNest(c);else if(c?.title)edTitleEditor(c);});
  const timeAt=x=>Math.max(0,(x-inner.getBoundingClientRect().left)/Ed.zoom);
  const laneAt=y=>[...Ed.dom.tracks.children].find(l=>{const r=l.getBoundingClientRect();return y>=r.top&&y<r.bottom;});
  sc.onpointerdown=e=>{
