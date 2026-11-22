@@ -75,9 +75,11 @@
   drives the real page: import through the file picker, split/undo/redo, a grade, Kurdish captions,
   panning in the mix, a marker, an MP4 export checked with ffprobe, a project file round trip and
   a reload.
-- **The Editor's code is split by subject**: `editor.js` (core) plus `editor-sound`, `-colour`,
-  `-export`, `-captions`, `-smart`, `-files`, `editor-ui`, `-widgets` and `-dialogs`, loaded in
-  that order; each adds its part to `Ed`. Nothing changed in what the page does.
+- **The Editor's code is split by subject**: `editor.js` (core: saving, tracks, playback, drawing)
+  plus `editor-edit`, `-nest`, `-text`, `-sound`, `-colour`, `-export`, `-captions`, `-smart`,
+  `-files`, `editor-ui`, `-props`, `-input`, `-widgets` and `-dialogs` (and the `editor-pitch`
+  worklet), loaded in that order; each adds its part to `Ed`. A test stops two of them from
+  defining the same name. Nothing changed in what the page does.
 - Fixed: an absolute `VIDEO_WORKSPACE` made exports and smart tools look in the wrong folder; a clip
   with no grade reported `undefined` instead of "not graded".
 
