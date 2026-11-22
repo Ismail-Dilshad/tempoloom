@@ -13,7 +13,7 @@ export type ToolKind='stabilize'|'cutout'|'reframe'|'voice'|'beats'|'reverse'|'t
 export type ToolJob={id:string;kind:ToolKind;state:'running'|'done'|'error';started:number;progress:number|null;note?:string;error?:string;
  file?:string;mime?:string;result?:Record<string,unknown>;dir:string};
 const jobs=new Map<string,ToolJob>();
-const workDir=()=>path.join(ROOT,process.env.VIDEO_WORKSPACE||'workspace','cache','editor-tools');
+const workDir=()=>path.resolve(ROOT,process.env.VIDEO_WORKSPACE||'workspace','cache','editor-tools');
 const IMAGE=/\.(png|jpe?g|webp|bmp)$/i;
 const media=(args:string[],timeoutMs=4*60*60*1000)=>runPythonModule('media_tools.cli',args,{timeoutMs,label:'Media tool',env:{FFMPEG_PATH:ffmpeg}}) as Promise<Record<string,unknown>>;
 

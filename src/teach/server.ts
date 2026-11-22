@@ -42,7 +42,7 @@ const MAX_MB=Number(process.env.TEACH_MAX_MB||'2048');
 const runCover=promisify(execFile);
 const uploadKind=z.enum(R.FILE_KINDS);
 const uploadName=z.string().min(1).max(160);
-const UI=new Set(['tokens.css','shell.css','shell.js','create.js','learn.js','brain.js','editor.js','editor-ui.js','places.js','icons.js','app.css','core.js','taste.js','teach.js','learned.js','studio.js','gallery.js','live.js','settings.js','backup.js','script.js','ideas.js','history.js','text.js','find.js']);
+const UI=new Set(['tokens.css','shell.css','shell.js','create.js','learn.js','brain.js','editor.js','editor-ui.js','editor-sound.js','editor-colour.js','editor-export.js','editor-captions.js','editor-smart.js','editor-files.js','editor-widgets.js','editor-dialogs.js','places.js','icons.js','app.css','core.js','taste.js','teach.js','learned.js','studio.js','gallery.js','live.js','settings.js','backup.js','script.js','ideas.js','history.js','text.js','find.js']);
 const TYPES:Record<string,string>={'.js':'text/javascript; charset=utf-8','.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.mp4':'video/mp4','.jpg':'image/jpeg','.svg':'image/svg+xml','.ttf':'font/ttf','.json':'application/json; charset=utf-8',
  '.png':'image/png','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.webm':'video/webm','.mov':'video/quicktime','.m4v':'video/mp4','.mp3':'audio/mpeg','.wav':'audio/wav','.m4a':'audio/mp4'};
 class HttpError extends Error{constructor(public status:number,message:string){super(message);}}
@@ -147,7 +147,7 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
     if(engine==='local'&&!L.installed()&&!soraniOnly)throw new HttpError(400,'Captions on this computer are not set up yet: press Set up in the Captions box (one download).');
     if(engine==='elevenlabs'&&!hasApiKey())throw new HttpError(400,'Auto captions with ElevenLabs need your key: add it in Settings, Models and keys.');
     const ext=(/\.[a-z0-9]{2,5}$/i.exec(url.searchParams.get('name')||'')?.[0]||'.webm').toLowerCase();
-    const dir=path.join(ROOT,process.env.VIDEO_WORKSPACE||'workspace','cache','editor-captions',randomUUID());await fsp.mkdir(dir,{recursive:true});
+    const dir=path.resolve(ROOT,process.env.VIDEO_WORKSPACE||'workspace','cache','editor-captions',randomUUID());await fsp.mkdir(dir,{recursive:true});
     const src=path.join(dir,'source'+ext);let size=0;
     const limit=new Transform({transform(c:Buffer,_e,cb){size+=c.length;size>MAX_MB*1048576?cb(new HttpError(413,`The file is over ${MAX_MB} MB`)):cb(null,c);}});
     try{await pipeline(req,limit,fs.createWriteStream(src));if(!size)throw new HttpError(400,'The upload was empty');
@@ -169,7 +169,7 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
    // The editor records its video in the page (WebM); this turns it into an MP4 with ffmpeg and sends it back.
    if(m==='POST'&&p==='/api/editor/mp4'){
     const fps=Math.min(60,Math.max(12,Number(url.searchParams.get('fps'))||30));
-    const dir=path.join(ROOT,process.env.VIDEO_WORKSPACE||'workspace','cache','editor-export',randomUUID());await fsp.mkdir(dir,{recursive:true});
+    const dir=path.resolve(ROOT,process.env.VIDEO_WORKSPACE||'workspace','cache','editor-export',randomUUID());await fsp.mkdir(dir,{recursive:true});
     const src=path.join(dir,'in.webm'),out=path.join(dir,'out.mp4');let size=0;
     const limit=new Transform({transform(c:Buffer,_e,cb){size+=c.length;size>MAX_MB*1048576?cb(new HttpError(413,`The video is over ${MAX_MB} MB`)):cb(null,c);}});
     try{
@@ -186,7 +186,7 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
    if(m==='POST'&&p==='/api/editor/mux'){
     const fps=Math.min(60,Math.max(5,Number(url.searchParams.get('fps'))||30)),fq=url.searchParams.get('format'),format=fq==='webm'?'webm':fq==='gif'?'gif':'mp4',crf=String(Math.min(30,Math.max(14,Number(url.searchParams.get('crf'))||19)));
     const vBytes=Number(url.searchParams.get('v'));if(!Number.isSafeInteger(vBytes)||vBytes<=32)throw new HttpError(400,'The video part is missing');
-    const dir=path.join(ROOT,process.env.VIDEO_WORKSPACE||'workspace','cache','editor-export',randomUUID());await fsp.mkdir(dir,{recursive:true});
+    const dir=path.resolve(ROOT,process.env.VIDEO_WORKSPACE||'workspace','cache','editor-export',randomUUID());await fsp.mkdir(dir,{recursive:true});
     const both=path.join(dir,'in.bin'),vid=path.join(dir,'in.ivf'),wav=path.join(dir,'in.wav'),out=path.join(dir,'out.'+format);let size=0;
     const limit=new Transform({transform(c:Buffer,_e,cb){size+=c.length;size>MAX_MB*1048576?cb(new HttpError(413,`The video is over ${MAX_MB} MB`)):cb(null,c);}});
     try{
@@ -205,7 +205,7 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
    }
    // Sound-only export: the editor's WAV mix as an MP3 (ffmpeg, LAME, high VBR quality).
    if(m==='POST'&&p==='/api/editor/audio'){
-    const dir=path.join(ROOT,process.env.VIDEO_WORKSPACE||'workspace','cache','editor-export',randomUUID());await fsp.mkdir(dir,{recursive:true});
+    const dir=path.resolve(ROOT,process.env.VIDEO_WORKSPACE||'workspace','cache','editor-export',randomUUID());await fsp.mkdir(dir,{recursive:true});
     const src=path.join(dir,'in.wav'),out=path.join(dir,'out.mp3');let size=0;
     const limit=new Transform({transform(c:Buffer,_e,cb){size+=c.length;size>MAX_MB*1048576?cb(new HttpError(413,`The sound is over ${MAX_MB} MB`)):cb(null,c);}});
     try{await pipeline(req,limit,fs.createWriteStream(src));if(size<=44)throw new HttpError(400,'The upload was empty');

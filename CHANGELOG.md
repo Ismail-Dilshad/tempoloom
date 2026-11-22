@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased: The Editor is tested and split into parts
+
+- **Automatic tests for the Editor.** `tests/editor-logic.test.ts` loads the page's scripts in a
+  sandbox and checks the pure parts: grading curves, `.cube` looks and the grade table, speed
+  curves, words and direction in every script, SRT/WebVTT, caption line packing, project zips
+  (CRC-32), WAV headers, green screen and shake. `tests/editor-page.test.ts` (`RUN_BROWSER_TESTS=1`)
+  drives the real page: import through the file picker, split/undo/redo, a grade, Kurdish captions,
+  panning in the mix, a marker, an MP4 export checked with ffprobe, a project file round trip and
+  a reload.
+- **The Editor's code is split by subject**: `editor.js` (core) plus `editor-sound`, `-colour`,
+  `-export`, `-captions`, `-smart`, `-files`, `editor-ui`, `-widgets` and `-dialogs`, loaded in
+  that order; each adds its part to `Ed`. Nothing changed in what the page does.
+- Fixed: an absolute `VIDEO_WORKSPACE` made exports and smart tools look in the wrong folder; a clip
+  with no grade reported `undefined` instead of "not graded".
+
 ## 10.4.0: The Editor grows up: grading, smart tools, presets
 
 - **Colour grading** (a Colour tab, as in DaVinci Resolve): colour wheels for shadows, midtones and

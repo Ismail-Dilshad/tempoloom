@@ -15,7 +15,7 @@ type Fix={to:string;n:number;last:string};
 type Store={version:1;langs:Record<string,Record<string,Fix>>};
 const settings=()=>path.resolve(ROOT,process.env.TEMPOLOOM_SETTINGS_DIR||'.tempoloom');
 export const fixesFile=()=>path.join(settings(),'caption-fixes.json');
-export const datasetDir=()=>path.join(ROOT,process.env.VIDEO_WORKSPACE||'workspace','datasets','captions');
+export const datasetDir=()=>path.resolve(ROOT,process.env.VIDEO_WORKSPACE||'workspace','datasets','captions');
 export const audioDir=()=>path.join(datasetDir(),'audio');
 const langKey=(l?:string|null)=>/^[a-z]{2,3}$/.test(l??'')?l!:'other';
 
