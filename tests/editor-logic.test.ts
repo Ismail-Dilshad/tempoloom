@@ -57,6 +57,17 @@ describe('speed curves',()=>{
  });
 });
 
+describe('keyframe curves',()=>{
+ it('follows a Bézier from start to end, and keeps the named easings',()=>{
+  const bz=f<(...a:number[])=>(u:number)=>number>('edBezier'),of=f<(e:unknown)=>(u:number)=>number>('edEaseOf');
+  const lin=bz(0,0,1,1);for(const u of [0,.1,.5,.9,1])expect(lin(u)).toBeCloseTo(u,4);
+  const fast=bz(0,1,0,1);expect(fast(.2)).toBeGreaterThan(.6);expect(fast(0)).toBe(0);expect(fast(1)).toBe(1);
+  // a custom curve may overshoot (a bounce past the value), the named ones do not change
+  expect(Math.max(...Array.from({length:50},(_,i)=>bz(.3,1.3,.6,1.3)(i/49)))).toBeGreaterThan(1);
+  expect(of('linear')(.3)).toBeCloseTo(.3);expect(of([0,0,1,1])(.3)).toBeCloseTo(.3,4);expect(of('hold')(.7)).toBe(0);expect(of(undefined)(.5)).toBeCloseTo(.5);
+ });
+});
+
 describe('captions and words',()=>{
  it('splits words in every script, and knows direction',()=>{
   const words=f<(t:string,l?:string)=>string[]>('edWords');

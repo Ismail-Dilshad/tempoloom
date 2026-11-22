@@ -2179,6 +2179,7 @@ button.video-back{border:0;background:transparent;font:var(--type-small)}
 .ed-curve-svg text{font-size:8px;fill:var(--text-3)}
 .ed-curve-svg polyline{fill:none;stroke:var(--accent);stroke-width:2}
 .ed-curve-svg circle{fill:#fff;stroke:var(--accent);stroke-width:2;cursor:grab}
+.ed-curve-svg line.arm{stroke:var(--accent);stroke-width:1.5;stroke-dasharray:none}
 .ed-linked{display:inline-flex;margin-right:3px;opacity:.85}.ed-linked svg{width:11px;height:11px}
 .editor .ed-ctl.two{grid-template-columns:1fr 1fr auto}
 

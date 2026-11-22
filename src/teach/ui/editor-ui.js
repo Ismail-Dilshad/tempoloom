@@ -29,7 +29,10 @@ Object.assign(Ed,{
     <div class="ed-caprow two"><button type="button" class="btn small" data-srt-in>${I.upload} Import .srt</button><button type="button" class="btn small" data-srt-out ${caps?'':'disabled'}>${I.down} Export .srt</button></div>
     <input type="file" accept=".srt,.vtt,text/vtt,application/x-subrip" data-srt-file hidden></section>
    <div class="ed-sub">Add text</div>
-   <div class="ed-text-presets">${ED_TEXTS.map(([l,size,weight,box],i)=>`<button type="button" class="ed-text-preset${box?' box':''}" data-text="${i}"><span style="font-size:${Math.round(size/2.4)}px;font-weight:${weight}">${l}</span><i>${I.add}</i></button>`).join('')}</div>`;}
+   <div class="ed-text-presets">${ED_TEXTS.map(([l,size,weight,box],i)=>`<button type="button" class="ed-text-preset${box?' box':''}" data-text="${i}"><span style="font-size:${Math.round(size/2.4)}px;font-weight:${weight}">${l}</span><i>${I.add}</i></button>`).join('')}</div>
+   <div class="ed-sub">Templates</div>
+   <div class="ed-text-presets">${[...ED_TTPL.map((t,i)=>['builtin:'+i,t]),...(this.tpls||[]).map(t=>[t.id,t])].map(([id,t])=>`<button type="button" class="ed-text-preset${t.style?.box?' box':''}" data-tpl="${esc(id)}" title="${esc(t.name)}${id.startsWith('builtin:')?'':' (yours: right-click to delete)'}"><span style="font-size:${Math.round(Math.min(96,t.style?.size||40)/3.2)}px;font-weight:${t.style?.weight||600}">${esc(t.name)}</span><i>${I.add}</i></button>`).join('')}</div>
+   <p class="ed-hint">Select a text clip and choose Save style as a template to add your own.</p>`;}
   else if(this.tab==='stickers')body=`<div class="ed-sub">Shapes</div><div class="ed-stickers">${ED_SHAPES.map(([s,l])=>`<button type="button" class="ed-sticker" data-shape="${s}" aria-label="${l}" title="${l}"><svg viewBox="0 0 40 40">${edShapeSvg(s)}</svg></button>`).join('')}</div>
    <div class="ed-sub">Emoji</div><div class="ed-stickers">${ED_EMOJI.map(e=>`<button type="button" class="ed-sticker emoji" data-emoji="${e}">${e}</button>`).join('')}</div>`;
   else if(this.tab==='effects')body=`<button type="button" class="btn small ed-wide" data-adjlayer>${I.layers} Add an adjustment layer</button><div class="ed-sub">${visual?'Filters for the selected clip':'Select a video or photo, then choose a filter'}</div><div class="ed-filters">${ED_FILTERS.map(([id,l,a])=>`<button type="button" class="ed-filter" data-filter="${id}" ${visual?'':'disabled'} aria-pressed="${visual?JSON.stringify(sel.adj||{})===JSON.stringify(a):false}"><span class="ed-filter-swatch" style="filter:${edCssFilter(a)}"></span><span>${l}</span></button>`).join('')}</div>`;
@@ -45,6 +48,8 @@ Object.assign(Ed,{
   el.querySelectorAll('[data-add]').forEach(b=>b.onclick=e=>{e.stopPropagation();this.add(b.dataset.add);});
   el.querySelectorAll('[data-del]').forEach(b=>b.onclick=e=>{e.stopPropagation();this.removeMedia(b.dataset.del);});
   el.querySelectorAll('[data-text]').forEach(b=>b.onclick=()=>this.addText(+b.dataset.text));
+  el.querySelectorAll('[data-tpl]').forEach(b=>{const id=b.dataset.tpl,t=id.startsWith('builtin:')?ED_TTPL[+id.slice(8)]:this.tpls?.find(x=>x.id===id);if(!t)return;b.onclick=()=>this.addTemplate(t);
+   if(!id.startsWith('builtin:'))b.oncontextmenu=e=>{e.preventDefault();edMenu(e.clientX,e.clientY,[['Delete template','trash',async()=>{if(!await ask(`Delete the template “${t.name}”?`,'Text already made with it stays.','Delete',true))return;await this.dropTemplate(id);this.drawLib();},false,true]]);};});
   el.querySelectorAll('[data-shape]').forEach(b=>b.onclick=()=>this.addSticker({type:'shape',shape:b.dataset.shape}));
   el.querySelectorAll('[data-emoji]').forEach(b=>b.onclick=()=>this.addSticker({type:'emoji',emoji:b.dataset.emoji}));
   el.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{const c=this.sel&&this.clip(this.sel);if(!c)return;this.snapshot();const a=ED_FILTERS.find(f=>f[0]===b.dataset.filter)[2];if(Object.keys(a).length)c.adj={...a};else delete c.adj;this.after(true);this.drawLib();});
@@ -201,7 +206,7 @@ Object.assign(Ed,{
      ${c.words.some(w=>w.alt)?`<div class="ed-checks"><b>${I.flag} Check these words</b>${c.words.map((w,i)=>w.alt?`<div class="ed-check"><span class="ed-check-words"><bdi>${esc(c.words.slice(i,i+(w.altSpan||1)).map(x=>x.t).join(' '))}</bdi><i>other model heard</i><bdi>${esc(w.alt)}</bdi></span><span class="ed-check-btns"><button type="button" class="btn small" data-alt="${i}">Use</button><button type="button" class="btn small ghost" data-keep="${i}">Keep</button></span></div>`:'').join('')}</div>`:''}
      <div class="ed-row"><label>Capitals</label><div class="ed-ctl"><input type="checkbox" role="switch" data-k="upper" ${c.upper?'checked':''} aria-label="Capitals"></div></div>
      <div class="ed-row"><label>Language</label><div class="ed-ctl"><span class="ed-val" dir="auto">${esc(edLangName(c.lang||'auto'))}</span></div></div>
-     <div class="ed-row"><label></label><div class="ed-ctl"><button type="button" class="ed-tool" data-cap-all>${I.layers} Use this look on every caption</button></div></div>`):'')+sec('Text',`<textarea data-k="text" rows="3" dir="auto" aria-label="Text">${esc(c.text||'')}</textarea>`)+
+     <div class="ed-row"><label></label><div class="ed-ctl"><button type="button" class="ed-tool" data-cap-all>${I.layers} Use this look on every caption</button></div></div>`):'')+sec('Text',`<textarea data-k="text" rows="3" dir="auto" aria-label="Text">${esc(c.text||'')}</textarea>${c.words?'':`<div class="ed-row"><label></label><div class="ed-ctl"><button type="button" class="ed-tool" data-tpl-save>${I.add} Save style as a template</button></div></div>`}`)+
     sec('Style',`<div class="ed-row"><label>Font</label><div class="ed-ctl"><select data-k="font" aria-label="Font">${ED_FONTS.map(([f,l])=>`<option value="${esc(f)}" ${c.font===f?'selected':''}>${l}</option>`).join('')}</select></div></div>
      ${row('size','Size',c.size||40,{min:12,max:200})}${row('weight','Weight',c.weight||600,{min:300,max:900,step:100})}${row('spacing','Letter spacing',c.spacing||0,{min:-5,max:30})}${row('lineH','Line spacing',c.lineH||1.25,{min:80,max:250,step:5,unit:'pct',suffix:'%'})}
      <div class="ed-row"><label>Colour</label><div class="ed-ctl"><input type="color" data-k="color" value="${esc(c.color||'#ffffff')}" aria-label="Colour"></div></div>
@@ -269,7 +274,8 @@ Object.assign(Ed,{
     sec('Speed curve',`<div class="ed-seg wrap">${[['none','None'],...ED_RAMPS.map(r=>[r[0],r[1]]),...(c.rampName==='custom'?[['custom','Custom']]:[])].map(([id,l])=>`<button type="button" data-ramp="${id}" aria-pressed="${(c.ramp?(c.rampName||'custom'):'none')===id}">${l}</button>`).join('')}</div>
      ${c.ramp?`<div class="ed-curve">${edCurveSvg(c.ramp)}</div><p class="ed-hint">Drag a point up for faster, down for slower. Click the line to add a point; double-click one to remove it.</p>`:'<p class="ed-hint">A curve changes the speed within the clip: fast, then slow motion, then fast. The sound keeps its pitch.</p>'}`);
   const ke=c&&(t==='basic'||t==='audio')&&c.kf?this.kfEaseAt(c):null;
-  if(ke)body=sec('Keyframe at the playhead',`<div class="ed-row"><label>To the next</label><div class="ed-ctl"><div class="ed-seg wrap">${ED_EASES.map(([v,l])=>`<button type="button" data-ease="${v}" aria-pressed="${ke===v}">${l}</button>`).join('')}</div></div></div>`)+body;
+  if(ke)body=sec('Keyframe at the playhead',`<div class="ed-row"><label>To the next</label><div class="ed-ctl"><div class="ed-seg wrap">${[...ED_EASES,...(Array.isArray(ke)?[['custom','Custom']]:[])].map(([v,l])=>`<button type="button" data-ease="${v}" aria-pressed="${Array.isArray(ke)?v==='custom':ke===v}">${l}</button>`).join('')}</div></div></div>
+   ${ke!=='hold'?`<div class="ed-ecurve">${edEaseSvg(Array.isArray(ke)?ke:ED_EASE_BZ[ke]||ED_EASE_BZ.smooth)}</div><p class="ed-hint">Drag the two handles to shape the move to the next keyframe: steep is fast, flat is slow.</p>`:''}`)+body;
   el.innerHTML=`<nav class="ed-ptabs" role="tablist">${tabs.map(([id,l])=>`<button type="button" role="tab" aria-selected="${t===id}" data-ptab="${id}">${l}</button>`).join('')}
     ${c?`<span class="grow"></span><button type="button" class="iconbtn sm" data-remove aria-label="Delete clip" data-tooltip="Delete">${I.trash}</button>`:''}</nav><div class="ed-pbody${locked?' locked':''}">${locked?`<div class="ed-note">${I.lock} This track is locked.</div>`:''}${body}</div>`;
   el.querySelectorAll('[data-ptab]').forEach(b=>b.onclick=()=>{this.ptab=b.dataset.ptab;this.drawProps();});
@@ -345,7 +351,9 @@ Object.assign(Ed,{
   const li=$('[data-lut-import]',el),lf=$('[data-lut-file]',el);if(li&&lf){li.onclick=()=>lf.click();
    lf.onchange=async()=>{const f=lf.files[0];lf.value='';if(!f)return;try{const id=await this.importLut(f);setG(g=>{g.lut={id,mix:1};});toast('Look imported');this.drawProps();}catch(e){toast(e.message,true);}};}
   el.querySelectorAll('[data-mask]').forEach(b=>b.onclick=()=>{this.snapshot();const v=b.dataset.mask;if(v==='none')delete c.mask;else c.mask={w:.8,h:.8,x:0,y:0,feather:0,...(c.mask||{}),shape:v};this.after(true);});
-  el.querySelectorAll('[data-ease]').forEach(b=>b.onclick=()=>this.setKfEase(c,b.dataset.ease));
+  el.querySelectorAll('[data-ease]').forEach(b=>b.onclick=()=>{if(b.dataset.ease!=='custom')this.setKfEase(c,b.dataset.ease);});
+  const ec=el.querySelector('.ed-ecurve');if(ec)edEaseWire(ec,c);
+  const ts=$('[data-tpl-save]',el);if(ts)ts.onclick=async()=>{const n=prompt('Template name',String(c.text||'Text').slice(0,30));if(!n?.trim())return;await this.saveTemplate(c,n.trim().slice(0,40));if(this.tab==='text')this.drawLib();};
   const kp=$('[data-key-pick]',el);if(kp)kp.onclick=()=>{this.picking=this.picking===c.id?null:c.id;this.dom.frame?.classList.toggle('picking',!!this.picking);this.drawProps();this.draw();};
   $('[data-remove]',el).onclick=()=>this.remove();
  },
@@ -580,6 +588,7 @@ window.addEventListener('keydown',e=>{
  else if(!mod&&!e.altKey&&k==='l'&&e.shiftKey)Ed.toggleLoop();
  else if(mod&&k==='b'&&e.shiftKey||!mod&&!e.altKey&&k==='s'&&e.shiftKey)Ed.splitAll();
  else if(!mod&&!e.altKey&&k==='a')Ed.selectFrom(e.shiftKey?-1:1);
+ else if(e.altKey&&mod&&(k==='arrowleft'||k==='arrowright')){if(!Ed.swap(k==='arrowleft'?-1:1))done=false;}
  else if(e.altKey&&!mod&&(k==='arrowleft'||k==='arrowright')){if(!Ed.nudge((k==='arrowleft'?-1:1)*(e.shiftKey?5:1)))done=false;}
  else if((k==='delete'||k==='backspace')&&!mod&&e.shiftKey)Ed.rippleRemove();
  else if((k==='delete'||k==='backspace')&&!mod)Ed.remove();

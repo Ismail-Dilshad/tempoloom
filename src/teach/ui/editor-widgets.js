@@ -22,6 +22,20 @@ function edCurveWire(svg,c){
  svg.ondblclick=e=>{const pt=e.target.closest('[data-pt]');if(!pt)return;const i=Number(pt.dataset.pt);if(i===0||i===c.ramp.length-1)return;
   const pts=c.ramp.filter((_,j)=>j!==i);c.rampName='custom';Ed.setRamp(c,pts);};
 }
+// ---------- the keyframe curve editor: how a value moves to the next keyframe (a cubic Bézier, as in CSS) ----------
+const edEx=x=>20+x*160,edEy=y=>110-y*80;
+function edEaseSvg(bz){const [x1,y1,x2,y2]=bz,f=edBezier(...bz),line=Array.from({length:41},(_,i)=>`${edEx(i/40)},${edEy(f(i/40))}`).join(' ');
+ return `<svg viewBox="0 0 200 140" class="ed-curve-svg ed-ease-svg" role="img" aria-label="Keyframe curve: across is time, up is the value">${[0,.5,1].map(v=>`<line x1="${edEx(0)}" x2="${edEx(1)}" y1="${edEy(v)}" y2="${edEy(v)}"/><line x1="${edEx(v)}" x2="${edEx(v)}" y1="${edEy(0)}" y2="${edEy(1)}"/>`).join('')}
+  <line x1="${edEx(0)}" y1="${edEy(0)}" x2="${edEx(1)}" y2="${edEy(1)}" class="one"/><line x1="${edEx(0)}" y1="${edEy(0)}" x2="${edEx(x1)}" y2="${edEy(y1)}" class="arm"/><line x1="${edEx(1)}" y1="${edEy(1)}" x2="${edEx(x2)}" y2="${edEy(y2)}" class="arm"/>
+  <polyline points="${line}"/><circle data-bz="0" cx="${edEx(x1)}" cy="${edEy(y1)}" r="5"/><circle data-bz="1" cx="${edEx(x2)}" cy="${edEy(y2)}" r="5"/></svg>`;}
+function edEaseWire(box,c){
+ const at=e=>{const r=box.querySelector('svg').getBoundingClientRect(),x=(e.clientX-r.left)/r.width*200,y=(e.clientY-r.top)/r.height*140;return [edClamp((x-20)/160,0,1),edClamp((110-y)/80,-.35,1.35)];};
+ box.onpointerdown=e=>{const h=e.target.closest('[data-bz]');if(!h)return;e.preventDefault();const i=Number(h.dataset.bz),cur=Ed.kfEaseAt(c);Ed.snapshot();
+  const bz=[...(Array.isArray(cur)?cur:ED_EASE_BZ[cur]||ED_EASE_BZ.smooth)];
+  const mv=ev=>{const [x,y]=at(ev);bz[i*2]=Math.round(x*100)/100;bz[i*2+1]=Math.round(y*100)/100;Ed.setKfCurve(c,bz);box.innerHTML=edEaseSvg(bz);Ed.draw();};
+  const up=()=>{window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);Ed.save();Ed.drawProps();};
+  window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);};
+}
 // ---------- colour widgets ----------
 function edWheelSvg(w){const x=w?.x||0,y=w?.y||0;
  return `<svg viewBox="-50 -50 100 100" class="ed-wheel-svg" role="img" aria-label="Colour wheel"><defs><radialGradient id="ewf"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>

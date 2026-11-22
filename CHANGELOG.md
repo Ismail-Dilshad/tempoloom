@@ -11,6 +11,13 @@
   - **Select forward or back** from the playhead on all tracks (A, Shift+A).
   - **Nudge** the selection one frame (Alt + ←/→; with Shift, five frames).
   - **Line spacing** for text, next to letter spacing.
+- **Keyframe curve editor** (as in Premiere's Effect Controls and Resolve's curves): under
+  "Keyframe at the playhead", drag two handles to shape the move to the next keyframe; it can
+  overshoot for a bounce. The named easings start the curve; the export follows it exactly.
+- **Text templates**: Lower third, Headline, Subscribe and Quote under Text, Templates; and
+  "Save style as a template" on any text clip (kept in this browser; right-click one to delete).
+- **Swap clips** with the one before or after (Ctrl+Alt + ←/→, or the clip's right-click menu);
+  the gap between them stays.
 
 - **Automatic tests for the Editor.** `tests/editor-logic.test.ts` loads the page's scripts in a
   sandbox and checks the pure parts: grading curves, `.cube` looks and the grade table, speed

@@ -30,6 +30,20 @@ const edEase=u=>u<.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2;
 /** How a keyframe moves to the next one. Smooth is the default (and what older projects had). */
 const ED_EASES=[['smooth','Smooth'],['linear','Linear'],['in','Ease in'],['out','Ease out'],['hold','Hold']];
 const edEaseFn={smooth:edEase,linear:u=>u,in:u=>u*u*u,out:u=>1-Math.pow(1-u,3),hold:()=>0};
+/** The named easings drawn as cubic Béziers (as in CSS), where the keyframe curve editor starts from. */
+const ED_EASE_BZ={smooth:[.65,0,.35,1],linear:[0,0,1,1],in:[.32,0,.67,0],out:[.33,1,.68,1]};
+/** A cubic Bézier easing from (0,0) to (1,1) with control points (x1,y1), (x2,y2): y at x (x found by halving). */
+function edBezier(x1,y1,x2,y2){const B=(a,b,t)=>3*a*(1-t)*(1-t)*t+3*b*(1-t)*t*t+t*t*t;
+ return u=>{if(u<=0)return 0;if(u>=1)return 1;let lo=0,hi=1,t=u;for(let i=0;i<32;i++){t=(lo+hi)/2;if(B(x1,x2,t)<u)lo=t;else hi=t;}return B(y1,y2,t);};}
+/** A keyframe's easing: a name, or a custom curve [x1,y1,x2,y2] from the curve editor. */
+const edEaseOf=e=>Array.isArray(e)&&e.length===4?edBezier(...e):(edEaseFn[e]||edEase);
+/** Text templates: the style of a text clip, saved to use again. These come with the editor; yours are kept in this browser. */
+const ED_TSTYLE=['font','size','weight','color','box','boxColor','align','stroke','strokeColor','shadow','spacing','lineH','upper','x','y','animIn','animOut','animDur','dur'];
+const ED_TTPL=[
+ {name:'Lower third',text:'Name Surname',style:{size:40,weight:700,box:true,boxColor:'#000000',align:'left',shadow:false,x:-.2,y:.34,animIn:'slide',animOut:'fade',dur:4}},
+ {name:'Headline',text:'Big news',style:{size:96,weight:900,stroke:6,strokeColor:'#000000',shadow:true,upper:true,animIn:'pop'}},
+ {name:'Subscribe',text:'Subscribe',style:{size:48,weight:800,box:true,boxColor:'#e5252a',shadow:false,y:.3,animIn:'pop',animOut:'pop'}},
+ {name:'Quote',text:'“A short quote here”',style:{size:44,weight:500,lineH:1.5,animIn:'type',dur:5}}];
 /** Caption looks: how a caption shows its words (phrase, karaoke, one word, build up) plus its text style. */
 const ED_CAPS=[['clean','Clean'],['karaoke','Karaoke'],['word','Word by word'],['build','Build up'],['boxed','Boxed']];
 /** Spoken languages for auto captions: auto-detect, the studio's own, then many more (ISO 639 codes; names in their own language). */
@@ -115,7 +129,7 @@ const Ed={
  load(){return this.ready||(this.ready=(async()=>{
   try{await this.db();}catch{toast('This browser cannot keep editor projects (its storage is off). Edits last until you reload.',true);return;}
   for(const [k,v] of await this.readAll('projects'))if(typeof v==='string')this.pjson.set(k,v);
-  this.plist=(await this.read('meta','list'))||[];this.media=(await this.read('meta','media'))||[];
+  this.plist=(await this.read('meta','list'))||[];this.media=(await this.read('meta','media'))||[];this.tpls=(await this.read('meta','textTemplates'))||[];
   await this.fromLocal();
   this.plist=this.plist.filter(x=>this.pjson.has(x.id));
   const kept=[];for(const m of this.media){const b=await this.get(m.id).catch(()=>null);if(b){this.urls[m.id]=URL.createObjectURL(b);kept.push(m);
@@ -225,6 +239,12 @@ const Ed={
    x:0,y:label==='Caption'?.32:0,opacity:1,scale:1,rotate:0,animIn:'none',animOut:'none',animDur:.5};
  },
  addText(i){this.snapshot();const c=this.textClip(i);c.track=this.place('text',c.start,c.dur,this.p.tracks.find(t=>t.kind==='text')?.id);this.p.clips.push(c);this.pick(c.id);this.after(true);},
+ tplStyle(c){const s={};for(const k of ED_TSTYLE)if(c[k]!==undefined)s[k]=c[k];return s;},
+ addTemplate(tp){this.snapshot();const c=Object.assign(this.textClip(0),{text:tp.text},JSON.parse(JSON.stringify(tp.style||{})));
+  c.track=this.place('text',c.start,c.dur,this.p.tracks.find(t=>t.kind==='text')?.id);this.p.clips.push(c);this.pick(c.id);this.after(true);return c;},
+ async saveTemplate(c,name){const tp={id:this.uid(),name,text:c.text||'',style:this.tplStyle(c)};this.tpls=[tp,...(this.tpls||[])].slice(0,60);
+  try{await this.write([['meta','textTemplates',this.tpls]]);}catch{}toast(`Template saved: ${name} (Text, Templates)`);return tp;},
+ async dropTemplate(id){this.tpls=(this.tpls||[]).filter(t=>t.id!==id);try{await this.write([['meta','textTemplates',this.tpls]]);}catch{}},
  addSticker(s){this.snapshot();const c={id:this.uid(),sticker:s,start:this.time,dur:3,color:'#ffd23f',scale:1,x:0,y:0,rotate:0,opacity:1,animIn:'pop',animOut:'none',animDur:.4};
   c.track=this.place('sticker',c.start,c.dur,this.p.tracks.find(t=>t.kind==='sticker')?.id);this.p.clips.push(c);this.pick(c.id);this.after(true);},
  // ---------- selecting ----------
@@ -321,6 +341,12 @@ const Ed={
  },
  // ---------- in and out: a range of the timeline, to export only that part ----------
  /** Split every track at the playhead (the razor across all tracks); locked tracks are left alone. */
+ /** Swap the selected clip with its neighbour on the track (Ctrl+Alt+← / →): they trade places, the gap between them stays. */
+ swap(dir){const c=this.sel&&this.clip(this.sel);if(!c||this.trackOf(c)?.locked)return false;
+  const cl=this.p.clips.filter(x=>x.track===c.track).sort((a,b)=>a.start-b.start),o=cl[cl.indexOf(c)+dir];
+  if(!o){toast(dir<0?'Nothing before this clip to swap with.':'Nothing after this clip to swap with.');return true;}
+  this.snapshot();const [a,b]=dir<0?[o,c]:[c,o],gap=b.start-(a.start+a.dur),s=a.start;b.start=s;a.start=Math.round((s+b.dur+gap)*1000)/1000;
+  this.after(true);toast('Swapped');return true;},
  splitAll(){const t=this.time,list=this.p.clips.filter(x=>t>x.start+.05&&t<x.start+x.dur-.05&&!this.trackOf(x)?.locked);
   if(!list.length)return toast('Nothing under the playhead to split.');this.snapshot();const parts=list.map(c=>this.splitClip(c,t));this.regroup(parts);this.pick(null);this.after(true);toast(`Split ${list.length} clip${list.length>1?'s':''} on every track`);},
  /** Move the selected clips by whole frames (Alt + arrows); stops at the start and at other clips. */
@@ -355,10 +381,12 @@ const Ed={
  transAll(type,dur){this.snapshot();for(const c of this.p.clips.filter(c=>this.kindOf(c)==='video'))if(this.prevOf(c)){if(type==='none')delete c.trans;else c.trans={type,dur};}this.after(true);},
  // ---------- keyframes: per property, at times from the clip's start ----------
  val(c,k,t=this.time){const d={scale:1,opacity:1,volume:1}[k]??0,f=c.kf?.[k];if(!f?.length)return c[k]??d;const lt=edClamp(t-c.start,0,c.dur);
-  if(lt<=f[0].t)return f[0].v;const last=f[f.length-1];if(lt>=last.t)return last.v;const i=f.findIndex(x=>x.t>lt),a=f[i-1],b=f[i];return a.v+(b.v-a.v)*(edEaseFn[a.e]||edEase)((lt-a.t)/(b.t-a.t||1));},
+  if(lt<=f[0].t)return f[0].v;const last=f[f.length-1];if(lt>=last.t)return last.v;const i=f.findIndex(x=>x.t>lt),a=f[i-1],b=f[i];return a.v+(b.v-a.v)*edEaseOf(a.e)((lt-a.t)/(b.t-a.t||1));},
  /** The easing of the keyframes at the playhead (all properties of the clip), or null. */
  kfEaseAt(c){let e=null;for(const f of Object.values(c.kf||{})){const x=f.find(x=>Math.abs(x.t-(this.time-c.start))<1/60);if(x){e=x.e||'smooth';break;}}return e;},
  setKfEase(c,e){this.snapshot();for(const f of Object.values(c.kf||{}))for(const x of f)if(Math.abs(x.t-(this.time-c.start))<1/60){if(e==='smooth')delete x.e;else x.e=e;}this.after(true);},
+ /** The curve editor: a custom easing on the keyframes at the playhead (no undo step: the drag made one). */
+ setKfCurve(c,bz){for(const f of Object.values(c.kf||{}))for(const x of f)if(Math.abs(x.t-(this.time-c.start))<1/60)x.e=[...bz];},
  kfAt(c,k){const lt=this.time-c.start;return (c.kf?.[k]||[]).findIndex(x=>Math.abs(x.t-lt)<1/60);},
  toggleKf(c,k){const lt=edClamp(this.time-c.start,0,c.dur);this.snapshot();c.kf=c.kf||{};const f=c.kf[k]=c.kf[k]||[];const i=this.kfAt(c,k);
   if(i>=0)f.splice(i,1);else{f.push({t:lt,v:this.val(c,k)});f.sort((a,b)=>a.t-b.t);}if(!f.length)delete c.kf[k];this.after(true);},

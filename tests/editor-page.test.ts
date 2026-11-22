@@ -8,7 +8,7 @@ import {chromium} from 'playwright';
 import {chromiumExecutable} from '../src/renderer/browser-path.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-declare const Ed:any;declare const edParseSubs:any;declare const edHandleAt:any;
+declare const Ed:any;declare const edParseSubs:any;declare const edHandleAt:any;declare const ED_TTPL:any;
 
 it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('the Editor: import, edit, grade, caption, mix, export, project file, reload',async()=>{
  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'tl-editor-')),before={...process.env};
@@ -49,7 +49,14 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('the Editor: import, edit, grade,
    const mc=Ed.p.clips.find((x:any)=>x.media===m.id);Ed.select(mc.id);out.noRoom=Ed.nudge(-1)&&mc.start===0;const cc=Ed.p.clips.find((x:any)=>x.cap);Ed.select(cc.id);Ed.nudge(3);out.nudged=cc.start;Ed.undo();
    {const g2=Ed.dom.canvas.getContext('2d'),[W2,H2]=Ed.size(),b=Ed.box(g2,Ed.p.clips.find((x:any)=>x.media===m.id),W2,H2);out.corner=edHandleAt(Ed.p.clips.find((x:any)=>x.media===m.id),g2,W2,H2,b.cx+b.w/2,b.cy+b.h/2);out.middle=edHandleAt(Ed.p.clips.find((x:any)=>x.media===m.id),g2,W2,H2,b.cx,b.cy);}
    {const tc=Ed.textClip?Ed.p.clips.find((x:any)=>x.cap):null,g2=Ed.dom.canvas.getContext('2d'),[W2,H2]=Ed.size();if(tc){const words=tc.words;delete tc.words;const h1=Ed.textBox(g2,tc,W2,H2,.5).h;tc.lineH=2.5;out.lineRatio=Ed.textBox(g2,tc,W2,H2,.5).h/h1;delete tc.lineH;tc.words=words;}}
-   Ed.setRange('in');Ed.seek(1);Ed.setRange('out');Ed.playRange();out.span=Ed.span&&[Ed.span.s,Ed.span.e];out.playingRange=Ed.playing;Ed.pause();Ed.clearRange();Ed.select(null);
+   // swap two clips on a track; a keyframe curve changes the value between keyframes; text templates
+   {const tx=Ed.p.tracks.find((t:any)=>t.kind==='text')||null;Ed.seek(0);const t1=Ed.addTemplate(ED_TTPL[0]);out.tpl1=t1&&{text:t1.text,align:t1.align,box:t1.box};
+    Ed.seek(t1.start+t1.dur+.5);const t2=Ed.addTemplate({name:'B',text:'B',style:{dur:1}});t2.track=t1.track;void tx;
+    Ed.select(t1.id);Ed.swap(1);out.swapped=[t2.start,Math.round(t1.start*1000)/1000];Ed.undo();
+    const saved=await Ed.saveTemplate(Ed.p.clips.find((x:any)=>x.text==='B'),'Mine');out.saved=Ed.tpls.some((x:any)=>x.id===saved.id&&x.style.dur===1);Ed.p.clips=Ed.p.clips.filter((x:any)=>x.text!=='Name Surname'&&x.text!=='B');Ed.after(true);}
+   {const mc2=Ed.p.clips.find((x:any)=>x.media===m.id);Ed.select(mc2.id);Ed.seek(0);Ed.toggleKf(mc2,'opacity');Ed.seek(1);Ed.setVal(mc2,'opacity',0);Ed.seek(0);
+    Ed.setKfCurve(mc2,[0,1,0,1]);out.fastEase=Ed.val(mc2,'opacity',.2);Ed.setKfEase(mc2,'linear');out.linEase=Ed.val(mc2,'opacity',.2);delete mc2.kf;mc2.opacity=1;}
+   Ed.seek(.5);Ed.setRange('in');Ed.seek(1);Ed.setRange('out');Ed.playRange();out.span=Ed.span&&[Ed.span.s,Ed.span.e];out.playingRange=Ed.playing;Ed.pause();Ed.clearRange();Ed.select(null);
    // export an exact MP4 (the file is handed back here instead of downloaded)
    let file:Blob|null=null;(window as any).edSaveFile=(bl:Blob)=>{file=bl;};
    await Ed.exportVideo({name:'test',height:240,fps:30,format:'mp4',quality:'standard'});
@@ -65,6 +72,8 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('the Editor: import, edit, grade,
   expect(r.marker).toMatchObject({name:'Start',color:'blue'});
   expect(r.splitAll).toBe(2);expect(r.forward).toBe(2);expect(r.noRoom).toBe(true);expect(r.nudged).toBeCloseTo(.3,3);
   expect(r.corner).toBe('scale');expect(r.middle).toBeNull();expect(r.lineRatio).toBeCloseTo(2,1);
+  expect(r.tpl1).toEqual({text:'Name Surname',align:'left',box:true});expect(r.swapped).toEqual([0,1]);expect(r.saved).toBe(true);
+  expect(r.fastEase).toBeLessThan(.3);expect(r.linEase).toBeCloseTo(.8,2);
   expect(r.span).toEqual([.5,1]);expect(r.playingRange).toBe(true);
   expect(r.reopened).toBe(r.original);
   expect(r.mp4,JSON.stringify(r.toasts)).toBeTruthy();const out=path.join(tmp,'out.mp4');fs.writeFileSync(out,Buffer.from(r.mp4,'base64'));
