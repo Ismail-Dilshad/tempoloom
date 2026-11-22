@@ -4,17 +4,21 @@
 Object.assign(Ed,{
  // ---------- auto captions: the speech in each clip with sound, as caption text clips ----------
  async captions(){
-  const src=this.p.clips.filter(c=>{const m=this.mediaOf(c);return m&&(m.type==='audio'||m.type==='video')&&!this.trackOf(c)?.muted&&!(c.detached&&!c.asAudio);});
+  // every clip with sound, nested ones too: off turns its times into timeline times, [lo, hi] is where it is heard
+  const src=[],walk=(off,lo,hi,d)=>{for(const c of this.p.clips){
+   if(c.nest){if(d<4&&!this.trackOf(c)?.muted)this.withNest(c,()=>walk(off+c.start-(c.in||0),Math.max(lo,off+c.start),Math.min(hi,off+c.start+c.dur),d+1));continue;}
+   const m=this.mediaOf(c);if(m&&(m.type==='audio'||m.type==='video')&&!this.trackOf(c)?.muted&&!(c.detached&&!c.asAudio)&&!(this._mcA&&this.trackOf(c)?.id!==this._mcA))src.push({c,off,lo,hi});}};
+  walk(0,0,Infinity,0);
   if(!src.length)return toast('Add a video or sound with speech first.');
   const busy=this.dom.lib?.querySelector('[data-captions]');if(busy){busy.disabled=true;busy.innerHTML=`<span class="spin"></span> ${this.capEngine?.()==='local'?'Listening on this computer…':'Reading the speech…'}`;}
   try{
    const words={},lang=this.p.capLang||'auto',look=this.p.capLook||'clean';let code=lang,fixed=0,flags=0;
-   for(const id of new Set(src.map(c=>c.media))){const m=this.media.find(x=>x.id===id),blob=await this.get(id);if(!blob)continue;
+   for(const id of new Set(src.map(x=>x.c.media))){const m=this.media.find(x=>x.id===id),blob=await this.get(id);if(!blob)continue;
     const r=await fetch(withKey('/api/editor/captions?name='+encodeURIComponent(m.name)+'&lang='+encodeURIComponent(lang)+'&engine='+(this.capEngine?.()==='elevenlabs'?'elevenlabs':'local')+(this.capEngine?.()==='whisper'?'&model=whisper':'')+(this.p.capSorani===false?'&sorani=0':'')),{method:'POST',body:blob});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Could not read the speech');
     words[id]=(j.words||[]).map(w=>({...w,aid:j.audioId}));if(lang==='auto'&&j.code)code=j.code;fixed+=j.fixed||0;flags+=j.flags||0;}
    const lines=[];
-   for(const c of src){const a=c.in||0,b=this.srcAt(c,c.start+c.dur)+.05;
-    const ws=(words[c.media]||[]).filter(w=>w.start>=a&&w.end<=b).map(w=>({t:w.text.trim(),s:this.tlAt(c,w.start),e:this.tlAt(c,Math.min(w.end,b)),s0:w.start,e0:w.end,aid:w.aid,...(w.alt?{alt:w.alt,altSpan:w.altSpan||1}:{})})).filter(w=>w.t);
+   for(const {c,off,lo,hi} of src){const a=c.in||0,b=this.srcAt(c,c.start+c.dur)+.05;
+    const ws=(words[c.media]||[]).filter(w=>w.start>=a&&w.end<=b).map(w=>({t:w.text.trim(),s:off+this.tlAt(c,w.start),e:off+this.tlAt(c,Math.min(w.end,b)),s0:w.start,e0:w.end,aid:w.aid,...(w.alt?{alt:w.alt,altSpan:w.altSpan||1}:{})})).filter(w=>w.t&&w.s>=lo-1e-3&&w.s<hi);
     // A line ends at a pause, after about 3 seconds, at the end of a sentence (in any language), or when it is long.
     let cur=null;const budget=w=>edNoSpace(w)?16:42;
     for(const w of ws){const txt=cur?cur.words.map(x=>x.t).join(' '):'';

@@ -26,6 +26,15 @@ const ED_SHAPES=[['rect','Square'],['round','Rounded'],['circle','Circle'],['tri
 const ED_EMOJI=['😀','😂','😍','🔥','👍','🎉','⭐','❤️','✅','❌','👉','💡','🚀','💯','👀','🎵'];
 const ED_TRACKS0=()=>[{id:'text',kind:'text'},{id:'video',kind:'video',main:true},{id:'audio',kind:'audio'}];
 const edClamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+/** Loudness envelope of a sound (all channels), `rate` values a second, from `from` for `dur` seconds: what multicam lines angles up with. */
+function edSyncEnv(buf,from,dur,rate=100){const sr=buf.sampleRate,ch=Array.from({length:buf.numberOfChannels},(_,i)=>buf.getChannelData(i)),hop=Math.max(1,Math.round(sr/rate)),s0=Math.round(from*sr),n=Math.max(0,Math.min(Math.floor(dur*rate),Math.floor((ch[0].length-s0)/hop))),out=new Float32Array(n);
+ for(let k=0;k<n;k++){let a=0;const i0=s0+k*hop;for(let i=i0;i<i0+hop;i++){let v=0;for(const c of ch)v+=c[i];a+=v*v;}out[k]=Math.sqrt(a/hop);}return out;}
+/** Where sound B starts in sound A's time (seconds), from the best match of their envelopes (normalised, overlapping at least
+ *  `minOv` seconds); null when nothing matches well (another place, or no sound). */
+function edSyncOffset(A,B,rate=100,minOv=1){const z=x=>{const m=x.reduce((s,v)=>s+v,0)/(x.length||1);return Float32Array.from(x,v=>v-m);},a=z(A),b=z(B),mo=Math.round(minOv*rate);let best=-Infinity,lag=0;
+ for(let L=-(b.length-mo);L<=a.length-mo;L++){const i0=Math.max(0,L),i1=Math.min(a.length,L+b.length);if(i1-i0<mo)continue;let s=0,ea=0,eb=0;for(let i=i0;i<i1;i++){const x=a[i],y=b[i-L];s+=x*y;ea+=x*x;eb+=y*y;}
+  const r=s/Math.sqrt(ea*eb||1);if(r>best){best=r;lag=L;}}
+ return best>.3?lag/rate:null;}
 /** Every clip of a list, the clips inside nested clips too (for media in use, project files, proxies). */
 const edAll=cl=>(cl||[]).flatMap(c=>c.nest?[c,...edAll(c.nest.clips)]:[c]);
 const edEase=u=>u<.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2;
@@ -86,11 +95,11 @@ const Ed={
   this.writeProject(p);this.setList([this.entry(p,null),...this.list()]);return id;},
  entry(p,thumb){const end=(p.clips||[]).reduce((a,c)=>Math.max(a,c.start+c.dur),0);return {id:p.id,name:p.name,ratio:p.ratio,updated:p.updated||new Date().toISOString(),dur:end,clips:(p.clips||[]).length,thumb};},
  cover(){const cv=this.dom.canvas;if(!cv||!this.p.clips.length||this.exporting)return null;try{const [W,H]=this.size(),s=Math.min(320/W,320/H),c=document.createElement('canvas');c.width=Math.round(W*s);c.height=Math.round(H*s);c.getContext('2d').drawImage(cv,0,0,c.width,c.height);return c.toDataURL('image/jpeg',.7);}catch{return null;}},
- save(){if(!this.p?.id)return;this.p.updated=new Date().toISOString();clearTimeout(this.st);this.st=setTimeout(()=>this.flush(),300);this.saved(false);},
- flush(){if(!this.p?.id)return Promise.resolve(true);clearTimeout(this.st);this.st=null;
-  const id=this.p.id,s=JSON.stringify(this.p);this.pjson.set(id,s);
-  const old=this.list().find(x=>x.id===id),e=this.entry(this.p,this.cover()??old?.thumb??null);this.plist=[e,...this.list().filter(x=>x.id!==id)];
-  return this.persist([['projects',id,s],['history',id,{past:this.past.slice(-50),future:this.future.slice(-50)}],['meta','list',this.plist],['meta','media',this.media]])
+ save(){const R=this.root();if(!R?.id)return;R.updated=new Date().toISOString();clearTimeout(this.st);this.st=setTimeout(()=>this.flush(),300);this.saved(false);},
+ flush(){const R=this.root();if(!R?.id)return Promise.resolve(true);clearTimeout(this.st);this.st=null;this.relink();
+  const id=R.id,s=JSON.stringify(R),H=this.stack?.[0]||this;this.pjson.set(id,s);
+  const old=this.list().find(x=>x.id===id),e=this.entry(R,this.cover()??old?.thumb??null);this.plist=[e,...this.list().filter(x=>x.id!==id)];
+  return this.persist([['projects',id,s],['history',id,{past:H.past.slice(-50),future:H.future.slice(-50)}],['meta','list',this.plist],['meta','media',this.media]])
    .then(ok=>{if(ok&&this.p?.id===id&&!this.st)this.saved(true);return ok;});},
  saved(done){const el=this.dom.saved;if(el)el.textContent=done?'Saved':'Saving…';},
  /** Writes in order, one transaction per call; a write never rejects (it says what went wrong once and returns false). */
@@ -156,7 +165,7 @@ const Ed={
   if(this.p)this.flush();
   const p=this.readProject(id);if(!p)return false;
   if(this.p)this.pause();for(const el of Object.values(this.els))el.pause?.();this.els={};this.playing=false;
-  this.p=this.migrate(p);this.time=0;this.sel=null;this.sels.clear();this.junction=null;this.past=[];this.future=[];
+  this.stack=[];this.p=this.migrate(p);this.time=0;this.sel=null;this.sels.clear();this.junction=null;this.past=[];this.future=[];
   // Undo keeps working after a reload: the last steps are saved with the project.
   this.read('history',id).then(h=>{if(h&&this.p?.id===id&&!this.past.length&&!this.future.length){this.past=h.past||[];this.future=h.future||[];}}).catch(()=>{});
   return true;
@@ -195,7 +204,10 @@ const Ed={
  snapshot(){this.past.push(JSON.stringify(this.p));if(this.past.length>100)this.past.shift();this.future=[];},
  undo(){if(!this.past.length)return;this.future.push(JSON.stringify(this.p));this.p=JSON.parse(this.past.pop());this.after(true);this.fit();},
  redo(){if(!this.future.length)return;this.past.push(JSON.stringify(this.p));this.p=JSON.parse(this.future.pop());this.after(true);this.fit();},
- after(all){this._dk=null;this.pack();this.tidy();for(const id of [...this.sels])if(!this.clip(id))this.sels.delete(id);if(this.sel&&!this.clip(this.sel))this.sel=[...this.sels].pop()||null;if(this.junction&&!this.clip(this.junction))this.junction=null;
+ /** Players of clips that are gone (deleted, nested, broken apart, undone) stop and are let go. */
+ prune(){const keep=new Set(),walk=(cl,pre)=>{for(const c of cl){keep.add(pre+c.id);if(c.nest)walk(c.nest.clips,pre+c.id+'/');}};walk(this.p?.clips||[],'');
+  for(const k of Object.keys(this.els))if(!keep.has(k)){this.els[k].pause?.();delete this.els[k];}},
+ after(all){this._dk=null;this.pack();this.tidy();this.prune();for(const id of [...this.sels])if(!this.clip(id))this.sels.delete(id);if(this.sel&&!this.clip(this.sel))this.sel=[...this.sels].pop()||null;if(this.junction&&!this.clip(this.junction))this.junction=null;
   this.save();this.drawTimeline();if(all)this.drawProps();this.sync();this.draw();this.drawTime();},
  // ---------- importing ----------
  async importFiles(files){
@@ -310,7 +322,7 @@ const Ed={
   const t=this.time,list=this.underHead();if(!list.length)return toast('Move the playhead over a clip.');
   this.snapshot();let back=null;
   for(const c of list){const sp=c.speed||1,end=c.start+c.dur;
-   if(side==='start'){const d=t-c.start;if(c.media)c.in=this.srcAt(c,t);if(c.ramp)c.ramp=edRampSplit(c.ramp,d/c.dur)[1];c.dur-=d;delete c.trans;
+   if(side==='start'){const d=t-c.start;if(c.media||c.nest)c.in=this.srcAt(c,t);if(c.ramp)c.ramp=edRampSplit(c.ramp,d/c.dur)[1];c.dur-=d;delete c.trans;
     if(c.kf)for(const k of Object.keys(c.kf)){const f=c.kf[k];const v0=this.val({...c,dur:c.dur+d,kf:{[k]:f}},k,t);c.kf[k]=[{t:0,v:v0},...f.filter(x=>x.t>d).map(x=>({...x,t:x.t-d}))];}
     this.shiftTrack(c.track,end,-d,c);back=back??c.start;}
    else{const d=end-t;if(c.ramp)c.ramp=edRampSplit(c.ramp,(c.dur-d)/c.dur)[0];c.dur-=d;this.shiftTrack(c.track,end,-d,c);}
@@ -425,7 +437,7 @@ const Ed={
  route(el){if(el._routed||!this.ac)return;try{const s=this.ac.createMediaElementSource(el),fx=edFxChain(this.ac),g=this.ac.createGain(),p=this.ac.createStereoPanner();s.connect(fx.input);fx.output.connect(g);g.connect(p);p.connect(this.master);el._fx=fx;el._gain=g;el._pan=p;el._routed=true;}catch{}},
  fade(c,t){const tt=edClamp(t,c.start,c.start+c.dur);let v=1;const local=tt-c.start;if(c.fadeIn&&local<c.fadeIn)v*=Math.max(0,local/c.fadeIn);if(c.fadeOut&&c.start+c.dur-tt<c.fadeOut)v*=Math.max(0,(c.start+c.dur-tt)/c.fadeOut);return v;},
  /** A clip's loudness at t: volume (keyframes), fades, loudness match (gainDb) and ducking. Playback and export both use it. */
- vol(c,t){const tr=this.trackOf(c);if(tr?.muted||(c.detached&&!c.asAudio))return 0;
+ vol(c,t){const tr=this.trackOf(c);if(tr?.muted||(c.detached&&!c.asAudio))return 0;if(this._mcA&&tr&&tr.id!==this._mcA)return 0;
   if(this.p.tracks.some(x=>x.solo)&&!tr?.solo)return 0;
   return edClamp(this.val(c,'volume',t)*this.fade(c,t)*edDb(c.gainDb||0)*(tr?.vol??1)*(c.duck?this.duckAt(t,c):1)*(this._vm??1),0,8);},
  // ---------- drawing the frame ----------
@@ -532,15 +544,60 @@ const Ed={
  },
  // ---------- nested clips (compound clips): clips inside one clip, with their own tracks ----------
  /** Run fn with the nested clip's tracks and clips standing in for the timeline's (synchronously only). */
- withNest(c,fn){const P=this.p,K=this._nk;this.p={...P,tracks:c.nest.tracks,clips:c.nest.clips,markers:[],range:null};this._nk=(K||'')+c.id+'/';
-  try{return fn();}finally{this.p=P;this._nk=K;}},
+ withNest(c,fn){const P=this.p,K=this._nk,A=this._mcA;this.p={...P,tracks:c.nest.tracks,clips:c.nest.clips,markers:[],range:null};this._nk=(K||'')+c.id+'/';this._mcA=c.nest.multi?c.nest.audio:undefined;
+  try{return fn();}finally{this.p=P;this._nk=K;this._mcA=A;}},
+ // ---------- multicam: angles of the same moment, lined up by their sound; one shows at a time ----------
+ /** The angle (index among the video tracks) a multicam clip shows at its own time lt. */
+ angleAt(c,lt){let a=0;for(const x of c.nest?.cuts||[])if(x.t<=lt+1e-6)a=x.a;return a;},
+ /** Make a multicam clip from the selected clips: their sound lines them up; each becomes an angle (sound-only clips can be the sound). */
+ async multicam(){const list=this.picked().filter(c=>c.media&&this.mediaOf(c)?.type!=='image'&&!this.trackOf(c)?.locked);
+  if(list.length<2)return toast('Select two or more clips of the same moment, each with its sound, to make a multicam clip.');
+  if(list.some(c=>c.ramp||(c.speed&&c.speed!==1)))return toast('Multicam needs clips at normal speed.');
+  if(!list.some(c=>this.mediaOf(c).type==='video'&&!c.asAudio))return toast('Multicam needs at least one video.');
+  toast('Lining up the angles by their sound…');const env=[];
+  for(const c of list){const m=this.mediaOf(c),blob=await this.get(m.id).catch(()=>null);let buf=null;try{buf=blob?await edDecode(blob):null;}catch{buf=null;}env.push(buf?edSyncEnv(buf,c.in||0,Math.min(c.dur,90)):null);}
+  const off=[0],miss=[];for(let i=1;i<list.length;i++){const o=env[0]?.length&&env[i]?.length?edSyncOffset(env[0],env[i]):null;if(o==null)miss.push(this.mediaOf(list[i]).name);off.push(o??(list[i].start-list[0].start));}
+  if(!list.every(c=>this.p.clips.includes(c)))return;// the timeline changed while listening
+  const min=Math.min(...off),ids=new Set(list.map(c=>c.id));this.snapshot();
+  const tracks=list.map((c,i)=>({id:'mc'+i,kind:this.mediaOf(c).type==='video'&&!c.asAudio?'video':'audio',name:this.mediaOf(c).name.replace(/\.[^.]+$/,'').slice(0,30)}));
+  const clips=list.map((c,i)=>{const x={...JSON.parse(JSON.stringify(c)),id:this.uid(),track:'mc'+i,start:Math.round((off[i]-min)*1000)/1000};delete x.group;delete x.trans;delete x.detached;return x;});
+  const dur=Math.round(Math.max(...clips.map(x=>x.start+x.dur))*1000)/1000,audio=(tracks.find(t=>t.kind==='audio')||tracks[0]).id,start=Math.max(0,list[0].start+min);
+  const n=this.p.clips.filter(c=>c.nest?.multi).length+1,vt=this.trackOf(list.find(c=>tracks[list.indexOf(c)].kind==='video'));
+  this.p.clips=this.p.clips.filter(c=>!ids.has(c.id));
+  const c={id:this.uid(),nest:{name:`Multicam ${n}`,multi:true,tracks,clips,dur,audio,cuts:[{t:0,a:0}]},start,dur,in:0,scale:1,x:0,y:0,rotate:0,opacity:1};
+  c.track=vt&&vt.kind==='video'&&this.fits(vt.id,start,dur)?vt.id:this.place('video',start,dur,vt?.id);this.p.clips.push(c);this.pick(c.id);this.after(true);
+  toast(miss.length?`Multicam made, but ${miss.join(', ')} could not be matched by sound: it stays where it was.`:`Multicam: ${tracks.filter(t=>t.kind==='video').length} angles lined up. Press 1–9 to switch (also while playing).`,!!miss.length);return c;},
+ /** Switch a multicam clip (the selected one, or the one under the playhead) to angle n from the playhead on; while playing, a live cut. */
+ switchAngle(n){const t=this.time,sel=this.sel&&this.clip(this.sel),c=sel?.nest?.multi&&t>=sel.start&&t<sel.start+sel.dur?sel:this.p.clips.find(x=>x.nest?.multi&&t>=x.start&&t<x.start+x.dur);if(!c)return false;
+  const vt=c.nest.tracks.filter(x=>x.kind==='video');if(n<0||n>=vt.length)return true;const lt=Math.round((t-c.start+(c.in||0))*1000)/1000;
+  if(!this.playing||!this._mcSnap){this.snapshot();this._mcSnap=this.playing;}
+  let cu=(c.nest.cuts||[]).filter(x=>Math.abs(x.t-lt)>1/60);cu.push({t:lt,a:n});cu.sort((a,b)=>a.t-b.t);if(cu[0].t>0)cu.unshift({t:0,a:0});cu=cu.filter((x,i)=>i===0||x.a!==cu[i-1].a);c.nest.cuts=cu;
+  this.save();this.drawTimeline();if(!this.playing){this.draw();this.drawProps();}return true;},
  /** The nested clip's picture at timeline time t: its own tracks painted on a clear frame (its layers kept apart from ours). */
  nestFrame(c,t){const [W,H]=this.size(),all=this._nests||(this._nests=new Map()),key=(this._nk||'')+c.id;let n=all.get(key);if(!n)all.set(key,n={cv:document.createElement('canvas')});
   if(n.cv.width!==W||n.cv.height!==H){n.cv.width=W;n.cv.height=H;}const g=n.cv.getContext('2d');g.setTransform(1,0,0,1,0,0);g.globalAlpha=1;g.globalCompositeOperation='source-over';g.filter='none';g.clearRect(0,0,W,H);
   if((this._depth||0)>4)return n.cv;
   const keep=[this._layer,this._adjSnap,this._adjFrame];this._layer=n.layer;this._adjSnap=n.adj;this._depth=(this._depth||0)+1;
-  try{this.withNest(c,()=>this.paint(g,t-c.start+(c.in||0)));}finally{n.layer=this._layer;n.adj=this._adjSnap;[this._layer,this._adjSnap,this._adjFrame]=keep;this._depth--;}
+  try{this.withNest(c,()=>{const lt=t-c.start+(c.in||0);if(!c.nest.multi)return this.paint(g,lt);const T=this.p.tracks,v=T.filter(x=>x.kind==='video'),a=v[this.angleAt(c,lt)];this.p.tracks=a?[a]:[];try{this.paint(g,lt);}finally{this.p.tracks=T;}});}finally{n.layer=this._layer;n.adj=this._adjSnap;[this._layer,this._adjSnap,this._adjFrame]=keep;this._depth--;}
   return n.cv;},
+ /** The whole project: the timeline, also while editing inside a nested clip (then this.p is the nested clip's own). */
+ root(){return this.stack?.[0]?.P||this.p;},
+ /** Edits inside a nested clip go back into it (its tracks and clips, and how long its contents are), level by level. */
+ relink(){const S=this.stack||[];for(let i=S.length-1;i>=0;i--){const child=i===S.length-1?this.p:S[i+1].P,c=S[i].P.clips.find(x=>x.id===S[i].cid);if(!c?.nest)continue;
+  c.nest.tracks=child.tracks;c.nest.clips=child.clips;c.nest.dur=Math.round(Math.max(.1,...child.clips.map(x=>x.start+x.dur))*1000)/1000;}},
+ /** Open a nested clip: the timeline shows what is inside it, to edit in place (Back or Esc to return). */
+ enterNest(c){if(!c?.nest||this.exporting)return;if(this.playing)this.pause();this.relink();const P=this.p;this.stack=this.stack||[];
+  this.stack.push({P,cid:c.id,past:this.past,future:this.future,pre:JSON.stringify(P),time:this.time,name:c.nest.name||'Nested'});
+  this.p={...P,tracks:c.nest.tracks,clips:c.nest.clips,markers:[],range:null};this.past=[];this.future=[];
+  this.time=Math.max(0,this.time-c.start+(c.in||0));this.sels.clear();this.sel=null;this.junction=null;this.after(true);this.fit?.();this.drawCrumb();
+  toast(`Inside “${c.nest.name||'Nested'}”: edit as usual, then Back (or Esc)`);},
+ /** Back out of a nested clip; everything done inside is one undo step outside. */
+ exitNest(){const e=this.stack?.at(-1);if(!e)return;if(this.playing)this.pause();this.relink();this.stack.pop();const c=e.P.clips.find(x=>x.id===e.cid),lt=this.time;
+  this.p=e.P;this.past=e.past;this.future=e.future;if(JSON.stringify(this.p)!==e.pre){this.past.push(e.pre);this.future=[];}
+  this.time=c?edClamp(c.start+lt-(c.in||0),c.start,c.start+c.dur):e.time;this.sels.clear();this.sel=null;if(c)this.pick(c.id);this.after(true);this.fit?.();this.drawCrumb();},
+ drawCrumb(){const el=this.dom.root?.querySelector('[data-crumb]');if(!el)return;const S=this.stack||[];el.hidden=!S.length;
+  el.innerHTML=S.length?`${I.layers}<span>${S.map(x=>esc(x.name)).join(' › ')}</span><button type="button" class="ed-link" data-crumb-back>Back</button>`:'';
+  const b=el.querySelector('[data-crumb-back]');if(b)b.onclick=()=>this.exitNest();},
  /** A deep copy of a nested clip's contents with new clip ids (for a split, a copy or a paste). */
  renest(n){const x=JSON.parse(JSON.stringify(n));const re=cl=>{for(const c of cl){c.id=this.uid();if(c.nest)re(c.nest.clips);}};re(x.clips);return x;},
  /** Nest: the selected clips become one clip (on the top video track they used); their tracks come along inside it. */
@@ -553,13 +610,19 @@ const Ed={
   const n=this.p.clips.filter(c=>c.nest).length+1,c={id:this.uid(),nest:{name:`Nested ${n}`,tracks,clips:inner,dur:Math.round((e-s)*1000)/1000},start:s,dur:Math.round((e-s)*1000)/1000,in:0,scale:1,x:0,y:0,rotate:0,opacity:1};
   c.track=vt&&this.fits(vt.id,s,c.dur)?vt.id:this.place('video',s,c.dur,vt?.id);this.p.clips.push(c);this.pick(c.id);this.after(true);toast(`Nested ${list.length} clip${list.length>1?'s':''}: right-click it to break it apart`);return c;},
  /** Break apart: the clips inside come back to the timeline where they play now (the nested clip's own look is not kept). */
- unnest(c){if(!c?.nest)return;this.snapshot();const off=c.start-(c.in||0),a=c.start,b=c.start+c.dur,back=[];
-  for(const x of JSON.parse(JSON.stringify(c.nest.clips))){let st=x.start+off,en=st+x.dur;if(en<=a+1e-3||st>=b-1e-3)continue;
-   if(st<a){const d=a-st;if(x.media)x.in=(x.in||0)+d*(x.speed||1);if(x.kf)for(const k in x.kf)x.kf[k]=x.kf[k].map(f=>({...f,t:f.t-d})).filter(f=>f.t>=-1e-6);st=a;}
-   if(en>b)en=b;x.start=Math.round(st*1000)/1000;x.dur=Math.round((en-st)*1000)/1000;x.id=this.uid();
-   const tk=c.nest.tracks.find(t=>t.id===x.track),kind=tk?.kind||this.kindOf(x),same=this.p.tracks.find(t=>t.id===x.track&&t.kind===kind);
-   this.p.clips=this.p.clips.filter(o=>o.id!==c.id);x.track=same&&this.fits(same.id,x.start,x.dur)?same.id:this.place(kind,x.start,x.dur,kind==='video'?c.track:undefined);this.p.clips.push(x);back.push(x.id);}
-  this.p.clips=this.p.clips.filter(o=>o.id!==c.id);this.sels=new Set(back);this.sel=back.at(-1)||null;this.after(true);toast(`Broke apart: ${back.length} clip${back.length===1?'':'s'}`);},
+ unnest(c){if(!c?.nest)return;this.snapshot();const off=c.start-(c.in||0),A=c.start,B=c.start+c.dur,back=[],T=c.nest.tracks,jobs=[];
+  // a copy of an inner clip for the part [a, b] of the timeline, or null
+  const cut=(x0,a,b)=>{const x=JSON.parse(JSON.stringify(x0));let st=x.start+off,en=st+x.dur;if(en<=a+1e-3||st>=b-1e-3)return null;
+   if(st<a){const d=a-st;if(x.media||x.nest)x.in=(x.in||0)+d*(x.speed||1);if(x.kf)for(const k in x.kf)x.kf[k]=x.kf[k].map(f=>({...f,t:f.t-d})).filter(f=>f.t>=-1e-6);st=a;}
+   if(en>b)en=b;x.start=Math.round(st*1000)/1000;x.dur=Math.round((en-st)*1000)/1000;x.id=this.uid();delete x.trans;return x;};
+  if(c.nest.multi){const vt=T.filter(t=>t.kind==='video'),cu=c.nest.cuts?.length?c.nest.cuts:[{t:0,a:0}];
+   cu.forEach((k,i)=>{const a=Math.max(A,off+k.t),b=Math.min(B,i+1<cu.length?off+cu[i+1].t:B),tr=vt[k.a];if(b-a<1e-3||!tr)return;
+    for(const x of c.nest.clips.filter(x=>x.track===tr.id)){const y=cut(x,a,b);if(y){y.detached=true;delete y.asAudio;jobs.push([y,'video',c.track]);}}});
+   for(const x of c.nest.clips.filter(x=>x.track===c.nest.audio)){const y=cut(x,A,B);if(y){delete y.detached;if(this.mediaOf(y)?.type==='video')y.asAudio=true;jobs.push([y,'audio']);}}}
+  else for(const x of c.nest.clips){const y=cut(x,A,B);if(y)jobs.push([y,T.find(t=>t.id===x.track)?.kind||this.kindOf(x),x.track]);}
+  this.p.clips=this.p.clips.filter(o=>o.id!==c.id);
+  for(const [y,kind,pref] of jobs){const same=this.p.tracks.find(t=>t.id===pref&&t.kind===kind);y.track=same&&this.fits(same.id,y.start,y.dur)?same.id:this.place(kind,y.start,y.dur,kind==='video'?c.track:undefined);this.p.clips.push(y);back.push(y.id);}
+  this.sels=new Set(back);this.sel=back.at(-1)||null;this.after(true);toast(c.nest.multi?`Multicam flattened: ${back.length} clips`:`Broke apart: ${back.length} clip${back.length===1?'':'s'}`);},
  /** How far a clip's in or out animation is (0 to 1, 1 = fully shown). */
  anim(c,t){const d=Math.max(.1,c.animDur||.5),lt=t-c.start,rt=c.start+c.dur-t;return {i:c.animIn&&c.animIn!=='none'?edClamp(lt/d,0,1):1,o:c.animOut&&c.animOut!=='none'?edClamp(rt/d,0,1):1};},
  animApply(c,t){const {i,o}=this.anim(c,t),r={alpha:1,k:1,dy:0,chars:1,blur:0,words:1};
@@ -626,7 +689,7 @@ const Ed={
  /** Rolls a cut: the end of one clip and the start of the next move together (as Premiere's rolling edit). */
  roll(a,b,d,oa,ob){const sa=oa.speed||1,sb=ob.speed||1,ma=this.mediaOf(a),mb=this.mediaOf(b);
   let lo=Math.max(-(oa.dur-.1),-(ob.media?(ob.in||0)/sb:Infinity)),hi=Math.min(ob.dur-.1,ma&&ma.type!=='image'?(ma.dur-(oa.in||0))/sa-oa.dur:Infinity);d=edClamp(d,lo,hi);
-  a.dur=oa.dur+d;b.start=ob.start+d;b.dur=ob.dur-d;if(b.media)b.in=(ob.in||0)+d*sb;void mb;return d;},
+  a.dur=oa.dur+d;b.start=ob.start+d;b.dur=ob.dur-d;if(b.media||b.nest)b.in=(ob.in||0)+d*sb;void mb;return d;},
 };
 const edFmt=t=>{t=Math.max(0,t||0);const m=Math.floor(t/60),s=Math.floor(t%60),f=Math.floor((t%1)*30);return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}:${String(f).padStart(2,'0')}`;};
 function edSaveFile(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name.replace(/[\\/:*?"<>|]+/g,'').trim()||'video';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),6000);}

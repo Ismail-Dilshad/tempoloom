@@ -55,9 +55,9 @@ Object.assign(Ed,{
   const parts=[];
   const gather=(off,lo,hi,mul,depth)=>{for(const c of this.p.clips){
    const s=Math.max(off+c.start,lo),e=Math.min(off+c.start+c.dur,hi);if(c.text!==undefined||c.sticker||!(c.dur>0)||e-s<.001)continue;
-   if(c.nest){if(depth>4||this.trackOf(c)?.muted)continue;const P=this.p,o0=off,vol=T=>{const k=this.p;this.p=P;try{return this.vol(c,T-o0);}finally{this.p=k;}};
+   if(c.nest){if(depth>4||this.trackOf(c)?.muted||(this._mcA&&this.trackOf(c)?.id!==this._mcA))continue;const P=this.p,A=this._mcA,o0=off,vol=T=>{const k=this.p,ka=this._mcA;this.p=P;this._mcA=A;try{return this.vol(c,T-o0);}finally{this.p=k;this._mcA=ka;}};
     this.withNest(c,()=>gather(off+c.start-(c.in||0),s,e,T=>mul(T)*vol(T),depth+1));continue;}
-   const m=this.mediaOf(c);if(!m||m.type==='image')continue;if(this.trackOf(c)?.muted||(c.detached&&!c.asAudio))continue;
+   const m=this.mediaOf(c);if(!m||m.type==='image')continue;if(this.trackOf(c)?.muted||(c.detached&&!c.asAudio)||(this._mcA&&this.trackOf(c)?.id!==this._mcA))continue;
    const len=e-s,steps=Math.max(2,Math.ceil(len*120)),curve=new Float32Array(steps);
    for(let i=0;i<steps;i++){const T=s+Math.min(len*i/(steps-1),len-1e-4);curve[i]=this.vol(c,T-off)*mul(T);}
    parts.push({c,m,s,e,skip:s-(off+c.start),curve,pan:edClamp(this.trackOf(c)?.pan||0,-1,1)});}};

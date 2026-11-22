@@ -25,8 +25,11 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('the Editor: import, edit, grade,
   const id=await page.evaluate(async()=>{await Ed.load();return Ed.create({name:'Editor test'});});
   await page.goto(base+'#/editor/'+id);await page.locator('.editor canvas[aria-label="Preview"]').waitFor();
   // import like a person: the file picker
-  await page.locator('.editor > input[type=file]').setInputFiles(clip);
-  await page.waitForFunction(()=>Ed.media.some((m:any)=>m.name==='clip.mp4'&&m.dur>1.9));
+  // a second file with uneven sound, for lining up multicam angles
+  const noise=path.join(tmp,'noise.mp4');
+  await run(ffmpeg,['-v','error','-f','lavfi','-i','testsrc2=size=320x240:rate=30:duration=3','-f','lavfi','-i','anoisesrc=d=3:c=pink:r=48000:a=0.5:seed=7','-af',"volume='0.15+0.85*abs(sin(t*2.3)*sin(t*5.1))':eval=frame",'-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac','-shortest',noise]);
+  await page.locator('.editor > input[type=file]').setInputFiles([clip,noise]);
+  await page.waitForFunction(()=>Ed.media.some((m:any)=>m.name==='clip.mp4'&&m.dur>1.9)&&Ed.media.some((m:any)=>m.name==='noise.mp4'&&m.dur>2.9));
 
   const r=await page.evaluate(async()=>{
    const out:any={},m=Ed.media.find((x:any)=>x.name==='clip.mp4'),c=Ed.add(m.id),main=()=>Ed.p.clips.filter((x:any)=>x.track===Ed.main().id).length;
@@ -73,7 +76,23 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('the Editor: import, edit, grade,
     Ed.select(null);Ed.seek(.5);await Ed.seekExact(.5);Ed.draw();out.pxNested=px3();out.enNested=en(await Ed.mixAudio(0,1));
     nc.grade={curves:{m:[[0,.5],[1,.5]]}};Ed.draw();out.pxGraded=px3();delete nc.grade;
     Ed.unnest(Ed.clip(nc.id));out.back=Ed.p.clips.filter((x:any)=>x.media===m.id).length;out.noNest=!Ed.p.clips.some((x:any)=>x.nest);
-    Ed.undo();Ed.undo();out.restored=Ed.p.clips.filter((x:any)=>x.media===m.id).length;}
+    Ed.undo();Ed.undo();out.restored=Ed.p.clips.filter((x:any)=>x.media===m.id).length;
+    // open a nested clip, edit inside (move its clip), come back: one undo step, saved into the project
+    const mc5=Ed.p.clips.find((x:any)=>x.media===m.id);Ed.select(mc5.id);const nc2=Ed.nest();Ed.enterNest(nc2);out.inside=[Ed.stack.length,Ed.p.clips.length,Ed.p.clips[0].media===m.id];
+    Ed.p.clips[0].opacity=.5;Ed.after(true);await Ed.flush();out.savedInside=JSON.parse(Ed.pjson.get(Ed.root().id)).clips.find((x:any)=>x.id===nc2.id)?.nest.clips[0].opacity;
+    Ed.exitNest();out.outside=[Ed.stack.length,Ed.p.clips.some((x:any)=>x.id===nc2.id)];Ed.undo();out.undoneInside=Ed.p.clips.find((x:any)=>x.id===nc2.id)?.nest.clips[0].opacity;Ed.undo();
+    out.afterNestUndo=Ed.p.clips.filter((x:any)=>x.media===m.id).length;}
+   // multicam: two angles of the same moment (one starts 0.8 s later in the file), lined up by sound; cuts; flatten
+   {const nz=Ed.media.find((x:any)=>x.name==='noise.mp4'),t2=Ed.addTrack('video'),t3=Ed.addTrack('video');
+    const A={id:'mcA',media:nz.id,track:t2.id,start:3,in:0,dur:3,scale:1,x:0,y:0,rotate:0,opacity:1},B={id:'mcB',media:nz.id,track:t3.id,start:3,in:.8,dur:2.2,scale:1,x:0,y:0,rotate:0,opacity:1};
+    Ed.p.clips.push(A,B);Ed.after(true);Ed.sels=new Set(['mcA','mcB']);Ed.sel='mcB';const mcc=await Ed.multicam();
+    out.mc=mcc&&{angles:mcc.nest.tracks.length,offset:Math.round((mcc.nest.clips[1].start-mcc.nest.clips[0].start)*100)/100,start:mcc.start};
+    Ed.select(mcc.id);Ed.seek(mcc.start+1);Ed.switchAngle(1);Ed.seek(mcc.start+2);Ed.switchAngle(0);out.cuts=mcc.nest.cuts.map((k:any)=>[k.t,k.a]);
+    const en=(b:any)=>{const d=b.getChannelData(0);let x=0;for(let i=0;i<d.length;i++)x+=d[i]*d[i];return x;};
+    out.mcEnergy=en(await Ed.mixAudio(mcc.start+1,1));Ed.p.clips=Ed.p.clips.filter((x:any)=>x.id!==mcc.id);const solo={...A,id:'mcS',start:mcc.start,in:0};Ed.p.clips.push(solo);out.soloEnergy=en(await Ed.mixAudio(mcc.start+1,1));
+    Ed.p.clips=Ed.p.clips.filter((x:any)=>x.id!=='mcS');Ed.p.clips.push(mcc);Ed.after(true);
+    Ed.unnest(mcc);const flat=Ed.p.clips.filter((x:any)=>x.media===nz.id);out.flatMc=[flat.filter((x:any)=>x.detached).length,flat.filter((x:any)=>x.asAudio).length];
+    Ed.p.clips=Ed.p.clips.filter((x:any)=>x.media!==nz.id);Ed.p.tracks=Ed.p.tracks.filter((t:any)=>t.main||Ed.p.clips.some((c:any)=>c.track===t.id)||t.kind!=='video');Ed.after(true);}
    Ed.seek(.5);Ed.setRange('in');Ed.seek(1);Ed.setRange('out');Ed.playRange();out.span=Ed.span&&[Ed.span.s,Ed.span.e];out.playingRange=Ed.playing;Ed.pause();Ed.clearRange();Ed.select(null);
    // export an exact MP4 (the file is handed back here instead of downloaded)
    let file:Blob|null=null;(window as any).edSaveFile=(bl:Blob)=>{file=bl;};
@@ -96,6 +115,9 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('the Editor: import, edit, grade,
   expect(r.fit).toEqual([.5,2]);expect(r.zoom).toEqual([1,1.2]);expect(r.folders).toEqual(['All','Interviews']);expect(r.hidden).toBe(true);
   expect(r.nested).toBe(true);expect(r.pxNested).toEqual(r.pxBefore);expect(r.enNested/r.enBefore).toBeGreaterThan(.98);expect(r.enNested/r.enBefore).toBeLessThan(1.02);
   expect(r.pxGraded).toEqual([128,128,128]);expect(r.back).toBe(1);expect(r.noNest).toBe(true);expect(r.restored).toBe(1);
+  expect(r.inside).toEqual([1,1,true]);expect(r.savedInside).toBe(.5);expect(r.outside).toEqual([0,true]);expect(r.undoneInside??1).toBe(1);expect(r.afterNestUndo).toBe(1);
+  expect(r.mc).toEqual({angles:2,offset:.8,start:3});expect(r.cuts).toEqual([[0,0],[1,1],[2,0]]);expect(r.mcEnergy/r.soloEnergy).toBeGreaterThan(.95);expect(r.mcEnergy/r.soloEnergy).toBeLessThan(1.05);
+  expect(r.flatMc).toEqual([3,1]);
   expect(r.span).toEqual([.5,1]);expect(r.playingRange).toBe(true);
   expect(r.reopened).toBe(r.original);
   expect(r.mp4,JSON.stringify(r.toasts)).toBeTruthy();const out=path.join(tmp,'out.mp4');fs.writeFileSync(out,Buffer.from(r.mp4,'base64'));

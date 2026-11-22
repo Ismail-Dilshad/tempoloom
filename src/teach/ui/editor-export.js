@@ -12,7 +12,7 @@ Object.assign(Ed,{
    edSaveFile(out,o.name+'.'+o.format);toast('Sound exported');}
   catch(e){toast('Export stopped: '+(e?.message||e),true);}finally{this.exporting=null;this.drawExport();}},
  async exportVideo(o){
-  if(this.exporting)return;
+  if(this.exporting)return;while(this.stack?.length)this.exitNest();// the export is of the whole timeline
   if(o.format==='mp3'||o.format==='wav')return this.exportSound(o);
   if(o.live&&o.format!=='gif')return this.exportLive(o);
   // GIF: at most 15 frames a second and 480 on the short side, so the file stays a sensible size

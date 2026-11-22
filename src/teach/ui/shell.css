@@ -1980,6 +1980,11 @@ button.video-back{border:0;background:transparent;font:var(--type-small)}
 .ed-view{grid-area:view}
 .ed-ph{flex:none;display:flex;align-items:center;justify-content:space-between;height:44px;padding:0 12px;background:var(--ed-head);border-bottom:1px solid var(--line);font:var(--type-small);font-weight:650}
 .ed-ratio{font:var(--type-caption);font-weight:600;color:var(--text-3)}
+.ed-crumb{display:inline-flex;align-items:center;gap:6px;margin-left:10px;padding:2px 8px;border-radius:999px;background:var(--accent-fill);color:var(--on-accent);font:var(--type-caption);font-weight:600}
+.ed-crumb[hidden]{display:none}
+.ed-crumb svg{width:13px;height:13px}
+.ed-crumb .ed-link{color:inherit;text-decoration:underline}
+.ed-cut{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:var(--on-accent);opacity:.85;pointer-events:none}
 .ed-stage{position:relative;flex:1;min-height:0;display:grid;place-items:center;background:color-mix(in srgb,#000 22%,transparent)}
 .ed-frame{position:relative;box-shadow:0 0 0 1px var(--line);overflow:hidden;background:#000}
 .ed-frame canvas{display:block;width:100%;height:100%;touch-action:none}

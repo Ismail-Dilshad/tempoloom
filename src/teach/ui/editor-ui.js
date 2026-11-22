@@ -159,7 +159,7 @@ Object.assign(Ed,{
   this.dom.ruler.querySelectorAll('[data-mk]').forEach(n=>{n.onpointerdown=e=>e.stopPropagation();n.onclick=()=>this.seek(edMt(this.p.markers[Number(n.dataset.mk)]));n.ondblclick=e=>edMarkerEdit(e.currentTarget,Number(n.dataset.mk));});
   this.dom.heads.querySelectorAll('[data-tk]').forEach(b=>b.onclick=()=>{const id=b.closest('[data-track]').dataset.track;b.dataset.tk==='remove'?this.removeTrack(id):this.setTrack(id,b.dataset.tk);});
   el.querySelectorAll('[data-join]').forEach(b=>b.onclick=e=>{e.stopPropagation();this.selectJoin(b.dataset.join);});
-  const mg=this.dom.root?.querySelector('[data-magnet]');if(mg)mg.setAttribute('aria-pressed',String(!!this.p.magnet));
+  const mg=this.dom.root?.querySelector('[data-magnet]');if(mg)mg.setAttribute('aria-pressed',String(!!this.p.magnet));this.drawCrumb?.();
   this.drawHead();
  },
  clipHtml(c){
@@ -171,7 +171,7 @@ Object.assign(Ed,{
   else if(kind==='audio'){const pk=m?.peaks||[],from=(c.in||0)/(m?.dur||1),to=((c.in||0)+c.dur*(c.speed||1))/(m?.dur||1),part=pk.slice(Math.floor(from*pk.length),Math.ceil(to*pk.length)),v=edClamp(c.volume??1,0,2);
    inner=`<svg class="ed-wave" viewBox="0 0 ${Math.max(1,part.length)} 100" preserveAspectRatio="none">${part.map((x,i)=>`<rect x="${i}" y="${50-x*46*Math.min(1,v)}" width=".6" height="${Math.max(2,x*92*Math.min(1,v))}"/>`).join('')}</svg>
     <i class="ed-vol" style="top:${16+(1-v/2)*(this.laneH({kind:'audio'})-20)}px" title="Volume ${Math.round(v*100)}%"></i><span class="ed-clip-label">${c.group?`<b class="ed-linked" title="Grouped">${I.link}</b>`:''}${I.music}${esc(m?.name||'')}${c.speed&&c.speed!==1?` · ${c.speed}×`:''}</span>`;}
-  else if(c.nest)inner=`<span class="ed-clip-label">${c.group?`<b class="ed-linked" title="Grouped">${I.link}</b>`:''}${I.layers}${esc(c.nest.name||'Nested')} · ${c.nest.clips.length} clip${c.nest.clips.length===1?'':'s'}</span>`;
+  else if(c.nest)inner=`<span class="ed-clip-label">${c.group?`<b class="ed-linked" title="Grouped">${I.link}</b>`:''}${I.layers}${esc(c.nest.name||'Nested')} · ${c.nest.multi?`${c.nest.tracks.filter(t=>t.kind==='video').length} angles`:`${c.nest.clips.length} clip${c.nest.clips.length===1?'':'s'}`}</span>${c.nest.multi?(c.nest.cuts||[]).map(k=>{const x=(k.t-(c.in||0))*this.zoom;return x>0&&x<w?`<i class="ed-cut" style="left:${x}px" title="Angle ${k.a+1}"></i>`:'';}).join(''):''}`;
   else if(m){const th=m.thumbs||[],n=Math.max(1,Math.ceil(w/56));inner=`<div class="ed-strip">${Array.from({length:n},(_,i)=>{const src=th.length?th[Math.min(th.length-1,Math.floor(((c.in||0)+(i+.5)/n*c.dur*(c.speed||1))/(m.dur||c.dur)*th.length))]:'';return src?`<img src="${src}" alt="" style="filter:${edCssFilter(c.adj||{})}">`:'<i></i>';}).join('')}</div>
    <span class="ed-clip-label">${c.group?`<b class="ed-linked" title="Grouped">${I.link}</b>`:''}${c.detached?I.mute:''}${esc(m.name)}${c.speed&&c.speed!==1?` · ${c.speed}×`:''}</span>`;}
   const kts=sel&&c.kf?[...new Set(Object.values(c.kf).flat().map(x=>Math.round(x.t*100)/100))]:[];
@@ -288,6 +288,10 @@ Object.assign(Ed,{
     sec('Speed curve',`<div class="ed-seg wrap">${[['none','None'],...ED_RAMPS.map(r=>[r[0],r[1]]),...(c.rampName==='custom'?[['custom','Custom']]:[])].map(([id,l])=>`<button type="button" data-ramp="${id}" aria-pressed="${(c.ramp?(c.rampName||'custom'):'none')===id}">${l}</button>`).join('')}</div>
      ${c.ramp?`<div class="ed-curve">${edCurveSvg(c.ramp)}</div><p class="ed-hint">Drag a point up for faster, down for slower. Click the line to add a point; double-click one to remove it.</p>`:'<p class="ed-hint">A curve changes the speed within the clip: fast, then slow motion, then fast. The sound keeps its pitch.</p>'}`);
   const ke=c&&(t==='basic'||t==='audio')&&c.kf?this.kfEaseAt(c):null;
+  if(c?.nest?.multi&&t==='basic'){const vt=c.nest.tracks.filter(x=>x.kind==='video'),on=this.time>=c.start&&this.time<c.start+c.dur,cur=this.angleAt(c,this.time-c.start+(c.in||0));
+   body=sec('Multicam',`<div class="ed-row"><label>Angle</label><div class="ed-ctl"><div class="ed-seg wrap">${vt.map((x,i)=>`<button type="button" data-angle="${i}" aria-pressed="${on&&cur===i}" title="${esc(x.name||'')} (key ${i+1})">${i+1}${x.name?` · ${esc(x.name)}`:''}</button>`).join('')}</div></div></div>
+    <div class="ed-row"><label for="ed-mca">Sound from</label><div class="ed-ctl"><select id="ed-mca" data-mc-audio>${c.nest.tracks.map(x=>`<option value="${esc(x.id)}" ${c.nest.audio===x.id?'selected':''}>${esc(x.name||x.id)}</option>`).join('')}</select></div></div>
+    <p class="ed-hint">Play and press 1–9 to cut between angles as it plays; each press is a cut from the playhead on. Double-click the clip to move an angle by hand; Break apart turns it into ordinary clips.</p>`)+body;}
   if(ke)body=sec('Keyframe at the playhead',`<div class="ed-row"><label>To the next</label><div class="ed-ctl"><div class="ed-seg wrap">${[...ED_EASES,...(Array.isArray(ke)?[['custom','Custom']]:[])].map(([v,l])=>`<button type="button" data-ease="${v}" aria-pressed="${Array.isArray(ke)?v==='custom':ke===v}">${l}</button>`).join('')}</div></div></div>
    ${ke!=='hold'?`<div class="ed-ecurve">${edEaseSvg(Array.isArray(ke)?ke:ED_EASE_BZ[ke]||ED_EASE_BZ.smooth)}</div><p class="ed-hint">Drag the two handles to shape the move to the next keyframe: steep is fast, flat is slow.</p>`:''}`)+body;
   el.innerHTML=`<nav class="ed-ptabs" role="tablist">${tabs.map(([id,l])=>`<button type="button" role="tab" aria-selected="${t===id}" data-ptab="${id}">${l}</button>`).join('')}
@@ -368,6 +372,8 @@ Object.assign(Ed,{
   el.querySelectorAll('[data-mask]').forEach(b=>b.onclick=()=>{this.snapshot();const v=b.dataset.mask;if(v==='none')delete c.mask;else c.mask={w:.8,h:.8,x:0,y:0,feather:0,...(c.mask||{}),shape:v};this.after(true);});
   el.querySelectorAll('[data-ease]').forEach(b=>b.onclick=()=>{if(b.dataset.ease!=='custom')this.setKfEase(c,b.dataset.ease);});
   const ec=el.querySelector('.ed-ecurve');if(ec)edEaseWire(ec,c);
+  el.querySelectorAll('[data-angle]').forEach(b=>b.onclick=()=>{if(this.time<c.start||this.time>=c.start+c.dur)this.seek(c.start);this.switchAngle(+b.dataset.angle);});
+  const mca=el.querySelector('[data-mc-audio]');if(mca)mca.onchange=()=>{this.snapshot();c.nest.audio=mca.value;this.after(true);};
   const ts=$('[data-tpl-save]',el);if(ts)ts.onclick=async()=>{const n=prompt('Template name',String(c.text||'Text').slice(0,30));if(!n?.trim())return;await this.saveTemplate(c,n.trim().slice(0,40));if(this.tab==='text')this.drawLib();};
   const kp=$('[data-key-pick]',el);if(kp)kp.onclick=()=>{this.picking=this.picking===c.id?null:c.id;this.dom.frame?.classList.toggle('picking',!!this.picking);this.drawProps();this.draw();};
   $('[data-remove]',el).onclick=()=>this.remove();
@@ -405,7 +411,7 @@ function edBuild(el){
    <button type="button" class="btn small primary" data-export>${I.down} Export</button></header>
   <section class="ed-panel ed-lib" aria-label="Library"></section><i class="ed-rz v" data-rz="c1" aria-hidden="true"></i><i class="ed-rz v" data-rz="c2" aria-hidden="true"></i><i class="ed-rz h" data-rz="tl" aria-hidden="true"></i>
   <section class="ed-panel ed-view" aria-label="Player">
-   <header class="ed-ph"><span>Player</span><span class="ed-ratio">${esc(p.ratio)}</span></header>
+   <header class="ed-ph"><span>Player</span><span class="ed-crumb" data-crumb hidden></span><span class="ed-ratio">${esc(p.ratio)}</span></header>
    <div class="ed-stage"><div class="ed-frame"><canvas aria-label="Preview"></canvas><div class="ed-scopes" ${Ed.scopesOn?'':'hidden'}><canvas data-scope="wave" width="256" height="128" title="Waveform: brightness across the picture"></canvas><canvas data-scope="vector" width="128" height="128" title="Vectorscope: colour and saturation"></canvas><canvas data-scope="hist" width="256" height="128" title="Histogram: red, green, blue levels"></canvas></div><div class="ed-guides" aria-hidden="true"><i class="g-top"></i><i class="g-right"></i><i class="g-bottom"></i></div></div>
     <div class="ed-export" hidden><span class="spin"></span><b>Recording…</b><span>Keep this tab open.</span><button type="button" class="btn small" data-cancel-export>Cancel</button></div></div>
    <div class="ed-controls"><span class="ed-time"></span><button type="button" class="ed-play" data-play></button><button type="button" class="iconbtn sm ed-loop" data-loop aria-pressed="false" aria-label="Loop" data-tooltip="Loop (Shift+L)">${I.refresh}</button>
@@ -492,6 +498,8 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden&&Ed.st)try{
 window.addEventListener('hashchange',()=>{if(Ed.p&&!(App.route==='editor'&&App.arg===Ed.p.id)){Ed.pause();Ed.flush();if(Ed.recording)Ed.recording.rec.stop();}});
 function edWireTimeline(){
  const sc=Ed.dom.scroll,inner=Ed.dom.inner;
+ // double-click a nested clip to open it
+ Ed.dom.tracks.addEventListener('dblclick',e=>{const n=e.target.closest('.ed-clip'),c=n&&Ed.clip(n.dataset.cid);if(c?.nest)Ed.enterNest(c);});
  const timeAt=x=>Math.max(0,(x-inner.getBoundingClientRect().left)/Ed.zoom);
  const laneAt=y=>[...Ed.dom.tracks.children].find(l=>{const r=l.getBoundingClientRect();return y>=r.top&&y<r.bottom;});
  sc.onpointerdown=e=>{
@@ -526,12 +534,12 @@ function edWireTimeline(){
   const prev=touching(o.start,'prev'),next=touching(o.start+o.dur,'next'),oP=prev&&{...prev},oN=next&&{...next};
   const after=Ed.p.clips.filter(x=>x.track===c.track&&x.id!==c.id&&x.start>=o.start+o.dur-.001).map(x=>[x,x.start]);
   const pro=mode==='move'?(e.altKey&&(e.ctrlKey||e.metaKey)?'slide':e.altKey?'slip':null):e.altKey?'ripple':(e.ctrlKey||e.metaKey)?'roll':null;
-  if(pro&&kind!=='audio'&&!c.media&&(pro==='slip'))return;
+  if(pro&&kind!=='audio'&&!c.media&&!c.nest&&(pro==='slip'))return;
   const mv=ev=>{
    const dt=(ev.clientX-x0)/Ed.zoom;if(!moved&&Math.abs(ev.clientX-x0)<3&&Math.abs(ev.clientY-e.clientY)<3)return;if(!moved){Ed.snapshot();moved=true;}
-   if(pro==='slip'&&c.media){const sp=o.speed||1,span=Ed.srcSpan(o),max=Math.max(0,(srcDur===Infinity?(o.in||0):srcDur-span));c.in=edClamp((o.in||0)-dt*sp,0,max);Ed.seek(edClamp(Ed.time,c.start,c.start+c.dur-.01));}
+   if(pro==='slip'&&(c.media||c.nest)){const sp=o.speed||1,span=Ed.srcSpan(o),max=Math.max(0,(srcDur===Infinity?(o.in||0):srcDur-span));c.in=edClamp((o.in||0)-dt*sp,0,max);Ed.seek(edClamp(Ed.time,c.start,c.start+c.dur-.01));}
    else if(pro==='slide'){let d=dt;if(oP){d=Math.max(d,-(oP.dur-.1));const mp=Ed.mediaOf(oP);if(mp&&mp.type!=='image'&&mp.dur)d=Math.min(d,(mp.dur-(oP.in||0))/(oP.speed||1)-oP.dur);}if(oN){const sn=oN.speed||1;d=Math.min(d,oN.dur-.1);d=Math.max(d,-(oN.in||0)/sn);}if(!oP)d=Math.max(d,-o.start);
-    c.start=o.start+d;if(prev)prev.dur=oP.dur+d;if(next){const sn=oN.speed||1;next.start=oN.start+d;next.dur=oN.dur-d;if(next.media)next.in=(oN.in||0)+d*sn;}}
+    c.start=o.start+d;if(prev)prev.dur=oP.dur+d;if(next){const sn=oN.speed||1;next.start=oN.start+d;next.dur=oN.dur-d;if(next.media||next.nest)next.in=(oN.in||0)+d*sn;}}
    else if(pro==='roll'&&(mode==='r'?next:prev)){if(mode==='r')Ed.roll(c,next,dt,o,oN);else Ed.roll(prev,c,dt,oP,o);}
    else if(mode==='move'){
     const min=Math.min(...group.map(g=>orig.get(g.id).start));let d=Math.max(-min,dt);
@@ -541,8 +549,8 @@ function edWireTimeline(){
      if(lane?.classList.contains('ed-lane-new')){lane.classList.add('on');newLane=lane.dataset.new;}
      else if(lane&&lane.dataset.kind===kind&&!lane.classList.contains('locked')&&lane.dataset.track!==c.track){c.track=lane.dataset.track;const node=Ed.dom.tracks.querySelector(`[data-cid="${c.id}"]`);if(node)lane.append(node);}}
    }
-   else if(mode==='l'){let s=snapT(o.start+dt);const sp=o.speed||1;if(c.media)s=Math.max(s,o.ramp?o.start:o.start-(o.in||0)/sp);s=Math.max(0,Math.min(s,o.start+o.dur-.1));const d=s-o.start;c.start=s;c.dur=o.dur-d;
-    if(o.ramp){c.in=Ed.srcAt(o,s);c.ramp=d>.001?edRampSplit(o.ramp,d/o.dur)[1]:o.ramp;}else if(c.media)c.in=(o.in||0)+d*sp;
+   else if(mode==='l'){let s=snapT(o.start+dt);const sp=o.speed||1;if(c.media||c.nest)s=Math.max(s,o.ramp?o.start:o.start-(o.in||0)/sp);s=Math.max(0,Math.min(s,o.start+o.dur-.1));const d=s-o.start;c.start=s;c.dur=o.dur-d;
+    if(o.ramp){c.in=Ed.srcAt(o,s);c.ramp=d>.001?edRampSplit(o.ramp,d/o.dur)[1]:o.ramp;}else if(c.media||c.nest)c.in=(o.in||0)+d*sp;
     if(c.kf)for(const f of Object.values(c.kf))for(const x of f)x.t=Math.max(0,x.t-(d-(c._kfd||0)));c._kfd=d;}
    else{let e2=snapT(o.start+o.dur+dt);const sp=o.speed||1;e2=Math.min(e2,o.ramp?o.start+o.dur:o.start+(srcDur-(o.in||0))/sp);c.dur=Math.max(.1,e2-o.start);if(o.ramp)c.ramp=c.dur<o.dur-.001?edRampSplit(o.ramp,c.dur/o.dur)[0]:o.ramp;}
    // ripple: what follows on the track moves with the trimmed edge (a trimmed start keeps the clip where it was)
@@ -603,6 +611,7 @@ window.addEventListener('keydown',e=>{
  else if(!mod&&!e.altKey&&k==='l'&&e.shiftKey)Ed.toggleLoop();
  else if(mod&&k==='b'&&e.shiftKey||!mod&&!e.altKey&&k==='s'&&e.shiftKey)Ed.splitAll();
  else if(!mod&&!e.altKey&&k==='a')Ed.selectFrom(e.shiftKey?-1:1);
+ else if(!mod&&!e.altKey&&!e.shiftKey&&/^[1-9]$/.test(e.key)&&Ed.p.clips.some(x=>x.nest?.multi)){if(!Ed.switchAngle(Number(e.key)-1))done=false;}
  else if(e.altKey&&!mod&&e.code==='KeyN'){const c=Ed.sel&&Ed.clip(Ed.sel);if(c?.nest&&Ed.sels.size===1)Ed.unnest(c);else Ed.nest();}
  else if(e.altKey&&mod&&(k==='arrowleft'||k==='arrowright')){if(!Ed.swap(k==='arrowleft'?-1:1))done=false;}
  else if(e.altKey&&!mod&&(k==='arrowleft'||k==='arrowright')){if(!Ed.nudge((k==='arrowleft'?-1:1)*(e.shiftKey?5:1)))done=false;}
@@ -638,6 +647,7 @@ window.addEventListener('keydown',e=>{
  else if(k==='home')Ed.seek(0);
  else if(k==='end')Ed.seek(Ed.end());
  else if(k==='escape'&&(Ed.sels.size||Ed.junction))Ed.select(null);
+ else if(k==='escape'&&Ed.stack?.length)Ed.exitNest();
  else done=false;
  if(done){e.preventDefault();e.stopPropagation();}
 },true);

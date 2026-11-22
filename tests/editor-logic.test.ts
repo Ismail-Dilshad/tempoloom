@@ -23,6 +23,11 @@ const f=<T extends Fn>(n:string)=>get<T>(n);
 
 describe('editor scripts',()=>{
  it('are listed in the page and load without the browser',()=>{expect(scripts.length).toBeGreaterThanOrEqual(2);expect(get<object>('Ed')).toBeTruthy();});
+ it('never define the same global name twice (the later one would silently replace the earlier)',()=>{
+  const seen=new Map<string,string>(),twice:string[]=[];
+  for(const s of scripts)for(const m of fs.readFileSync(path.join(ui,s),'utf8').matchAll(/^(?:async\s+)?(?:function\s+([\w$]+)|(?:const|let|class)\s+([\w$]+))/gm)){const n=(m[1]||m[2])!;if(seen.has(n))twice.push(`${n} (${seen.get(n)}, ${s})`);else seen.set(n,s);}
+  expect(twice).toEqual([]);
+ });
 });
 
 describe('colour grading',()=>{
@@ -65,6 +70,17 @@ describe('keyframe curves',()=>{
   // a custom curve may overshoot (a bounce past the value), the named ones do not change
   expect(Math.max(...Array.from({length:50},(_,i)=>bz(.3,1.3,.6,1.3)(i/49)))).toBeGreaterThan(1);
   expect(of('linear')(.3)).toBeCloseTo(.3);expect(of([0,0,1,1])(.3)).toBeCloseTo(.3,4);expect(of('hold')(.7)).toBe(0);expect(of(undefined)(.5)).toBeCloseTo(.5);
+ });
+});
+
+describe('multicam',()=>{
+ it('finds where one sound starts inside another, and says when they do not match',()=>{
+  let seed=3;const rnd=()=>{seed=(seed*16807)%2147483647;return seed/2147483647;};
+  const A=Float32Array.from({length:600},rnd),B=A.slice(120,420),off=f<(a:Float32Array,b:Float32Array)=>number|null>('edSyncOffset');
+  expect(off(A,B)).toBeCloseTo(1.2,5);expect(off(B,A)).toBeCloseTo(-1.2,5);
+  const C=Float32Array.from({length:300},rnd);expect(off(A,C)).toBeNull();
+  const buf={sampleRate:1000,numberOfChannels:1,getChannelData:()=>Float32Array.from({length:2000},(_,i)=>i<1000?0:.5)};
+  const env=f<(b:object,from:number,dur:number,rate:number)=>Float32Array>('edSyncEnv')(buf,0,2,10);expect(env.length).toBe(20);expect(env[2]).toBe(0);expect(env[15]).toBeCloseTo(.5);
  });
 });
 

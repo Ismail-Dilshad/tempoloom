@@ -29,7 +29,16 @@
   right-click, Nest into one clip). They become one clip with their own tracks inside; move, trim,
   split, grade, mask or add effects to it and the whole group follows, picture and sound alike, in
   the player and the export. Alt+N again (or Break apart) puts the clips back where they play.
-  Nested clips travel inside project files. Auto captions and scrubbing do not reach inside yet.
+  Nested clips travel inside project files. **Double-click one to edit inside it** (a bar over the
+  player says where you are; Back or Esc returns, and everything done inside is one undo step).
+  Auto captions and scrubbing hear the clips inside too.
+- **Multicam** (as in Resolve and Premiere): select clips of the same moment and choose Make multicam:
+  their sound lines them up (to 10 ms). Press 1–9 to cut between angles, also live while it plays;
+  choose which angle's sound is heard; double-click to nudge an angle; Break apart flattens it into
+  the cut (the chosen pictures, and one sound clip).
+- Fixed: trimming, rolling or slipping a nested clip moved its contents; deleting or breaking apart
+  a nested clip while playing left its sound playing; two editor scripts could define the same
+  name and silently replace each other (now a test stops that).
 
 - **Automatic tests for the Editor.** `tests/editor-logic.test.ts` loads the page's scripts in a
   sandbox and checks the pure parts: grading curves, `.cube` looks and the grade table, speed
