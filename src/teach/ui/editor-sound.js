@@ -35,7 +35,7 @@ Object.assign(Ed,{
     try{this.withNest(c,()=>this.sync(on?t-c.start+(c.in||0):-100));}finally{this._vm=K;this._depth--;}continue;}
    if(c.text!==undefined||c.sticker)continue;const m=this.mediaOf(c);if(!m||m.type==='image')continue;
    const el=this.element(c);if(!el)continue;
-   const on=t>=c.start&&t<c.start+c.dur,want=this.srcAt(c,t);
+   const [s0,e0]=this.sndSpan(c),on=t>=s0&&t<e0,want=t<c.start||t>=c.start+c.dur?Math.max(0,(c.in||0)+(t-c.start)*(c.speed||1)):this.srcAt(c,t);
    if(on){
     const fwd=this.playing&&this.rate>0;
     el.playbackRate=edClamp(this.rateAt(c,t)*(fwd?this.rate:1),.0625,16);const v=this.vol(c,t);if(el._gain){el.volume=1;el._gain.gain.value=v;if(el._pan)el._pan.pan.value=edClamp(this.trackOf(c)?.pan||0,-1,1);if(el._fx)el._fx.set(c.afx);}else el.volume=Math.min(1,v);
@@ -73,6 +73,13 @@ Object.assign(Ed,{
   requestAnimationFrame(tick);
  },
  pause(){this.playing=false;this.span=null;this._mcSnap=false;for(const el of Object.values(this.els))el.pause?.();if(this.p){this.sync();this.draw();this.drawTime();this.drawMeter?.();}},
+ /** The multicam angle viewer: each angle's picture now, small, in the panel (the one showing is outlined). */
+ drawAngles(){const box=this.dom.props?.querySelector('.ed-angles');if(!box)return;const c=this.sel&&this.clip(this.sel);if(!c?.nest?.multi)return;
+  const t=this.time,on=t>=c.start&&t<c.start+c.dur,lt=t-c.start+(c.in||0),cur=this.angleAt(c,lt),[W,H]=this.size();
+  box.querySelectorAll('[data-angle-cv]').forEach(cv=>{const i=+cv.dataset.angleCv,g=cv.getContext('2d'),h=Math.round(cv.width*H/W);if(cv.height!==h)cv.height=h;
+   g.setTransform(1,0,0,1,0,0);g.fillStyle='#000';g.fillRect(0,0,cv.width,cv.height);cv.parentElement.classList.toggle('on',on&&cur===i);if(!on)return;
+   g.setTransform(cv.width/W,0,0,cv.width/W,0,0);const keep=[this._layer,this._adjSnap,this._adjFrame];
+   try{this.withNest(c,()=>{const T=this.p.tracks,v=T.filter(x=>x.kind==='video');this.p.tracks=v[i]?[v[i]]:[];try{this.paint(g,lt);}finally{this.p.tracks=T;}});}finally{[this._layer,this._adjSnap,this._adjFrame]=keep;}});},
  /** Play only between the in and out marks (Ctrl+Shift+Space); with loop on, round and round. */
  playRange(){const r=this.rangeSpan();if(!r)return toast('Mark an in and an out first (I, O).');if(this.playing)this.pause();this.span=r;this.time=r.s;this.rate=1;this.start();},
  toggleLoop(){this.loop=!this.loop;this.drawTime();toast(this.loop?'Loop on':'Loop off');},

@@ -6,6 +6,8 @@ const ED_RATIOS={'16:9':[1280,720],'9:16':[720,1280],'1:1':[1080,1080],'4:5':[10
 const ED_KINDS={video:{label:'Video',icon:'film'},sticker:{label:'Sticker',icon:'star'},text:{label:'Text',icon:'text'},audio:{label:'Audio',icon:'music'}};
 const ED_VISUAL=new Set(['video','sticker','text']);
 const ED_TEXTS=[['Title',72,800,false],['Subtitle',44,600,false],['Body text',32,500,false],['Caption',34,700,true]];
+/** Transitions for sound at a cut between two audio clips. */
+const ED_ATRANS=[['crossfade','Crossfade']];
 const ED_TRANS=[['dissolve','Dissolve'],['fade','Fade to black'],['slide','Slide'],['push','Push up'],['zoom','Zoom'],['wipe','Wipe'],['blur','Blur']];
 const ED_ADJ=[['brightness','Brightness',-100,100],['contrast','Contrast',-100,100],['saturation','Saturation',-100,100],['hue','Hue',-180,180],['temperature','Temperature',-100,100],['vignette','Vignette',0,100],['blur','Blur',0,30]];
 const ED_FILTERS=[['none','Original',{}],['vivid','Vivid',{saturation:35,contrast:15}],['warm','Warm',{temperature:40,saturation:10}],['cool','Cool',{temperature:-40,saturation:5}],['bw','Black & white',{saturation:-100,contrast:15}],
@@ -35,6 +37,11 @@ function edSyncOffset(A,B,rate=100,minOv=1){const z=x=>{const m=x.reduce((s,v)=>
  for(let L=-(b.length-mo);L<=a.length-mo;L++){const i0=Math.max(0,L),i1=Math.min(a.length,L+b.length);if(i1-i0<mo)continue;let s=0,ea=0,eb=0;for(let i=i0;i<i1;i++){const x=a[i],y=b[i-L];s+=x*y;ea+=x*x;eb+=y*y;}
   const r=s/Math.sqrt(ea*eb||1);if(r>best){best=r;lag=L;}}
  return best>.3?lag/rate:null;}
+/** Pauses in a sound: from its envelope (`rate` a second), the parts quieter than thrDb (dBFS) for at least minLen seconds,
+ *  each shrunk by pad seconds at both ends so speech keeps its breath. Seconds from the envelope's start. */
+function edSilences(env,rate,thrDb,minLen,pad){const out=[],lim=Math.pow(10,thrDb/20);let a=-1;
+ for(let i=0;i<=env.length;i++){const q=i<env.length&&env[i]<lim;if(q&&a<0)a=i;else if(!q&&a>=0){const s=a/rate+(a>0?pad:0),e=i/rate-(i<env.length?pad:0);if(i-a>=minLen*rate&&e-s>.05)out.push([s,e]);a=-1;}}
+ return out;}
 /** Every clip of a list, the clips inside nested clips too (for media in use, project files, proxies). */
 const edAll=cl=>(cl||[]).flatMap(c=>c.nest?[c,...edAll(c.nest.clips)]:[c]);
 const edEase=u=>u<.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2;
@@ -373,6 +380,21 @@ const Ed={
  /** Dynamic zoom: a slow push in (or pull out) across the clip, as two scale keyframes. */
  dynZoom(c,dir){if(!c||this.kindOf(c)==='audio')return;this.snapshot();const s=this.val(c,'scale',c.start),a={t:0,v:s},b={t:c.dur,v:Math.round(s*1.2*100)/100};
   c.kf={...(c.kf||{}),scale:dir<0?[{t:0,v:b.v},{t:c.dur,v:s}]:[a,b]};this.after(true);toast(dir<0?'Dynamic zoom: out':'Dynamic zoom: in');},
+ /** Remove pauses from the selected clips with sound: cut out what is quieter than thrDb for at least minLen seconds
+  *  (keeping pad seconds around speech) and close the gaps on their tracks. */
+ async removeSilences(o={}){const thr=o.thr??-38,minLen=o.min??.6,pad=o.pad??.12;
+  const list=this.picked().filter(c=>c.media&&this.mediaOf(c)?.type!=='image'&&!c.ramp&&!this.trackOf(c)?.locked);if(!list.length)return toast('Select a clip with speech or sound first.'),0;
+  const plan=[];for(const c of list){const m=this.mediaOf(c),blob=await this.get(m.id).catch(()=>null);let buf=null;try{buf=blob?await edDecode(blob):null;}catch{buf=null;}if(!buf){toast(`No sound found in ${m.name}.`,true);continue;}
+   const sp=c.speed||1,env=edSyncEnv(buf,c.in||0,c.dur*sp,100);plan.push([c,edSilences(env,100,thr,minLen,pad).map(([a,b])=>[c.start+a/sp,c.start+b/sp])]);}
+  if(!plan.length||!plan.every(([c])=>this.p.clips.includes(c)))return 0;
+  const n=plan.reduce((s,[,g])=>s+g.length,0),secs=plan.reduce((s,[,g])=>s+g.reduce((x,[a,b])=>x+b-a,0),0);if(!n){toast('No pauses found at this level. Try a higher (less strict) level.');return 0;}
+  this.snapshot();
+  for(const [c,gaps] of plan){for(const [a,b] of [...gaps].reverse()){if(b-a<.04||a<=c.start+.01&&b>=c.start+c.dur-.01)continue;
+   const end=c.start+c.dur,tr=c.track;
+   if(b<end-.01)this.splitClip(c,b);const mid=a>c.start+.01?this.splitClip(c,a):c;
+   // the pause goes (at the very start of the clip, that is what is left of the clip itself), and what follows closes up
+   this.p.clips=this.p.clips.filter(x=>x!==mid);this.shiftTrack(tr,b,-(b-a));}}
+  this.after(true);toast(`Removed ${n} pause${n===1?'':'s'} (${secs.toFixed(1)} s)`);return n;},
  splitAll(){const t=this.time,list=this.p.clips.filter(x=>t>x.start+.05&&t<x.start+x.dur-.05&&!this.trackOf(x)?.locked);
   if(!list.length)return toast('Nothing under the playhead to split.');this.snapshot();const parts=list.map(c=>this.splitClip(c,t));this.regroup(parts);this.pick(null);this.after(true);toast(`Split ${list.length} clip${list.length>1?'s':''} on every track`);},
  /** Move the selected clips by whole frames (Alt + arrows); stops at the start and at other clips. */
@@ -404,7 +426,7 @@ const Ed={
  // ---------- transitions: on the clip that comes after the cut ----------
  prevOf(c){return this.p.clips.find(o=>o.track===c.track&&o.id!==c.id&&Math.abs(o.start+o.dur-c.start)<.05);},
  setTrans(c,type,dur){if(!c)return;this.snapshot();if(type==='none')delete c.trans;else c.trans={type,dur:dur??c.trans?.dur??.6};this.after(true);},
- transAll(type,dur){this.snapshot();for(const c of this.p.clips.filter(c=>this.kindOf(c)==='video'))if(this.prevOf(c)){if(type==='none')delete c.trans;else c.trans={type,dur};}this.after(true);},
+ transAll(type,dur,kind='video'){this.snapshot();for(const c of this.p.clips.filter(c=>this.kindOf(c)===kind))if(this.prevOf(c)){if(type==='none')delete c.trans;else c.trans={type,dur};}this.after(true);},
  // ---------- keyframes: per property, at times from the clip's start ----------
  val(c,k,t=this.time){const d={scale:1,opacity:1,volume:1}[k]??0,f=c.kf?.[k];if(!f?.length)return c[k]??d;const lt=edClamp(t-c.start,0,c.dur);
   if(lt<=f[0].t)return f[0].v;const last=f[f.length-1];if(lt>=last.t)return last.v;const i=f.findIndex(x=>x.t>lt),a=f[i-1],b=f[i];return a.v+(b.v-a.v)*edEaseOf(a.e)((lt-a.t)/(b.t-a.t||1));},
@@ -435,7 +457,14 @@ const Ed={
   for(const el of Object.values(this.els))this.route(el);
   edPitchModule(ac).then(ok=>{if(ok&&!this.playing)this.sync();});}catch{this.ac=null;}},
  route(el){if(el._routed||!this.ac)return;try{const s=this.ac.createMediaElementSource(el),fx=edFxChain(this.ac),g=this.ac.createGain(),p=this.ac.createStereoPanner();s.connect(fx.input);fx.output.connect(g);g.connect(p);p.connect(this.master);el._fx=fx;el._gain=g;el._pan=p;el._routed=true;}catch{}},
- fade(c,t){const tt=edClamp(t,c.start,c.start+c.dur);let v=1;const local=tt-c.start;if(c.fadeIn&&local<c.fadeIn)v*=Math.max(0,local/c.fadeIn);if(c.fadeOut&&c.start+c.dur-tt<c.fadeOut)v*=Math.max(0,(c.start+c.dur-tt)/c.fadeOut);return v;},
+ /** The clip after c on its track, touching it (where a transition would be), or undefined. */
+ nextOf(c){return this.p.clips.find(o=>o.track===c.track&&o.id!==c.id&&Math.abs(c.start+c.dur-o.start)<.05);},
+ /** Where a clip's sound plays: an audio clip with a crossfade starts early and ends late (as far as its file allows). */
+ sndSpan(c){let s=c.start,e=c.start+c.dur;if(this.kindOf(c)!=='audio'||c.ramp||(c.speed&&c.speed!==1))return [s,e];const m=this.mediaOf(c);
+  if(c.trans)s=Math.max(c.start-c.trans.dur/2,c.start-(c.in||0));const nx=this.nextOf(c);if(nx?.trans&&m?.dur)e=c.start+c.dur+Math.max(0,Math.min(nx.trans.dur/2,m.dur-(c.in||0)-c.dur));return [s,e];},
+ fade(c,t){const tt=edClamp(t,c.start,c.start+c.dur);let v=1;
+  if(this.kindOf(c)==='audio'){if(c.trans){const d=c.trans.dur,p=(t-(c.start-d/2))/d;if(p<1)v*=Math.sin(Math.PI/2*edClamp(p,0,1));}
+   const nx=this.nextOf(c);if(nx?.trans){const d=nx.trans.dur,p=(t-(c.start+c.dur-d/2))/d;if(p>0)v*=Math.cos(Math.PI/2*edClamp(p,0,1));}}const local=tt-c.start;if(c.fadeIn&&local<c.fadeIn)v*=Math.max(0,local/c.fadeIn);if(c.fadeOut&&c.start+c.dur-tt<c.fadeOut)v*=Math.max(0,(c.start+c.dur-tt)/c.fadeOut);return v;},
  /** A clip's loudness at t: volume (keyframes), fades, loudness match (gainDb) and ducking. Playback and export both use it. */
  vol(c,t){const tr=this.trackOf(c);if(tr?.muted||(c.detached&&!c.asAudio))return 0;if(this._mcA&&tr&&tr.id!==this._mcA)return 0;
   if(this.p.tracks.some(x=>x.solo)&&!tr?.solo)return 0;
@@ -523,6 +552,7 @@ const Ed={
   if(this.p.bgMode==='blur'){const mc=this.p.clips.find(c=>c.track===this.main()?.id&&t>=c.start&&t<c.start+c.dur);const m=mc&&this.mediaOf(mc);
    const src=m&&(m.type==='image'?this.image(m):this.element(mc));if(src&&(m.type!=='video'||src.readyState>=2)){const s=this.src(mc),f=Math.max(W/s.sw,H/s.sh)*1.1;g.save();g.filter=`blur(${40*this.k()}px) brightness(.7)`;g.drawImage(src,s.sx,s.sy,s.sw,s.sh,(W-s.sw*f)/2,(H-s.sh*f)/2,s.sw*f,s.sh*f);g.restore();}}
   this.paint(g,t);
+  if(!this.exporting&&this.sel&&this.clip(this.sel)?.nest?.multi)this.drawAngles();
   if(!this.exporting)for(const s of this.picked()){if(!(t>=s.start&&t<s.start+s.dur)||this.kindOf(s)==='audio')continue;const b=this.box(g,s,W,H,t);
    g.save();g.translate(b.cx,b.cy);g.rotate(this.val(s,'rotate',t)*Math.PI/180);g.strokeStyle='rgba(80,150,255,.95)';g.lineWidth=Math.max(2,W/400);g.setLineDash([W/80,W/120]);g.strokeRect(-b.w/2,-b.h/2,b.w,b.h);
    // one selected: corners to resize, the knob above to rotate

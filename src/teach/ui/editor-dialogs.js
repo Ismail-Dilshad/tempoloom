@@ -104,6 +104,7 @@ function edClipMenu(x,y,c){
   ...(video&&!many?[[c.detached?'Audio is detached':'Detach audio','detach',()=>Ed.detach(c),!!c.detached]]:[]),
   ...(!many&&c.media&&m?.type!=='image'?[['Speed 0.5×','sliders',()=>edSpeed(c,.5)],['Speed 1×','sliders',()=>edSpeed(c,1)],['Speed 2×','sliders',()=>edSpeed(c,2)]]:[]),
   ...(!many&&c.media&&m?.type!=='image'&&!c.ramp?[['Fit to fill (the gap after it)','sliders',()=>Ed.fitFill(c)]]:[]),
+  ...(c.media&&m?.type!=='image'?[['Remove silences…','sound',()=>edSilenceDialog()]]:[]),
   ...(!many&&visual&&c.media?[['Dynamic zoom in','zoomIn',()=>Ed.dynZoom(c,1)],['Dynamic zoom out','zoomOut',()=>Ed.dynZoom(c,-1)]]:[]),
   ...(!many&&video?[['Freeze frame','freeze',()=>{Ed.seek(edClamp(Ed.time,c.start,c.start+c.dur-.04));Ed.freeze();},false,false,'Shift+F']]:[]),
   ...(!many&&video?[['Reverse','undo',()=>Ed.reverseClip(c)],['Stabilise','wand',()=>Ed.runTool(c,'stabilize')],['Auto reframe','crop',()=>Ed.runTool(c,'reframe')]]:[]),
@@ -163,6 +164,19 @@ function edSource(m){let a=0,b=m.dur||0;
  box.querySelector('[data-no]').onclick=()=>closeDialog();
  box.querySelector('[data-ins]').onclick=()=>{closeDialog();Ed.sourceEdit(m.id,a,b,'insert');};box.querySelector('[data-ow]').onclick=()=>{closeDialog();Ed.sourceEdit(m.id,a,b,'overwrite');};}
 function edSpeed(c,v){Ed.snapshot();const m=Ed.mediaOf(c),max=m?.dur?((m.dur-(c.in||0))/(v*(c.ramp?edRampAvg(c.ramp):1))):Infinity;c.dur=Math.max(.1,Math.min(c.dur*(c.speed||1)/v,max));c.speed=v;Ed.after(true);}
+/** Remove silences: how quiet is a pause, how long, and how much air to keep around speech. */
+function edSilenceDialog(){
+ const n=Ed.picked().filter(c=>c.media&&Ed.mediaOf(c)?.type!=='image').length;if(!n)return toast('Select a clip with speech or sound first.');
+ dialog(`<form class="ed-export-form"><h2>Remove silences</h2><p class="ed-xnote">From ${n} selected clip${n>1?'s':''}: the pauses are cut out and the gaps closed on their track.</p>
+  <label class="ed-xrow"><span>Quieter than</span><input type="range" name="thr" min="-60" max="-20" value="-38"><b data-v="thr">-38 dB</b></label>
+  <label class="ed-xrow"><span>For at least</span><input type="range" name="min" min=".2" max="2" step=".1" value=".6"><b data-v="min">0.6 s</b></label>
+  <label class="ed-xrow"><span>Keep around speech</span><input type="range" name="pad" min="0" max=".4" step=".02" value=".12"><b data-v="pad">0.12 s</b></label>
+  <p class="ed-xnote">A higher level (closer to −20 dB) cuts more, including soft words; lower keeps more. Undo puts everything back.</p>
+  <div class="ed-xactions"><button type="button" class="btn" data-no>Cancel</button><button type="submit" class="btn primary">Remove silences</button></div></form>`);
+ const f=$('#modal form');f.querySelectorAll('input[type=range]').forEach(r=>r.oninput=()=>{f.querySelector(`[data-v="${r.name}"]`).textContent=r.name==='thr'?`${r.value} dB`:`${Number(r.value).toFixed(r.name==='pad'?2:1)} s`;});
+ f.querySelector('[data-no]').onclick=()=>closeDialog();
+ f.onsubmit=async e=>{e.preventDefault();const v=k=>Number(f.elements[k].value);closeDialog();toast('Listening for pauses…');await Ed.removeSilences({thr:v('thr'),min:v('min'),pad:v('pad')});};
+}
 // ---------- the shortcuts sheet ----------
 function edKeys(){
  const rows=[['Space','Play or pause'],['Ctrl+Shift+Space','Play from in to out'],['Shift+L','Loop on or off'],['Ctrl+B or S','Split at the playhead'],['Ctrl+Shift+B or Shift+S','Split every track at the playhead'],['A / Shift+A','Select every clip after / before the playhead'],['Alt + ← / →','Move the selection one frame (Shift: five)'],['Ctrl+Alt + ← / →','Swap the clip with the one before / after'],['Delete','Delete the selection'],['Alt + drag an edge','Ripple trim: what follows moves too'],['Ctrl + drag an edge','Roll: move the cut between two clips'],['Alt + drag a clip','Slip: another part of the file, same place'],['Ctrl + Alt + drag a clip','Slide: move it between its neighbours'],['Ctrl+Alt+V','Paste attributes: the copied clip\'s look onto the selection'],['Ctrl+G / Ctrl+Shift+G','Group / ungroup'],['Alt+N','Nest the selection into one clip / break a nested clip apart'],['Double-click a nested clip','Open it to edit inside (Esc: back)'],['1 – 9','Multicam: switch to that angle (also while playing)'],['Alt + click','One clip of a group'],['Shift+E','Save the frame as a picture'],['Shift+Delete','Ripple delete: close the space'],['Q / W','Delete left / right of the playhead'],['J / K / L','Play back, stop, play forward (again: faster)'],['I / O','Mark in / out'],['Shift+I / Shift+O','Go to in / out'],['Alt+X','Clear in and out'],['Shift+F','Freeze frame'],['Ctrl+Z / Ctrl+Shift+Z','Undo / redo'],['Ctrl+C / X / V','Copy, cut, paste at the playhead'],['Ctrl+D','Duplicate'],['Ctrl+A','Select every clip'],

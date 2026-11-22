@@ -54,7 +54,7 @@ Object.assign(Ed,{
   // off: what to add to a clip's times to get timeline times; [lo, hi]: where it can be heard; mul: the nested clips' own volume.
   const parts=[];
   const gather=(off,lo,hi,mul,depth)=>{for(const c of this.p.clips){
-   const s=Math.max(off+c.start,lo),e=Math.min(off+c.start+c.dur,hi);if(c.text!==undefined||c.sticker||!(c.dur>0)||e-s<.001)continue;
+   const [cs,ce]=c.nest||c.text!==undefined||c.sticker?[c.start,c.start+c.dur]:this.sndSpan(c),s=Math.max(off+cs,lo),e=Math.min(off+ce,hi);if(c.text!==undefined||c.sticker||!(c.dur>0)||e-s<.001)continue;
    if(c.nest){if(depth>4||this.trackOf(c)?.muted||(this._mcA&&this.trackOf(c)?.id!==this._mcA))continue;const P=this.p,A=this._mcA,o0=off,vol=T=>{const k=this.p,ka=this._mcA;this.p=P;this._mcA=A;try{return this.vol(c,T-o0);}finally{this.p=k;this._mcA=ka;}};
     this.withNest(c,()=>gather(off+c.start-(c.in||0),s,e,T=>mul(T)*vol(T),depth+1));continue;}
    const m=this.mediaOf(c);if(!m||m.type==='image')continue;if(this.trackOf(c)?.muted||(c.detached&&!c.asAudio)||(this._mcA&&this.trackOf(c)?.id!==this._mcA))continue;
@@ -70,7 +70,7 @@ Object.assign(Ed,{
    // [s, e] is the part of the clip inside the export, in timeline time; `skip` is how far into the clip it starts.
    const len=e-s;
    g.gain.setValueCurveAtTime(curve,s-t0,len);
-   const pan=oc.createStereoPanner(),fx=edFxChain(oc);fx.set(c.afx);pan.pan.value=pv;n.connect(fx.input);fx.output.connect(g).connect(pan).connect(oc.destination);n.start(s-t0,stretch?skip:(c.in||0)+skip,len);
+   const pan=oc.createStereoPanner(),fx=edFxChain(oc);fx.set(c.afx);pan.pan.value=pv;n.connect(fx.input);fx.output.connect(g).connect(pan).connect(oc.destination);n.start(s-t0,stretch?Math.max(0,skip):Math.max(0,(c.in||0)+skip),len);
   }
   if(silent.size)toast('No sound was found in '+[...silent].join(', ')+'. If it has sound, this browser could not read it.');
   return oc.startRendering();

@@ -84,6 +84,16 @@ describe('multicam',()=>{
  });
 });
 
+describe('remove silences',()=>{
+ it('finds the long quiet parts, keeps a little air around speech, and skips short breaths',()=>{
+  const env=Float32Array.from({length:500},(_,i)=>i>=100&&i<220||i>=300&&i<330?.001:.3),gaps=f<(e:Float32Array,r:number,t:number,m:number,p:number)=>number[][]>('edSilences')(env,100,-38,.6,.1);
+  expect(gaps.length).toBe(1);expect(gaps[0]![0]).toBeCloseTo(1.1,5);expect(gaps[0]![1]).toBeCloseTo(2.1,5);
+  // quiet at the very start and the very end: no air is kept at the clip's edges
+  const edge=f<(e:Float32Array,r:number,t:number,m:number,p:number)=>number[][]>('edSilences')(Float32Array.from({length:300},(_,i)=>i<100||i>=200?0:.3),100,-38,.6,.1);
+  expect(edge).toEqual([[0,0.9],[2.1,3]]);
+ });
+});
+
 describe('captions and words',()=>{
  it('splits words in every script, and knows direction',()=>{
   const words=f<(t:string,l?:string)=>string[]>('edWords');

@@ -36,6 +36,14 @@
   their sound lines them up (to 10 ms). Press 1–9 to cut between angles, also live while it plays;
   choose which angle's sound is heard; double-click to nudge an angle; Break apart flattens it into
   the cut (the chosen pictures, and one sound clip).
+- **Audio crossfades**: click the cut between two clips on an audio track and choose Crossfade (or
+  use it on every cut). The two sounds overlap over the crossfade's length (as far as their files
+  allow) with constant power, in the player and the export.
+- **Multicam angle viewer**: a selected multicam clip shows every angle live in its Basic tab; the one
+  on screen is outlined, and clicking one cuts to it.
+- **Remove silences** (right-click a clip with sound): cuts out pauses quieter than a level you set,
+  longer than a length you set, keeping a little air around speech, and closes the gaps on its track.
+  Measured from the sound itself, on this computer; Undo puts everything back.
 - Fixed: trimming, rolling or slipping a nested clip moved its contents; deleting or breaking apart
   a nested clip while playing left its sound playing; two editor scripts could define the same
   name and silently replace each other (now a test stops that).

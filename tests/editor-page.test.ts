@@ -28,8 +28,11 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('the Editor: import, edit, grade,
   // a second file with uneven sound, for lining up multicam angles
   const noise=path.join(tmp,'noise.mp4');
   await run(ffmpeg,['-v','error','-f','lavfi','-i','testsrc2=size=320x240:rate=30:duration=3','-f','lavfi','-i','anoisesrc=d=3:c=pink:r=48000:a=0.5:seed=7','-af',"volume='0.15+0.85*abs(sin(t*2.3)*sin(t*5.1))':eval=frame",'-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac','-shortest',noise]);
-  await page.locator('.editor > input[type=file]').setInputFiles([clip,noise]);
-  await page.waitForFunction(()=>Ed.media.some((m:any)=>m.name==='clip.mp4'&&m.dur>1.9)&&Ed.media.some((m:any)=>m.name==='noise.mp4'&&m.dur>2.9));
+  // and a sound with a pause in the middle (a tone, one second of silence, a tone), for removing silences
+  const talk=path.join(tmp,'talk.wav');
+  await run(ffmpeg,['-v','error','-f','lavfi','-i','sine=frequency=330:duration=3:sample_rate=48000','-af',"volume='if(between(t,1,2),0,0.5)':eval=frame",talk]);
+  await page.locator('.editor > input[type=file]').setInputFiles([clip,noise,talk]);
+  await page.waitForFunction(()=>['clip.mp4','noise.mp4','talk.wav'].every(n=>Ed.media.some((m:any)=>m.name===n&&m.dur>1.9)));
 
   const r=await page.evaluate(async()=>{
    const out:any={},m=Ed.media.find((x:any)=>x.name==='clip.mp4'),c=Ed.add(m.id),main=()=>Ed.p.clips.filter((x:any)=>x.track===Ed.main().id).length;
@@ -91,8 +94,23 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('the Editor: import, edit, grade,
     const en=(b:any)=>{const d=b.getChannelData(0);let x=0;for(let i=0;i<d.length;i++)x+=d[i]*d[i];return x;};
     out.mcEnergy=en(await Ed.mixAudio(mcc.start+1,1));Ed.p.clips=Ed.p.clips.filter((x:any)=>x.id!==mcc.id);const solo={...A,id:'mcS',start:mcc.start,in:0};Ed.p.clips.push(solo);out.soloEnergy=en(await Ed.mixAudio(mcc.start+1,1));
     Ed.p.clips=Ed.p.clips.filter((x:any)=>x.id!=='mcS');Ed.p.clips.push(mcc);Ed.after(true);
+    // the angle viewer: a live picture of every angle, the one showing outlined
+    Ed.select(mcc.id);Ed.ptab='basic';Ed.drawProps();Ed.seek(mcc.start+1.5);await Ed.seekExact(mcc.start+1.5);Ed.draw();
+    out.angles=[...document.querySelectorAll('.ed-angles canvas')].map((cv:any)=>{const d=cv.getContext('2d').getImageData(0,0,cv.width,cv.height).data;let lit=0;for(let i=0;i<d.length;i+=4)lit+=d[i]+d[i+1]+d[i+2];return lit>0;});
+    out.angleOn=[...document.querySelectorAll('.ed-angle')].map((b:any)=>b.classList.contains('on'));
     Ed.unnest(mcc);const flat=Ed.p.clips.filter((x:any)=>x.media===nz.id);out.flatMc=[flat.filter((x:any)=>x.detached).length,flat.filter((x:any)=>x.asAudio).length];
     Ed.p.clips=Ed.p.clips.filter((x:any)=>x.media!==nz.id);Ed.p.tracks=Ed.p.tracks.filter((t:any)=>t.main||Ed.p.clips.some((c:any)=>c.track===t.id)||t.kind!=='video');Ed.after(true);}
+   // audio crossfade at a cut; remove silences (the pause goes, what follows closes up)
+   {const tk=Ed.p.tracks.find((t:any)=>t.kind==='audio')||Ed.addTrack('audio'),tw=Ed.media.find((x:any)=>x.name==='talk.wav');
+    const A={id:'xa',media:m.id,asAudio:true,track:tk.id,start:10,in:0,dur:1},B={id:'xb',media:m.id,asAudio:true,track:tk.id,start:11,in:.5,dur:1,trans:{type:'crossfade',dur:.4}};
+    Ed.p.clips.push(A,B);Ed.after(true);out.spans=[Ed.sndSpan(Ed.clip('xa')),Ed.sndSpan(Ed.clip('xb'))].map((x:any)=>x.map((v:number)=>Math.round(v*100)/100));
+    const rms=(b:any,a:number,z:number)=>{const d=b.getChannelData(0);let x=0;for(let i=Math.round(a*48000);i<Math.round(z*48000);i++)x+=d[i]*d[i];return Math.sqrt(x/((z-a)*48000));};
+    const mx=await Ed.mixAudio(10,2);out.xfade=rms(mx,.9,1.1)/rms(mx,.3,.6);
+    Ed.p.clips=Ed.p.clips.filter((x:any)=>!['xa','xb'].includes(x.id));
+    const T1={id:'s1',media:tw.id,track:tk.id,start:20,in:0,dur:3},T2={id:'s2',media:tw.id,track:tk.id,start:24,in:0,dur:1};Ed.p.clips.push(T1,T2);Ed.after(true);
+    Ed.sels=new Set(['s1']);Ed.sel='s1';out.removed=await Ed.removeSilences({thr:-38,min:.6,pad:.1});
+    const parts=Ed.p.clips.filter((x:any)=>x.media===tw.id&&x.id!=='s2').sort((a:any,b:any)=>a.start-b.start);out.silence={parts:parts.length,dur:Math.round(parts.reduce((s:number,x:any)=>s+x.dur,0)*100)/100,next:Math.round(Ed.clip('s2').start*100)/100,joined:Math.round((parts[1].start-(parts[0].start+parts[0].dur))*1000)};
+    Ed.p.clips=Ed.p.clips.filter((x:any)=>x.media!==tw.id);Ed.after(true);}
    Ed.seek(.5);Ed.setRange('in');Ed.seek(1);Ed.setRange('out');Ed.playRange();out.span=Ed.span&&[Ed.span.s,Ed.span.e];out.playingRange=Ed.playing;Ed.pause();Ed.clearRange();Ed.select(null);
    // export an exact MP4 (the file is handed back here instead of downloaded)
    let file:Blob|null=null;(window as any).edSaveFile=(bl:Blob)=>{file=bl;};
@@ -118,6 +136,9 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('the Editor: import, edit, grade,
   expect(r.inside).toEqual([1,1,true]);expect(r.savedInside).toBe(.5);expect(r.outside).toEqual([0,true]);expect(r.undoneInside??1).toBe(1);expect(r.afterNestUndo).toBe(1);
   expect(r.mc).toEqual({angles:2,offset:.8,start:3});expect(r.cuts).toEqual([[0,0],[1,1],[2,0]]);expect(r.mcEnergy/r.soloEnergy).toBeGreaterThan(.95);expect(r.mcEnergy/r.soloEnergy).toBeLessThan(1.05);
   expect(r.flatMc).toEqual([3,1]);
+  expect(r.angles).toEqual([true,true]);expect(r.angleOn).toEqual([false,true]);
+  expect(r.spans).toEqual([[10,11.2],[10.8,12]]);expect(r.xfade).toBeGreaterThan(.5);expect(r.xfade).toBeLessThan(1.6);
+  expect(r.removed).toBe(1);expect(r.silence.parts).toBe(2);expect(r.silence.joined).toBe(0);expect(Math.abs(r.silence.dur-2.2)).toBeLessThan(.04);expect(Math.abs(r.silence.next-23.2)).toBeLessThan(.04);
   expect(r.span).toEqual([.5,1]);expect(r.playingRange).toBe(true);
   expect(r.reopened).toBe(r.original);
   expect(r.mp4,JSON.stringify(r.toasts)).toBeTruthy();const out=path.join(tmp,'out.mp4');fs.writeFileSync(out,Buffer.from(r.mp4,'base64'));
