@@ -25,6 +25,11 @@
   chips over the media, and a search box finds files by name.
 - **Fit to fill**: a clip's speed changes so it ends exactly where the next clip starts (right-click).
 - **Dynamic zoom** in or out across a clip in one click (right-click): two scale keyframes.
+- **Nested clips** (compound clips, as in Resolve and Premiere): select clips and press Alt+N (or
+  right-click, Nest into one clip). They become one clip with their own tracks inside; move, trim,
+  split, grade, mask or add effects to it and the whole group follows, picture and sound alike, in
+  the player and the export. Alt+N again (or Break apart) puts the clips back where they play.
+  Nested clips travel inside project files. Auto captions and scrubbing do not reach inside yet.
 
 - **Automatic tests for the Editor.** `tests/editor-logic.test.ts` loads the page's scripts in a
   sandbox and checks the pure parts: grading curves, `.cube` looks and the grade table, speed

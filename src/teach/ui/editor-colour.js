@@ -28,8 +28,12 @@ Object.assign(Ed,{
  },
  /** Every video that can be on screen at t (or held for a transition) shows exactly its frame for t. Same targets as sync(). */
  async seekExact(t){
-  const waits=[];
+  const waits=[];this.seekWaits(t,waits);
+  await Promise.all(waits);
+ },
+ seekWaits(t,waits){
   for(const c of this.p.clips){
+   if(c.nest){if(t>=c.start-1.5&&t<c.start+c.dur+1.5)this.withNest(c,()=>this.seekWaits(edClamp(t,c.start,c.start+c.dur-1e-3)-c.start+(c.in||0),waits));continue;}
    if(c.text!==undefined||c.sticker||c.asAudio)continue;const m=this.mediaOf(c);if(!m||m.type!=='video')continue;
    let want;
    if(t>=c.start&&t<c.start+c.dur)want=this.srcAt(c,t);
@@ -40,26 +44,33 @@ Object.assign(Ed,{
    if(Math.abs(el.currentTime-want)<.0005&&el.readyState>=2)continue;
    waits.push(edSeek(el,want,m.name).then(()=>edReady(el,m.name)));
   }
-  await Promise.all(waits);
  },
  /** The sound of the whole video, mixed offline: the same clips, volumes, keyframes and fades as playback.
   *  Faster or slower clips keep their pitch, as in the player (edStretch). */
  async mixAudio(t0,dur){
   const sr=48000,oc=new OfflineAudioContext(2,Math.max(1,Math.round(dur*sr)),sr),bufs=new Map(),silent=new Set();
-  if(this.p.clips.some(c=>c.afx?.pitch||ED_VOICES.find(v=>v[0]===c.afx?.voice)?.[2]?.pitch))await edPitchModule(oc);
-  for(const c of this.p.clips){
-   const s=Math.max(c.start,t0),e=Math.min(c.start+c.dur,t0+dur);
-   if(c.text!==undefined||c.sticker||!(c.dur>0)||e-s<.001)continue;const m=this.mediaOf(c);if(!m||m.type==='image')continue;
-   if(this.trackOf(c)?.muted||(c.detached&&!c.asAudio))continue;
+  if(edAll(this.p.clips).some(c=>c.afx?.pitch||ED_VOICES.find(v=>v[0]===c.afx?.voice)?.[2]?.pitch))await edPitchModule(oc);
+  // First, every clip that sounds (nested ones too) with its loudness over time, worked out now (nothing waits while inside a nested clip).
+  // off: what to add to a clip's times to get timeline times; [lo, hi]: where it can be heard; mul: the nested clips' own volume.
+  const parts=[];
+  const gather=(off,lo,hi,mul,depth)=>{for(const c of this.p.clips){
+   const s=Math.max(off+c.start,lo),e=Math.min(off+c.start+c.dur,hi);if(c.text!==undefined||c.sticker||!(c.dur>0)||e-s<.001)continue;
+   if(c.nest){if(depth>4||this.trackOf(c)?.muted)continue;const P=this.p,o0=off,vol=T=>{const k=this.p;this.p=P;try{return this.vol(c,T-o0);}finally{this.p=k;}};
+    this.withNest(c,()=>gather(off+c.start-(c.in||0),s,e,T=>mul(T)*vol(T),depth+1));continue;}
+   const m=this.mediaOf(c);if(!m||m.type==='image')continue;if(this.trackOf(c)?.muted||(c.detached&&!c.asAudio))continue;
+   const len=e-s,steps=Math.max(2,Math.ceil(len*120)),curve=new Float32Array(steps);
+   for(let i=0;i<steps;i++){const T=s+Math.min(len*i/(steps-1),len-1e-4);curve[i]=this.vol(c,T-off)*mul(T);}
+   parts.push({c,m,s,e,skip:s-(off+c.start),curve,pan:edClamp(this.trackOf(c)?.pan||0,-1,1)});}};
+  gather(0,t0,t0+dur,()=>1,0);
+  for(const {c,m,s,e,skip,curve,pan:pv} of parts){
    if(!bufs.has(m.id)){const b=await this.get(m.id).catch(()=>null);let buf=null;if(b){try{buf=await oc.decodeAudioData(await b.arrayBuffer());}catch{buf=null;}}bufs.set(m.id,buf);}
    const buf=bufs.get(m.id);if(!buf){silent.add(m.name);continue;} // a video without sound, or a file the browser cannot decode
    const sp=c.speed||1,stretch=!!c.ramp||Math.abs(sp-1)>.001,n=oc.createBufferSource(),g=oc.createGain();
    n.buffer=stretch?edStretch(oc,buf,c.in||0,c.dur,x=>this.srcAt(c,c.start+x)-(c.in||0)):buf;
    // [s, e] is the part of the clip inside the export, in timeline time; `skip` is how far into the clip it starts.
-   const len=e-s,skip=s-c.start,steps=Math.max(2,Math.ceil(len*120)),curve=new Float32Array(steps);
-   for(let i=0;i<steps;i++)curve[i]=this.vol(c,s+Math.min(len*i/(steps-1),len-1e-4));
+   const len=e-s;
    g.gain.setValueCurveAtTime(curve,s-t0,len);
-   const pan=oc.createStereoPanner(),fx=edFxChain(oc);fx.set(c.afx);pan.pan.value=edClamp(this.trackOf(c)?.pan||0,-1,1);n.connect(fx.input);fx.output.connect(g).connect(pan).connect(oc.destination);n.start(s-t0,stretch?skip:(c.in||0)+skip,len);
+   const pan=oc.createStereoPanner(),fx=edFxChain(oc);fx.set(c.afx);pan.pan.value=pv;n.connect(fx.input);fx.output.connect(g).connect(pan).connect(oc.destination);n.start(s-t0,stretch?skip:(c.in||0)+skip,len);
   }
   if(silent.size)toast('No sound was found in '+[...silent].join(', ')+'. If it has sound, this browser could not read it.');
   return oc.startRendering();

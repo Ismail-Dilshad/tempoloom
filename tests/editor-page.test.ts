@@ -66,6 +66,14 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('the Editor: import, edit, grade,
     // media folders and search
     Ed.tab='media';m.folder='Interviews';Ed.drawLib();out.folders=[...document.querySelectorAll('.ed-folders [data-folder]')].map((b:any)=>b.textContent);
     const ms:any=document.querySelector('[data-msearch]');ms.value='zzz';ms.dispatchEvent(new Event('input'));out.hidden=(document.querySelector('.ed-media') as any).hidden;ms.value='';ms.dispatchEvent(new Event('input'));delete m.folder;Ed.drawLib();}
+   // nested clips: the same picture and sound as before; a grade on the nested clip covers what is inside; break apart
+   {const g3=Ed.dom.canvas.getContext('2d'),[W3,H3]=Ed.size(),px3=()=>[...g3.getImageData(W3>>1,H3>>1,1,1).data].slice(0,3),en=(b:any)=>{const d=b.getChannelData(0);let x=0;for(let i=0;i<d.length;i++)x+=d[i]*d[i];return x;};
+    Ed.seek(.5);await Ed.seekExact(.5);Ed.select(null);out.pxBefore=px3();out.enBefore=en(await Ed.mixAudio(0,1));
+    const mc4=Ed.p.clips.find((x:any)=>x.media===m.id);Ed.select(mc4.id);const nc=Ed.nest();out.nested=!!nc?.nest&&!Ed.p.clips.some((x:any)=>x.media===m.id);
+    Ed.select(null);Ed.seek(.5);await Ed.seekExact(.5);Ed.draw();out.pxNested=px3();out.enNested=en(await Ed.mixAudio(0,1));
+    nc.grade={curves:{m:[[0,.5],[1,.5]]}};Ed.draw();out.pxGraded=px3();delete nc.grade;
+    Ed.unnest(Ed.clip(nc.id));out.back=Ed.p.clips.filter((x:any)=>x.media===m.id).length;out.noNest=!Ed.p.clips.some((x:any)=>x.nest);
+    Ed.undo();Ed.undo();out.restored=Ed.p.clips.filter((x:any)=>x.media===m.id).length;}
    Ed.seek(.5);Ed.setRange('in');Ed.seek(1);Ed.setRange('out');Ed.playRange();out.span=Ed.span&&[Ed.span.s,Ed.span.e];out.playingRange=Ed.playing;Ed.pause();Ed.clearRange();Ed.select(null);
    // export an exact MP4 (the file is handed back here instead of downloaded)
    let file:Blob|null=null;(window as any).edSaveFile=(bl:Blob)=>{file=bl;};
@@ -86,6 +94,8 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('the Editor: import, edit, grade,
   expect(r.fastEase).toBeLessThan(.3);expect(r.linEase).toBeCloseTo(.8,2);
   expect(r.zc0).toBeGreaterThan(400);expect(r.zc12/r.zc0).toBeGreaterThan(1.8);expect(r.zc12/r.zc0).toBeLessThan(2.2);expect(r.robot).toBeGreaterThan(0);
   expect(r.fit).toEqual([.5,2]);expect(r.zoom).toEqual([1,1.2]);expect(r.folders).toEqual(['All','Interviews']);expect(r.hidden).toBe(true);
+  expect(r.nested).toBe(true);expect(r.pxNested).toEqual(r.pxBefore);expect(r.enNested/r.enBefore).toBeGreaterThan(.98);expect(r.enNested/r.enBefore).toBeLessThan(1.02);
+  expect(r.pxGraded).toEqual([128,128,128]);expect(r.back).toBe(1);expect(r.noNest).toBe(true);expect(r.restored).toBe(1);
   expect(r.span).toEqual([.5,1]);expect(r.playingRange).toBe(true);
   expect(r.reopened).toBe(r.original);
   expect(r.mp4,JSON.stringify(r.toasts)).toBeTruthy();const out=path.join(tmp,'out.mp4');fs.writeFileSync(out,Buffer.from(r.mp4,'base64'));

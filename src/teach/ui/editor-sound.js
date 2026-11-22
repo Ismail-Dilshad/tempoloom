@@ -29,9 +29,10 @@ Object.assign(Ed,{
   if(done.length){this.snapshot();for(const [c,g] of done)c.gainDb=Math.round(g*10)/10;this.after(true);}
   toast(done.length?`Loudness matched to ${target} LUFS${done.length>1?` on ${done.length} clips`:''}${none.length?`; no sound in ${none.join(', ')}`:''}`:'No sound was found to measure.');
  },
- sync(){
-  const t=this.time;
+ sync(t=this.time){
   for(const c of this.p.clips){
+   if(c.nest){if((this._depth||0)>4)continue;const on=t>=c.start&&t<c.start+c.dur,vm=on?this.vol(c,t):0,K=this._vm;this._vm=(K??1)*vm;this._depth=(this._depth||0)+1;
+    try{this.withNest(c,()=>this.sync(on?t-c.start+(c.in||0):-100));}finally{this._vm=K;this._depth--;}continue;}
    if(c.text!==undefined||c.sticker)continue;const m=this.mediaOf(c);if(!m||m.type==='image')continue;
    const el=this.element(c);if(!el)continue;
    const on=t>=c.start&&t<c.start+c.dur,want=this.srcAt(c,t);

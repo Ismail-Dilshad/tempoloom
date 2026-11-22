@@ -26,6 +26,8 @@ const ED_SHAPES=[['rect','Square'],['round','Rounded'],['circle','Circle'],['tri
 const ED_EMOJI=['😀','😂','😍','🔥','👍','🎉','⭐','❤️','✅','❌','👉','💡','🚀','💯','👀','🎵'];
 const ED_TRACKS0=()=>[{id:'text',kind:'text'},{id:'video',kind:'video',main:true},{id:'audio',kind:'audio'}];
 const edClamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+/** Every clip of a list, the clips inside nested clips too (for media in use, project files, proxies). */
+const edAll=cl=>(cl||[]).flatMap(c=>c.nest?[c,...edAll(c.nest.clips)]:[c]);
 const edEase=u=>u<.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2;
 /** How a keyframe moves to the next one. Smooth is the default (and what older projects had). */
 const ED_EASES=[['smooth','Smooth'],['linear','Linear'],['in','Ease in'],['out','Ease out'],['hold','Hold']];
@@ -143,7 +145,9 @@ const Ed={
   if(!Array.isArray(p.tracks)||!p.tracks.length)p.tracks=ED_TRACKS0();
   if(!p.tracks.some(t=>t.main&&t.kind==='video'))(p.tracks.find(t=>t.kind==='video')||p.tracks[p.tracks.push({id:'video',kind:'video'})-1]).main=true;
   const ids=new Set(this.media.map(m=>m.id));
-  p.clips=(p.clips||[]).filter(c=>c.text!==undefined||c.sticker||c.adjustment||ids.has(c.media));
+  const keep=c=>c.text!==undefined||c.sticker||c.adjustment||(c.nest&&Array.isArray(c.nest.clips))||ids.has(c.media);
+  const fix=cl=>(cl||[]).filter(keep).map(c=>{if(c.nest){c.nest.clips=fix(c.nest.clips);if(!Array.isArray(c.nest.tracks))c.nest.tracks=ED_TRACKS0();}return c;});
+  p.clips=fix(p.clips);
   for(const c of p.clips)if(!p.tracks.some(t=>t.id===c.track)){const kind=c.text!==undefined?'text':c.sticker?'sticker':this.media.find(m=>m.id===c.media)?.type==='audio'||c.asAudio?'audio':'video';c.track=(p.tracks.find(t=>t.kind===kind)||this.addTrackTo(p,kind)).id;}
   if(p.magnet===undefined)p.magnet=true;p.markers=(p.markers||[]).map(m=>typeof m==='number'?{t:m}:m);p.bgMode=p.bgMode||'color';p.v=3;return p;
  },
@@ -214,9 +218,10 @@ const Ed={
  },
  async removeMedia(id){
   const m=this.media.find(x=>x.id===id);if(!m)return;
-  const used=this.p.clips.filter(c=>c.media===id).length;
+  const used=edAll(this.p.clips).filter(c=>c.media===id).length;
   if(!await ask('Remove this file?',used?`It is also taken off the timeline (${used} clip${used>1?'s':''}).`:'It leaves this editor. The file on your computer stays.','Remove',true,{file:{name:m.name}}))return;
-  if(used){this.snapshot();this.p.clips=this.p.clips.filter(c=>c.media!==id);}
+  const drop=cl=>cl.filter(c=>c.media!==id).map(c=>{if(c.nest)c.nest.clips=drop(c.nest.clips);return c;});
+  if(used){this.snapshot();this.p.clips=drop(this.p.clips);}
   this.media=this.media.filter(x=>x.id!==id);this.del(id).catch(()=>{});
   for(const k of Object.keys(this.els))if(!this.clip(k)){this.els[k].pause?.();delete this.els[k];}
   this.drawLib();this.after(true);
@@ -276,7 +281,7 @@ const Ed={
   if(pts){c.ramp=pts.map(([p,v])=>[p,edClamp(v,.1,10)]);c.dur=Math.max(.1,S/(sp*edRampAvg(c.ramp)));}else{delete c.ramp;c.dur=Math.max(.1,S/sp);}
   c.fadeIn=Math.min(c.fadeIn||0,c.dur/2);c.fadeOut=Math.min(c.fadeOut||0,c.dur/2);if(!quiet)this.after(true);},
  /** Cuts one clip in two at time t (no undo step); returns the second part. */
- splitClip(c,t){const first=t-c.start,b={...c,id:this.uid(),start:t,in:this.srcAt(c,t),dur:c.dur-first};delete b.trans;
+ splitClip(c,t){const first=t-c.start,b={...c,id:this.uid(),start:t,in:this.srcAt(c,t),dur:c.dur-first};delete b.trans;if(c.nest)b.nest=this.renest(c.nest);
   if(c.ramp){const [r1,r2]=edRampSplit(c.ramp,first/c.dur);c.ramp=r1;b.ramp=r2;}
   if(c.kf){b.kf={};c.kf=Object.fromEntries(Object.entries(c.kf).map(([k,f])=>{b.kf[k]=f.filter(x=>x.t>=first).map(x=>({...x,t:x.t-first}));return [k,f.filter(x=>x.t<=first)];}));}
   c.dur=first;c.fadeOut=0;b.fadeIn=0;this.p.clips.push(b);return b;},
@@ -382,7 +387,7 @@ const Ed={
   const list=this.picked().filter(c=>!this.trackOf(c)?.locked);if(!list.length)return;this.snapshot();const gone=new Set(list.map(c=>c.id));
   this.p.clips=this.p.clips.filter(x=>!gone.has(x.id));for(const id of gone){this.els[id]?.pause?.();delete this.els[id];}this.pick(null);this.after(true);},
  duplicate(){const list=this.picked();if(!list.length)return;this.snapshot();this.sels.clear();
-  const made=[];for(const c of list){const start=c.start+c.dur,d={...JSON.parse(JSON.stringify(c)),id:this.uid(),start};d.track=this.place(this.kindOf(c),start,c.dur,c.track);this.p.clips.push(d);made.push(d);this.sels.add(d.id);this.sel=d.id;}this.regroup(made);this.after(true);},
+  const made=[];for(const c of list){const start=c.start+c.dur,d={...JSON.parse(JSON.stringify(c)),id:this.uid(),start};if(d.nest)d.nest=this.renest(d.nest);d.track=this.place(this.kindOf(c),start,c.dur,c.track);this.p.clips.push(d);made.push(d);this.sels.add(d.id);this.sel=d.id;}this.regroup(made);this.after(true);},
  copy(cut){const list=this.picked();if(!list.length)return;this.clipboard=JSON.parse(JSON.stringify(list.map(c=>({...c,kind:this.kindOf(c)}))));toast(cut?`Cut ${list.length}`:`Copied ${list.length}`);if(cut)this.remove();},
  // ---------- transitions: on the clip that comes after the cut ----------
  prevOf(c){return this.p.clips.find(o=>o.track===c.track&&o.id!==c.id&&Math.abs(o.start+o.dur-c.start)<.05);},
@@ -403,11 +408,11 @@ const Ed={
  setVal(c,k,v){const f=c.kf?.[k];if(f?.length){const lt=edClamp(this.time-c.start,0,c.dur),i=this.kfAt(c,k);if(i>=0)f[i].v=v;else{f.push({t:lt,v});f.sort((a,b)=>a.t-b.t);}}else c[k]=v;},
  // ---------- playback ----------
  element(c){
-  let el=this.els[c.id];const m=this.mediaOf(c);
+  const key=(this._nk||'')+c.id;let el=this.els[key];const m=this.mediaOf(c);
   if(!el&&m&&m.type!=='image'){
    el=document.createElement(c.asAudio?'audio':m.type);el.src=m.type==='video'&&!c.asAudio?this.proxySrc(m):this.urls[m.id];el.preload='auto';el.playsInline=true;el.crossOrigin='anonymous';
    el.addEventListener('seeked',()=>{if(!this.playing)this.draw();});el.addEventListener('loadeddata',()=>{if(!this.playing)this.draw();});
-   this.els[c.id]=el;if(this.ac)this.route(el);
+   this.els[key]=el;if(this.ac)this.route(el);
   }
   return el;
  },
@@ -422,14 +427,14 @@ const Ed={
  /** A clip's loudness at t: volume (keyframes), fades, loudness match (gainDb) and ducking. Playback and export both use it. */
  vol(c,t){const tr=this.trackOf(c);if(tr?.muted||(c.detached&&!c.asAudio))return 0;
   if(this.p.tracks.some(x=>x.solo)&&!tr?.solo)return 0;
-  return edClamp(this.val(c,'volume',t)*this.fade(c,t)*edDb(c.gainDb||0)*(tr?.vol??1)*(c.duck?this.duckAt(t,c):1),0,8);},
+  return edClamp(this.val(c,'volume',t)*this.fade(c,t)*edDb(c.gainDb||0)*(tr?.vol??1)*(c.duck?this.duckAt(t,c):1)*(this._vm??1),0,8);},
  // ---------- drawing the frame ----------
  base(){return ED_RATIOS[this.p.ratio];},
  size(){const b=this.base(),k=this.exporting?.scale||1;return [Math.round(b[0]*k/2)*2,Math.round(b[1]*k/2)*2];},
  k(){return this.size()[0]/this.base()[0];},
- src(c){if(c.adjustment){const [W,H]=this.size();return {sx:0,sy:0,sw:W,sh:H};}const m=this.mediaOf(c),w=m?.w||1,h=m?.h||1,cr=c.crop||{},l=cr.l||0,t=cr.t||0,r=cr.r||0,b=cr.b||0;return {sx:l*w,sy:t*h,sw:Math.max(1,w*(1-l-r)),sh:Math.max(1,h*(1-t-b))};},
+ src(c){if(c.adjustment||c.nest){const [W,H]=this.size();return {sx:0,sy:0,sw:W,sh:H};}const m=this.mediaOf(c),w=m?.w||1,h=m?.h||1,cr=c.crop||{},l=cr.l||0,t=cr.t||0,r=cr.r||0,b=cr.b||0;return {sx:l*w,sy:t*h,sw:Math.max(1,w*(1-l-r)),sh:Math.max(1,h*(1-t-b))};},
  rect(c,W,H,t=this.time){
-  if(c.sticker){const s=220*this.k()*this.val(c,'scale',t),line=c.sticker.type==='shape'&&c.sticker.shape==='line';return {w:line?s*1.4:s,h:line?s*.2:s,cx:W/2+this.val(c,'x',t)*W,cy:H/2+this.val(c,'y',t)*H};}
+  if(c.sticker&&!c.nest){const s=220*this.k()*this.val(c,'scale',t),line=c.sticker.type==='shape'&&c.sticker.shape==='line';return {w:line?s*1.4:s,h:line?s*.2:s,cx:W/2+this.val(c,'x',t)*W,cy:H/2+this.val(c,'y',t)*H};}
   const s=this.src(c),fit=Math.min(W/s.sw,H/s.sh)*this.val(c,'scale',t);return {w:s.sw*fit,h:s.sh*fit,cx:W/2+this.val(c,'x',t)*W,cy:H/2+this.val(c,'y',t)*H};},
  box(g,c,W,H,t=this.time){return c.text!==undefined?this.textBox(g,c,W,H,t):this.rect(c,W,H,t);},
  visible(t){const on=c=>t>=c.start&&t<c.start+c.dur;const out=[];
@@ -471,7 +476,7 @@ const Ed={
   if(c.sticker)return this.drawSticker(g,c,W,H,t,o);
   // an adjustment layer's picture is everything drawn under it so far
   if(c.adjustment&&!o.flat){const S=this._adjSnap||(this._adjSnap=document.createElement('canvas'));if(S.width!==W||S.height!==H){S.width=W;S.height=H;}const sg=S.getContext('2d');sg.clearRect(0,0,W,H);sg.drawImage(g.canvas,0,0);this._adjFrame=S;}
-  const m=this.mediaOf(c);if(!m&&!c.adjustment)return;const src=c.adjustment?this._adjFrame:m.type==='image'?this.image(m):this.element(c);
+  const m=this.mediaOf(c);if(!m&&!c.adjustment&&!c.nest)return;const src=c.nest?this.nestFrame(c,t):c.adjustment?this._adjFrame:m.type==='image'?this.image(m):this.element(c);
   if(!src||(m&&m.type==='video'&&src.readyState<2)||(m&&m.type==='image'&&!src.complete))return;
   const r=this.rect(c,W,H,t),s=this.src(c),a=this.val(c,'opacity',t)*this.fade(c,t)*(o.alpha??1);if(a<=0)return;
   const fx=c.fx||{},sh=edShake(fx,t,W),rad=(fx.radius||0)/100*Math.min(r.w,r.h)/2,kk=this.k();
@@ -505,13 +510,7 @@ const Ed={
   // A blurred, enlarged copy of the main picture fills the frame behind it (for a horizontal clip in a vertical video).
   if(this.p.bgMode==='blur'){const mc=this.p.clips.find(c=>c.track===this.main()?.id&&t>=c.start&&t<c.start+c.dur);const m=mc&&this.mediaOf(mc);
    const src=m&&(m.type==='image'?this.image(m):this.element(mc));if(src&&(m.type!=='video'||src.readyState>=2)){const s=this.src(mc),f=Math.max(W/s.sw,H/s.sh)*1.1;g.save();g.filter=`blur(${40*this.k()}px) brightness(.7)`;g.drawImage(src,s.sx,s.sy,s.sw,s.sh,(W-s.sw*f)/2,(H-s.sh*f)/2,s.sw*f,s.sh*f);g.restore();}}
-  for(const tr of [...this.p.tracks].reverse()){
-   if(!ED_VISUAL.has(tr.kind)||tr.hidden)continue;
-   const cl=this.p.clips.filter(c=>c.track===tr.id).sort((a,b)=>a.start-b.start),done=new Set();
-   cl.forEach((c,i)=>{if(done.has(c.id))return;const nx=cl[i+1];
-    if(tr.kind==='video'&&nx?.trans&&Math.abs(c.start+c.dur-nx.start)<.05){const d=Math.min(nx.trans.dur,c.dur,nx.dur),a0=nx.start-d/2;if(t>=a0&&t<a0+d){this.drawTrans(g,c,nx,nx.trans.type,(t-a0)/d,t);done.add(nx.id);return;}}
-    if(t>=c.start&&t<c.start+c.dur)this.drawClip(g,c,t);});
-  }
+  this.paint(g,t);
   if(!this.exporting)for(const s of this.picked()){if(!(t>=s.start&&t<s.start+s.dur)||this.kindOf(s)==='audio')continue;const b=this.box(g,s,W,H,t);
    g.save();g.translate(b.cx,b.cy);g.rotate(this.val(s,'rotate',t)*Math.PI/180);g.strokeStyle='rgba(80,150,255,.95)';g.lineWidth=Math.max(2,W/400);g.setLineDash([W/80,W/120]);g.strokeRect(-b.w/2,-b.h/2,b.w,b.h);
    // one selected: corners to resize, the knob above to rotate
@@ -521,6 +520,46 @@ const Ed={
    g.restore();}
   g.restore();
  },
+ /** The tracks at t, bottom to top (with transitions), onto g. The timeline, or a nested clip's own (see withNest). */
+ paint(g,t){
+  for(const tr of [...this.p.tracks].reverse()){
+   if(!ED_VISUAL.has(tr.kind)||tr.hidden)continue;
+   const cl=this.p.clips.filter(c=>c.track===tr.id).sort((a,b)=>a.start-b.start),done=new Set();
+   cl.forEach((c,i)=>{if(done.has(c.id))return;const nx=cl[i+1];
+    if(tr.kind==='video'&&nx?.trans&&Math.abs(c.start+c.dur-nx.start)<.05){const d=Math.min(nx.trans.dur,c.dur,nx.dur),a0=nx.start-d/2;if(t>=a0&&t<a0+d){this.drawTrans(g,c,nx,nx.trans.type,(t-a0)/d,t);done.add(nx.id);return;}}
+    if(t>=c.start&&t<c.start+c.dur)this.drawClip(g,c,t);});
+  }
+ },
+ // ---------- nested clips (compound clips): clips inside one clip, with their own tracks ----------
+ /** Run fn with the nested clip's tracks and clips standing in for the timeline's (synchronously only). */
+ withNest(c,fn){const P=this.p,K=this._nk;this.p={...P,tracks:c.nest.tracks,clips:c.nest.clips,markers:[],range:null};this._nk=(K||'')+c.id+'/';
+  try{return fn();}finally{this.p=P;this._nk=K;}},
+ /** The nested clip's picture at timeline time t: its own tracks painted on a clear frame (its layers kept apart from ours). */
+ nestFrame(c,t){const [W,H]=this.size(),all=this._nests||(this._nests=new Map()),key=(this._nk||'')+c.id;let n=all.get(key);if(!n)all.set(key,n={cv:document.createElement('canvas')});
+  if(n.cv.width!==W||n.cv.height!==H){n.cv.width=W;n.cv.height=H;}const g=n.cv.getContext('2d');g.setTransform(1,0,0,1,0,0);g.globalAlpha=1;g.globalCompositeOperation='source-over';g.filter='none';g.clearRect(0,0,W,H);
+  if((this._depth||0)>4)return n.cv;
+  const keep=[this._layer,this._adjSnap,this._adjFrame];this._layer=n.layer;this._adjSnap=n.adj;this._depth=(this._depth||0)+1;
+  try{this.withNest(c,()=>this.paint(g,t-c.start+(c.in||0)));}finally{n.layer=this._layer;n.adj=this._adjSnap;[this._layer,this._adjSnap,this._adjFrame]=keep;this._depth--;}
+  return n.cv;},
+ /** A deep copy of a nested clip's contents with new clip ids (for a split, a copy or a paste). */
+ renest(n){const x=JSON.parse(JSON.stringify(n));const re=cl=>{for(const c of cl){c.id=this.uid();if(c.nest)re(c.nest.clips);}};re(x.clips);return x;},
+ /** Nest: the selected clips become one clip (on the top video track they used); their tracks come along inside it. */
+ nest(){const list=this.picked().filter(c=>!this.trackOf(c)?.locked);if(!list.length)return toast('Select the clips to nest.');
+  const s=Math.min(...list.map(c=>c.start)),e=Math.max(...list.map(c=>c.start+c.dur)),ids=new Set(list.map(c=>c.id));
+  const used=new Set(list.map(c=>c.track)),tracks=this.p.tracks.filter(t=>used.has(t.id)).map(t=>({...JSON.parse(JSON.stringify(t)),main:undefined,locked:undefined,hidden:undefined,muted:undefined,solo:undefined}));
+  const vt=this.p.tracks.find(t=>used.has(t.id)&&t.kind==='video');this.snapshot();
+  const inner=list.map(c=>({...JSON.parse(JSON.stringify(c)),start:Math.round((c.start-s)*1000)/1000}));for(const c of inner)delete c.group;
+  this.p.clips=this.p.clips.filter(c=>!ids.has(c.id));
+  const n=this.p.clips.filter(c=>c.nest).length+1,c={id:this.uid(),nest:{name:`Nested ${n}`,tracks,clips:inner,dur:Math.round((e-s)*1000)/1000},start:s,dur:Math.round((e-s)*1000)/1000,in:0,scale:1,x:0,y:0,rotate:0,opacity:1};
+  c.track=vt&&this.fits(vt.id,s,c.dur)?vt.id:this.place('video',s,c.dur,vt?.id);this.p.clips.push(c);this.pick(c.id);this.after(true);toast(`Nested ${list.length} clip${list.length>1?'s':''}: right-click it to break it apart`);return c;},
+ /** Break apart: the clips inside come back to the timeline where they play now (the nested clip's own look is not kept). */
+ unnest(c){if(!c?.nest)return;this.snapshot();const off=c.start-(c.in||0),a=c.start,b=c.start+c.dur,back=[];
+  for(const x of JSON.parse(JSON.stringify(c.nest.clips))){let st=x.start+off,en=st+x.dur;if(en<=a+1e-3||st>=b-1e-3)continue;
+   if(st<a){const d=a-st;if(x.media)x.in=(x.in||0)+d*(x.speed||1);if(x.kf)for(const k in x.kf)x.kf[k]=x.kf[k].map(f=>({...f,t:f.t-d})).filter(f=>f.t>=-1e-6);st=a;}
+   if(en>b)en=b;x.start=Math.round(st*1000)/1000;x.dur=Math.round((en-st)*1000)/1000;x.id=this.uid();
+   const tk=c.nest.tracks.find(t=>t.id===x.track),kind=tk?.kind||this.kindOf(x),same=this.p.tracks.find(t=>t.id===x.track&&t.kind===kind);
+   this.p.clips=this.p.clips.filter(o=>o.id!==c.id);x.track=same&&this.fits(same.id,x.start,x.dur)?same.id:this.place(kind,x.start,x.dur,kind==='video'?c.track:undefined);this.p.clips.push(x);back.push(x.id);}
+  this.p.clips=this.p.clips.filter(o=>o.id!==c.id);this.sels=new Set(back);this.sel=back.at(-1)||null;this.after(true);toast(`Broke apart: ${back.length} clip${back.length===1?'':'s'}`);},
  /** How far a clip's in or out animation is (0 to 1, 1 = fully shown). */
  anim(c,t){const d=Math.max(.1,c.animDur||.5),lt=t-c.start,rt=c.start+c.dur-t;return {i:c.animIn&&c.animIn!=='none'?edClamp(lt/d,0,1):1,o:c.animOut&&c.animOut!=='none'?edClamp(rt/d,0,1):1};},
  animApply(c,t){const {i,o}=this.anim(c,t),r={alpha:1,k:1,dy:0,chars:1,blur:0,words:1};

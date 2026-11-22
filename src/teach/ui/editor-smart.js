@@ -56,7 +56,7 @@ Object.assign(Ed,{
  proxySrc(m){return !this.exporting&&!this.originals&&this.p?.useProxy!==false&&m.proxy&&this.urls[m.id+':proxy']?this.urls[m.id+':proxy']:this.urls[m.id];},
  /** Recreates the video elements (after switching between proxies and originals). */
  resetElements(){for(const el of Object.values(this.els))el.pause?.();this.els={};},
- async makeProxies(){const used=new Set(this.p.clips.map(c=>c.media)),big=this.media.filter(m=>used.has(m.id)&&m.type==='video'&&!m.proxy&&Math.max(m.w||0,m.h||0)>1280);if(!big.length)return toast('No video here is bigger than 720p.');
+ async makeProxies(){const used=new Set(edAll(this.p.clips).map(c=>c.media)),big=this.media.filter(m=>used.has(m.id)&&m.type==='video'&&!m.proxy&&Math.max(m.w||0,m.h||0)>1280);if(!big.length)return toast('No video here is bigger than 720p.');
   for(const m of big){toast(`Making a proxy for ${m.name}…`);try{const blob=await this.get(m.id);const r=await fetch(withKey(`/api/editor/tool?kind=proxy&name=${encodeURIComponent(m.name)}`),{method:'POST',body:blob});let st=await r.json();
    while(st.state==='running'){await new Promise(res=>setTimeout(res,1500));st=await (await fetch(withKey('/api/editor/tool/'+st.id))).json();}
    if(st.state!=='done')throw new Error(st.error||'The proxy failed');const out=await (await fetch(withKey('/api/editor/tool/'+st.id+'/file'))).blob();

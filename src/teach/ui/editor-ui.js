@@ -12,7 +12,7 @@ Object.assign(Ed,{
   const tile=m=>`<div class="ed-media" draggable="true" data-mid="${m.id}" title="${esc(m.name)}">
     <div class="ed-media-thumb">${m.type==='audio'?`<span class="ed-media-wave">${I.music}</span>`:m.thumbs?.[0]?`<img src="${m.thumbs[Math.min(2,m.thumbs.length-1)]}" alt="">`:`<span class="ed-media-wave">${I[m.type==='image'?'image':'film']}</span>`}
      ${m.type!=='image'&&m.dur?`<span class="ed-media-dur">${edFmt(m.dur).slice(0,5)}</span>`:''}
-     ${this.p.clips.some(c=>c.media===m.id)?'<span class="ed-media-used">Added</span>':''}
+     ${edAll(this.p.clips).some(c=>c.media===m.id)?'<span class="ed-media-used">Added</span>':''}
      <button type="button" class="ed-media-add" data-add="${m.id}" aria-label="Add ${esc(m.name)} to the timeline">${I.add}</button>
      <button type="button" class="ed-media-del" data-del="${m.id}" aria-label="Remove ${esc(m.name)}">${I.x}</button></div>
     <span class="ed-media-name" dir="auto">${esc(m.name)}</span></div>`;
@@ -171,11 +171,12 @@ Object.assign(Ed,{
   else if(kind==='audio'){const pk=m?.peaks||[],from=(c.in||0)/(m?.dur||1),to=((c.in||0)+c.dur*(c.speed||1))/(m?.dur||1),part=pk.slice(Math.floor(from*pk.length),Math.ceil(to*pk.length)),v=edClamp(c.volume??1,0,2);
    inner=`<svg class="ed-wave" viewBox="0 0 ${Math.max(1,part.length)} 100" preserveAspectRatio="none">${part.map((x,i)=>`<rect x="${i}" y="${50-x*46*Math.min(1,v)}" width=".6" height="${Math.max(2,x*92*Math.min(1,v))}"/>`).join('')}</svg>
     <i class="ed-vol" style="top:${16+(1-v/2)*(this.laneH({kind:'audio'})-20)}px" title="Volume ${Math.round(v*100)}%"></i><span class="ed-clip-label">${c.group?`<b class="ed-linked" title="Grouped">${I.link}</b>`:''}${I.music}${esc(m?.name||'')}${c.speed&&c.speed!==1?` · ${c.speed}×`:''}</span>`;}
+  else if(c.nest)inner=`<span class="ed-clip-label">${c.group?`<b class="ed-linked" title="Grouped">${I.link}</b>`:''}${I.layers}${esc(c.nest.name||'Nested')} · ${c.nest.clips.length} clip${c.nest.clips.length===1?'':'s'}</span>`;
   else if(m){const th=m.thumbs||[],n=Math.max(1,Math.ceil(w/56));inner=`<div class="ed-strip">${Array.from({length:n},(_,i)=>{const src=th.length?th[Math.min(th.length-1,Math.floor(((c.in||0)+(i+.5)/n*c.dur*(c.speed||1))/(m.dur||c.dur)*th.length))]:'';return src?`<img src="${src}" alt="" style="filter:${edCssFilter(c.adj||{})}">`:'<i></i>';}).join('')}</div>
    <span class="ed-clip-label">${c.group?`<b class="ed-linked" title="Grouped">${I.link}</b>`:''}${c.detached?I.mute:''}${esc(m.name)}${c.speed&&c.speed!==1?` · ${c.speed}×`:''}</span>`;}
   const kts=sel&&c.kf?[...new Set(Object.values(c.kf).flat().map(x=>Math.round(x.t*100)/100))]:[];
   const fi=(c.fadeIn||0)*this.zoom,fo=(c.fadeOut||0)*this.zoom,fades=c.media&&w>40?`${fi?`<i class="ed-fz l" style="width:${fi}px"></i>`:''}${fo?`<i class="ed-fz r" style="width:${fo}px"></i>`:''}<i class="ed-fh" data-fh="in" style="left:${Math.max(10,fi)}px" title="Fade in ${(c.fadeIn||0).toFixed(1)} s: drag"></i><i class="ed-fh" data-fh="out" style="left:${Math.min(w-10,w-fo)}px" title="Fade out ${(c.fadeOut||0).toFixed(1)} s: drag"></i>`:'';
-  return `<div class="ed-clip ${kind}${sel?' sel':''}${c.label?' labelled':''}" data-cid="${c.id}" style="left:${c.start*this.zoom}px;width:${w}px;${c.label?`--lc:${edLabel(c.label)}`:''}">${inner}${fades}${kts.map(t=>`<i class="ed-kf" style="left:${t*this.zoom}px"></i>`).join('')}<i class="ed-h l" data-h="l"></i><i class="ed-h r" data-h="r"></i></div>`;
+  return `<div class="ed-clip ${kind}${c.nest?' nest':''}${sel?' sel':''}${c.label?' labelled':''}" data-cid="${c.id}" style="left:${c.start*this.zoom}px;width:${w}px;${c.label?`--lc:${edLabel(c.label)}`:''}">${inner}${fades}${kts.map(t=>`<i class="ed-kf" style="left:${t*this.zoom}px"></i>`).join('')}<i class="ed-h l" data-h="l"></i><i class="ed-h r" data-h="r"></i></div>`;
  },
  drawProps(){
   const el=this.dom.props;if(!el)return;const [W,H]=this.base(),n=this.sels.size;
@@ -201,8 +202,8 @@ Object.assign(Ed,{
     <span class="ed-num"><input type="number" id="ed-${key}" data-k="${key}" data-u="${unit}" min="${min}" max="${max}" step="${step}" value="${show(val)}">${suffix?`<i>${suffix}</i>`:''}</span>${kfBtn(key)}</div></div>`;};
   const sec=(title,body,reset)=>`<section class="ed-sec"><header><h4>${title}</h4>${reset?`<button type="button" class="iconbtn sm" data-reset="${reset}" aria-label="Reset ${title}" data-tooltip="Reset">${I.refresh}</button>`:''}</header>${body}</section>`;
   const seg=(attr,list,val)=>`<div class="ed-seg">${list.map(([v,l])=>`<button type="button" data-${attr}="${v}" aria-pressed="${val===v}">${l}</button>`).join('')}</div>`;
-  const kind=!c?'':c.adjustment?'adjustment':c.text!==undefined?'text':c.sticker?'sticker':this.kindOf(c)==='audio'?'audio':m?.type||'video';
-  const tabs=!c?[['details','Details']]:kind==='text'?[['text','Text'],['anim','Animation'],['basic','Basic']]:kind==='sticker'?[['sticker','Sticker'],['anim','Animation'],['basic','Basic']]:kind==='audio'?[['audio','Audio'],['speed','Speed']]:kind==='adjustment'?[['adjust','Adjust'],['colour','Colour'],['effects','Effects'],['mask','Mask'],['basic','Basic']]:kind==='image'?[['basic','Basic'],['adjust','Adjust'],['colour','Colour'],['effects','Effects'],['mask','Mask']]:[['basic','Basic'],['adjust','Adjust'],['colour','Colour'],['effects','Effects'],['mask','Mask'],['audio','Audio'],['speed','Speed']];
+  const kind=!c?'':c.nest?'nest':c.adjustment?'adjustment':c.text!==undefined?'text':c.sticker?'sticker':this.kindOf(c)==='audio'?'audio':m?.type||'video';
+  const tabs=!c?[['details','Details']]:kind==='text'?[['text','Text'],['anim','Animation'],['basic','Basic']]:kind==='sticker'?[['sticker','Sticker'],['anim','Animation'],['basic','Basic']]:kind==='audio'?[['audio','Audio'],['speed','Speed']]:kind==='adjustment'?[['adjust','Adjust'],['colour','Colour'],['effects','Effects'],['mask','Mask'],['basic','Basic']]:kind==='nest'?[['basic','Basic'],['adjust','Adjust'],['colour','Colour'],['effects','Effects'],['mask','Mask']]:kind==='image'?[['basic','Basic'],['adjust','Adjust'],['colour','Colour'],['effects','Effects'],['mask','Mask']]:[['basic','Basic'],['adjust','Adjust'],['colour','Colour'],['effects','Effects'],['mask','Mask'],['audio','Audio'],['speed','Speed']];
   if(!tabs.some(([id])=>id===this.ptab))this.ptab=tabs[0][0];
   const t=this.ptab,locked=c&&this.trackOf(c)?.locked;let body='';
   const fades=()=>sec('Fade',`${row('fadeIn','Fade in',c.fadeIn||0,{min:0,max:Math.min(5,+(c.dur/2).toFixed(1)),step:.1,suffix:'s'})}${row('fadeOut','Fade out',c.fadeOut||0,{min:0,max:Math.min(5,+(c.dur/2).toFixed(1)),step:.1,suffix:'s'})}`);
@@ -516,7 +517,7 @@ function edWireTimeline(){
    const mv=ev=>{if(!snapped){Ed.snapshot();snapped=true;}const x=(ev.clientX-left)/Ed.zoom;c[key]=Math.round(edClamp(key==='fadeIn'?x:c.dur-x,0,Math.min(5,c.dur/2))*10)/10;Ed.drawTimeline();Ed.sync();Ed.draw();};
    const up=()=>{window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);if(snapped)Ed.after(true);};
    window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);return;}
-  const mode=e.target.dataset.h||'move',x0=e.clientX,group=mode==='move'&&Ed.sels.size>1?Ed.picked():[c],orig=new Map(group.map(g=>[g.id,{...g}])),o=orig.get(c.id),m=Ed.mediaOf(c),srcDur=m&&m.type!=='image'&&!c.sticker?m.dur:Infinity,kind=Ed.kindOf(c);
+  const mode=e.target.dataset.h||'move',x0=e.clientX,group=mode==='move'&&Ed.sels.size>1?Ed.picked():[c],orig=new Map(group.map(g=>[g.id,{...g}])),o=orig.get(c.id),m=Ed.mediaOf(c),srcDur=c.nest?c.nest.dur:m&&m.type!=='image'&&!c.sticker?m.dur:Infinity,kind=Ed.kindOf(c);
   const ids=new Set(group.map(g=>g.id)),edges=Ed.p.clips.filter(x=>!ids.has(x.id)).flatMap(x=>[x.start,x.start+x.dur]).concat([0,Ed.time,...Ed.p.markers.map(edMt)]);
   const snapT=t=>{if(!Ed.snap)return t;const tol=8/Ed.zoom;let best=t,d=tol;for(const s of edges){if(Math.abs(s-t)<d){d=Math.abs(s-t);best=s;}}return best;};
   let moved=false,newLane=null;
@@ -602,6 +603,7 @@ window.addEventListener('keydown',e=>{
  else if(!mod&&!e.altKey&&k==='l'&&e.shiftKey)Ed.toggleLoop();
  else if(mod&&k==='b'&&e.shiftKey||!mod&&!e.altKey&&k==='s'&&e.shiftKey)Ed.splitAll();
  else if(!mod&&!e.altKey&&k==='a')Ed.selectFrom(e.shiftKey?-1:1);
+ else if(e.altKey&&!mod&&e.code==='KeyN'){const c=Ed.sel&&Ed.clip(Ed.sel);if(c?.nest&&Ed.sels.size===1)Ed.unnest(c);else Ed.nest();}
  else if(e.altKey&&mod&&(k==='arrowleft'||k==='arrowright')){if(!Ed.swap(k==='arrowleft'?-1:1))done=false;}
  else if(e.altKey&&!mod&&(k==='arrowleft'||k==='arrowright')){if(!Ed.nudge((k==='arrowleft'?-1:1)*(e.shiftKey?5:1)))done=false;}
  else if((k==='delete'||k==='backspace')&&!mod&&e.shiftKey)Ed.rippleRemove();

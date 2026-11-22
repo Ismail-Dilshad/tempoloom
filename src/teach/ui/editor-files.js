@@ -6,9 +6,9 @@ Object.assign(Ed,{
  async packProject(id){
   if(this.p?.id===id)await this.flush();
   const p=this.readProject(id);if(!p)throw new Error('That project is gone');
-  const used=new Set(p.clips.map(c=>c.media).filter(Boolean)),files=[],media=[];
+  const used=new Set(edAll(p.clips).map(c=>c.media).filter(Boolean)),files=[],media=[];
   for(const m of this.media.filter(m=>used.has(m.id))){const b=await this.get(m.id);if(!b)continue;files.push(['media/'+m.id+edExt(m.name),b]);media.push({...m,mime:b.type||''});}
-  const lutIds=new Set(p.clips.map(c=>c.grade?.lut?.id).filter(Boolean)),luts=[];await this.loadLuts();
+  const lutIds=new Set(edAll(p.clips).map(c=>c.grade?.lut?.id).filter(Boolean)),luts=[];await this.loadLuts();
   for(const id of lutIds){const t=this.lutText.get(id);if(t){files.push(['luts/'+id+'.cube',new Blob([t])]);luts.push(this.lutList.find(l=>l.id===id)||{id,name:id});}}
   files.unshift(['project.json',new Blob([JSON.stringify({app:'tempoloom-editor',v:1,project:p,media,luts})],{type:'application/json'})]);
   return edZip(files);
@@ -30,7 +30,7 @@ Object.assign(Ed,{
   for(const l of Array.isArray(j.luts)?j.luts:[]){const part=z.get('luts/'+l.id+'.cube');if(!part||!/^lut-[a-z0-9]+$/.test(l.id))continue;const text=await part.text();
    if(!(await this.read('meta','lut:'+l.id))){await this.write([['meta','lut:'+l.id,{name:l.name,text}]]);const list=(await this.read('meta','luts'))||[];list.unshift({id:l.id,name:l.name,size:edParseCube(text)?.n||0});await this.write([['meta','luts',list]]);}}
   this.luts.clear();await this.loadLuts();
-  const p=j.project;for(const c of p.clips)if(c.media)c.media=map[c.media]||c.media;
+  const p=j.project;for(const c of edAll(p.clips))if(c.media)c.media=map[c.media]||c.media;
   const id=this.create(this.migrate({...p,name:String(p.name||'Imported project').slice(0,80)}));await this.wq;return id;
  },
 });
