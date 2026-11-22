@@ -2,6 +2,16 @@
 
 ## Unreleased: The Editor is tested and split into parts
 
+- **Basic tools found missing next to CapCut, Premiere and Resolve:**
+  - **Resize and rotate in the player**: the selected picture or text has corner handles (drag
+    to resize) and a knob above it (drag to rotate; Shift for 15° steps).
+  - **Scrubbing**: dragging the ruler plays short bursts of the sound under the playhead.
+  - **Loop** (the button by Play, or Shift+L) and **play from in to out** (Ctrl+Shift+Space).
+  - **Split every track** at the playhead (Ctrl+Shift+B or Shift+S).
+  - **Select forward or back** from the playhead on all tracks (A, Shift+A).
+  - **Nudge** the selection one frame (Alt + ←/→; with Shift, five frames).
+  - **Line spacing** for text, next to letter spacing.
+
 - **Automatic tests for the Editor.** `tests/editor-logic.test.ts` loads the page's scripts in a
   sandbox and checks the pure parts: grading curves, `.cube` looks and the grade table, speed
   curves, words and direction in every script, SRT/WebVTT, caption line packing, project zips

@@ -68,7 +68,7 @@ Object.assign(Ed,{
   const vo=$('[data-voice]',el);if(vo)vo.onclick=()=>this.recordVoice();
   el.querySelectorAll('.ed-media').forEach(t=>{t.ondragstart=e=>{e.dataTransfer.setData('text/x-ed-media',t.dataset.mid);e.dataTransfer.effectAllowed='copy';};t.ondblclick=()=>{const m=this.media.find(x=>x.id===t.dataset.mid);m&&(m.type==='video'||m.type==='audio')?edSource(m):this.add(t.dataset.mid);};});
  },
- drawTime(){const t=this.dom.time;if(t)t.innerHTML=`<b>${edFmt(this.time)}</b> / ${edFmt(this.end())}${this.playing&&this.rate!==1?` <span class="ed-rate">${this.rate<0?'◀ ':''}${Math.abs(this.rate)}×</span>`:''}`;const p=this.dom.play;if(p){p.innerHTML=this.playing?I.pause:I.play;p.setAttribute('aria-label',this.playing?'Pause':'Play');}},
+ drawTime(){const t=this.dom.time;if(t)t.innerHTML=`<b>${edFmt(this.time)}</b> / ${edFmt(this.end())}${this.playing&&this.rate!==1?` <span class="ed-rate">${this.rate<0?'◀ ':''}${Math.abs(this.rate)}×</span>`:''}`;const p=this.dom.play;if(p){p.innerHTML=this.playing?I.pause:I.play;p.setAttribute('aria-label',this.playing?'Pause':'Play');}this.dom.loop?.setAttribute('aria-pressed',String(!!this.loop));},
  /** The level meter: left and right, -60 to 0 dBFS, green, yellow from -12, red from -3, with a peak line. */
  drawMeter(){const cv=this.dom.meter;if(!cv)return;const g=cv.getContext('2d'),W=cv.width,H=cv.height,live=this.playing&&this.meters;g.clearRect(0,0,W,H);
   const lv=[0,1].map(i=>{if(!live)return 0;const a=this.meters[i],d=this._mbuf||(this._mbuf=new Float32Array(a.fftSize));a.getFloatTimeDomainData(d);let p=0;for(let j=0;j<d.length;j++){const x=Math.abs(d[j]);if(x>p)p=x;}return p;});
@@ -203,7 +203,7 @@ Object.assign(Ed,{
      <div class="ed-row"><label>Language</label><div class="ed-ctl"><span class="ed-val" dir="auto">${esc(edLangName(c.lang||'auto'))}</span></div></div>
      <div class="ed-row"><label></label><div class="ed-ctl"><button type="button" class="ed-tool" data-cap-all>${I.layers} Use this look on every caption</button></div></div>`):'')+sec('Text',`<textarea data-k="text" rows="3" dir="auto" aria-label="Text">${esc(c.text||'')}</textarea>`)+
     sec('Style',`<div class="ed-row"><label>Font</label><div class="ed-ctl"><select data-k="font" aria-label="Font">${ED_FONTS.map(([f,l])=>`<option value="${esc(f)}" ${c.font===f?'selected':''}>${l}</option>`).join('')}</select></div></div>
-     ${row('size','Size',c.size||40,{min:12,max:200})}${row('weight','Weight',c.weight||600,{min:300,max:900,step:100})}${row('spacing','Spacing',c.spacing||0,{min:-5,max:30})}
+     ${row('size','Size',c.size||40,{min:12,max:200})}${row('weight','Weight',c.weight||600,{min:300,max:900,step:100})}${row('spacing','Letter spacing',c.spacing||0,{min:-5,max:30})}${row('lineH','Line spacing',c.lineH||1.25,{min:80,max:250,step:5,unit:'pct',suffix:'%'})}
      <div class="ed-row"><label>Colour</label><div class="ed-ctl"><input type="color" data-k="color" value="${esc(c.color||'#ffffff')}" aria-label="Colour"></div></div>
      <div class="ed-row"><label>Align</label><div class="ed-ctl">${seg('align',[['left','Left'],['center','Center'],['right','Right']],c.align||'center')}</div></div>`)+
     sec('Outline and shadow',`${row('stroke','Outline',c.stroke||0,{min:0,max:12})}<div class="ed-row"><label>Outline colour</label><div class="ed-ctl"><input type="color" data-k="strokeColor" value="${esc(c.strokeColor||'#000000')}" aria-label="Outline colour"></div></div>
@@ -385,7 +385,7 @@ function edBuild(el){
    <header class="ed-ph"><span>Player</span><span class="ed-ratio">${esc(p.ratio)}</span></header>
    <div class="ed-stage"><div class="ed-frame"><canvas aria-label="Preview"></canvas><div class="ed-scopes" ${Ed.scopesOn?'':'hidden'}><canvas data-scope="wave" width="256" height="128" title="Waveform: brightness across the picture"></canvas><canvas data-scope="vector" width="128" height="128" title="Vectorscope: colour and saturation"></canvas><canvas data-scope="hist" width="256" height="128" title="Histogram: red, green, blue levels"></canvas></div><div class="ed-guides" aria-hidden="true"><i class="g-top"></i><i class="g-right"></i><i class="g-bottom"></i></div></div>
     <div class="ed-export" hidden><span class="spin"></span><b>Recording…</b><span>Keep this tab open.</span><button type="button" class="btn small" data-cancel-export>Cancel</button></div></div>
-   <div class="ed-controls"><span class="ed-time"></span><button type="button" class="ed-play" data-play></button>
+   <div class="ed-controls"><span class="ed-time"></span><button type="button" class="ed-play" data-play></button><button type="button" class="iconbtn sm ed-loop" data-loop aria-pressed="false" aria-label="Loop" data-tooltip="Loop (Shift+L)">${I.refresh}</button>
     <span class="ed-ctl-right"><canvas class="ed-meter" width="72" height="14" role="img" aria-label="Sound level"></canvas><button type="button" class="iconbtn sm" data-scopes aria-pressed="${!!Ed.scopesOn}" aria-label="Scopes" data-tooltip="Scopes: waveform, vectorscope, histogram">${I.chart}</button><button type="button" class="iconbtn sm" data-frame aria-label="Save frame" data-tooltip="Save this frame as a picture · Shift+E">${I.image}</button><button type="button" class="iconbtn sm" data-guides aria-pressed="${Ed.guides}" aria-label="Safe areas" data-tooltip="Safe areas for TikTok and Reels">${I.safe}</button><button type="button" class="iconbtn sm" data-full aria-label="Full screen" data-tooltip="Full screen">${I.expand}</button></span></div>
   </section>
   <section class="ed-panel ed-props" aria-label="Properties"></section>
@@ -421,12 +421,12 @@ function edBuild(el){
  </div>`;
  const R=el.querySelector('.editor'),q=s=>R.querySelector(s);
  edLayout(R);q('[data-keys]').onclick=()=>edKeys();
- Object.assign(Ed.dom,{saved:q('.ed-saved'),root:R,lib:q('.ed-lib'),props:q('.ed-props'),canvas:q('canvas'),stage:q('.ed-stage'),frame:q('.ed-frame'),time:q('.ed-time'),play:q('[data-play]'),
+ Object.assign(Ed.dom,{saved:q('.ed-saved'),root:R,lib:q('.ed-lib'),props:q('.ed-props'),canvas:q('canvas'),stage:q('.ed-stage'),frame:q('.ed-frame'),time:q('.ed-time'),play:q('[data-play]'),loop:q('[data-loop]'),
   tracks:q('.ed-lanes'),heads:q('.ed-heads'),ruler:q('.ed-ruler'),inner:q('.ed-inner'),scroll:q('.ed-scroll'),head:q('.ed-playhead'),marquee:q('.ed-marquee'),file:q('input[type=file]'),exportOverlay:q('.ed-export'),meter:q('.ed-meter')});
  Ed.dom.file.onchange=()=>{Ed.importFiles(Ed.dom.file.files);Ed.dom.file.value='';};
  const name=q('.ed-name');name.oninput=()=>{Ed.p.name=name.value||'Untitled project';Ed.save();document.title=`${Ed.p.name} · Tempoloom`;};
  q('[data-export]').onclick=()=>edExportDialog();q('[data-cancel-export]').onclick=()=>Ed.cancelExport();
- q('[data-play]').onclick=()=>Ed.play();
+ q('[data-play]').onclick=()=>Ed.play();q('[data-loop]').onclick=()=>Ed.toggleLoop();
  q('[data-undo]').onclick=()=>Ed.undo();q('[data-redo]').onclick=()=>Ed.redo();q('[data-split]').onclick=()=>Ed.split();q('[data-dup]').onclick=()=>Ed.duplicate();q('[data-del]').onclick=()=>Ed.remove();
  R.querySelectorAll('[data-trim]').forEach(b=>b.onclick=()=>Ed.trimTo(b.dataset.trim));q('[data-freeze]').onclick=()=>Ed.freeze();
  q('[data-marker]').onclick=()=>Ed.toggleMarker();q('[data-mixer]').onclick=()=>edMixer();q('[data-voice-tl]').onclick=()=>{Ed.tab='audio';Ed.recordVoice();};
@@ -475,7 +475,7 @@ function edWireTimeline(){
   if(e.button!==0||e.target.closest('[data-join]'))return;
   const clip=e.target.closest('.ed-clip');
   if(!clip){
-   if(e.target.closest('.ed-ruler')){Ed.seek(timeAt(e.clientX));sc.setPointerCapture(e.pointerId);const mv=ev=>Ed.seek(timeAt(ev.clientX)),up=()=>{sc.removeEventListener('pointermove',mv);sc.removeEventListener('pointerup',up);};sc.addEventListener('pointermove',mv);sc.addEventListener('pointerup',up);return;}
+   if(e.target.closest('.ed-ruler')){Ed.seek(timeAt(e.clientX));sc.setPointerCapture(e.pointerId);const mv=ev=>{Ed.seek(timeAt(ev.clientX));Ed.scrub();},up=()=>{sc.removeEventListener('pointermove',mv);sc.removeEventListener('pointerup',up);};sc.addEventListener('pointermove',mv);sc.addEventListener('pointerup',up);return;}
    const ir=inner.getBoundingClientRect(),x0=e.clientX-ir.left,y0=e.clientY-ir.top,box=Ed.dom.marquee,add=e.shiftKey||e.ctrlKey||e.metaKey,before=new Set(Ed.sels);let dragging=false;
    const mv=ev=>{const x1=ev.clientX-ir.left,y1=ev.clientY-ir.top;if(!dragging&&Math.hypot(x1-x0,y1-y0)<4)return;dragging=true;box.hidden=false;
     const L=Math.min(x0,x1),T=Math.min(y0,y1),Wd=Math.abs(x1-x0),Hd=Math.abs(y1-y0);Object.assign(box.style,{left:L+'px',top:T+'px',width:Wd+'px',height:Hd+'px'});
@@ -536,13 +536,32 @@ function edWireTimeline(){
  };
  sc.onwheel=e=>{if(e.ctrlKey){e.preventDefault();const z=Ed.zoom*(e.deltaY<0?1.15:.87);Ed.zoom=Math.max(10,Math.min(300,z));$('.ed-zoom').value=Ed.zoom;Ed.drawTimeline();}};
 }
+/** Handle sizes in the player, in frame pixels (they grow with the frame, so they look the same at any size). */
+const edHandleSize=W=>Math.max(8,W/90),edKnob=W=>Math.max(24,W/30);
+/** Which handle of the selected clip is at (px, py): 'scale' (a corner) or 'rotate' (the knob above), or null. */
+function edHandleAt(c,g,W,H,px,py){
+ const t=Ed.time;if(!c||Ed.trackOf(c)?.locked||Ed.kindOf(c)==='audio'||c.adjustment||t<c.start||t>=c.start+c.dur)return null;
+ const b=Ed.box(g,c,W,H),a=-Ed.val(c,'rotate')*Math.PI/180,dx=px-b.cx,dy=py-b.cy,lx=dx*Math.cos(a)-dy*Math.sin(a),ly=dx*Math.sin(a)+dy*Math.cos(a),hs=edHandleSize(W)*1.8;
+ if(Math.hypot(lx,ly+b.h/2+edKnob(W))<hs)return 'rotate';
+ if(Math.abs(Math.abs(lx)-b.w/2)<hs&&Math.abs(Math.abs(ly)-b.h/2)<hs)return 'scale';return null;
+}
 function edWirePreview(){
  const cv=Ed.dom.canvas;
+ // the pointer shows what a drag would do
+ cv.addEventListener('pointermove',e=>{if(e.buttons||Ed.picking)return;const [W,H]=Ed.size(),r=cv.getBoundingClientRect(),one=Ed.picked().length===1?Ed.picked()[0]:null;
+  const h=one&&edHandleAt(one,cv.getContext('2d'),W,H,(e.clientX-r.left)*W/r.width,(e.clientY-r.top)*H/r.height);cv.style.cursor=h==='scale'?'nwse-resize':h==='rotate'?'grab':'';});
  cv.onpointerdown=e=>{
   if(Ed.picking){const c=Ed.clip(Ed.picking);const [W,H]=Ed.size(),r=cv.getBoundingClientRect(),px=Math.floor((e.clientX-r.left)*W/r.width),py=Math.floor((e.clientY-r.top)*H/r.height);
    Ed.draw();const d=cv.getContext('2d').getImageData(px,py,1,1).data,hex='#'+[d[0],d[1],d[2]].map(v=>v.toString(16).padStart(2,'0')).join('');
    Ed.picking=null;Ed.dom.frame?.classList.remove('picking');if(c){Ed.snapshot();c.key={sim:25,smooth:10,spill:50,...(c.key||{}),on:true,color:hex};Ed.after(true);toast('Colour picked: '+hex);}return;}
   const [W,H]=Ed.size(),r=cv.getBoundingClientRect(),sx=W/r.width,sy=H/r.height,px=(e.clientX-r.left)*sx,py=(e.clientY-r.top)*sy,g=cv.getContext('2d');
+  const one=Ed.picked().length===1?Ed.picked()[0]:null,grab=one&&edHandleAt(one,g,W,H,px,py);
+  if(grab){const b=Ed.box(g,one,W,H),s0=Ed.val(one,'scale'),r0=Ed.val(one,'rotate'),d0=Math.hypot(px-b.cx,py-b.cy)||1,a0=Math.atan2(py-b.cy,px-b.cx);let moved=false;cv.setPointerCapture(e.pointerId);
+   cv.onpointermove=ev=>{if(!moved){Ed.snapshot();moved=true;}const qx=(ev.clientX-r.left)*sx-b.cx,qy=(ev.clientY-r.top)*sy-b.cy;
+    if(grab==='scale')Ed.setVal(one,'scale',Math.round(edClamp(s0*Math.hypot(qx,qy)/d0,.05,10)*100)/100);
+    else{let deg=r0+(Math.atan2(qy,qx)-a0)*180/Math.PI;deg=((deg+180)%360+360)%360-180;if(ev.shiftKey)deg=Math.round(deg/15)*15;Ed.setVal(one,'rotate',Math.round(deg*10)/10);}
+    Ed.draw();};
+   cv.onpointerup=()=>{cv.onpointermove=cv.onpointerup=null;if(moved){Ed.save();Ed.drawProps();Ed.drawTimeline();}};return;}
   const hit=[...Ed.visible(Ed.time)].reverse().find(c=>{if(Ed.trackOf(c)?.locked||c.adjustment)return false;const b=Ed.box(g,c,W,H);return Math.abs(px-b.cx)<=b.w/2&&Math.abs(py-b.cy)<=b.h/2;});
   if(!hit){if(Ed.sels.size)Ed.select(null);return;}
   if(!Ed.sels.has(hit.id)||Ed.sels.size>1)Ed.select(hit.id);
@@ -556,7 +575,12 @@ window.addEventListener('keydown',e=>{
  if(App.route!=='editor'||!Ed.p||!Ed.dom.root?.isConnected||e.isComposing||Ed.exporting)return;
  if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)||e.target.isContentEditable||$('#modal')?.innerHTML)return;
  const k=e.key.toLowerCase(),mod=e.ctrlKey||e.metaKey;let done=true;
- if(k===' '&&!mod)Ed.play();
+ if(k===' '&&mod&&e.shiftKey)Ed.playRange();
+ else if(k===' '&&!mod)Ed.play();
+ else if(!mod&&!e.altKey&&k==='l'&&e.shiftKey)Ed.toggleLoop();
+ else if(mod&&k==='b'&&e.shiftKey||!mod&&!e.altKey&&k==='s'&&e.shiftKey)Ed.splitAll();
+ else if(!mod&&!e.altKey&&k==='a')Ed.selectFrom(e.shiftKey?-1:1);
+ else if(e.altKey&&!mod&&(k==='arrowleft'||k==='arrowright')){if(!Ed.nudge((k==='arrowleft'?-1:1)*(e.shiftKey?5:1)))done=false;}
  else if((k==='delete'||k==='backspace')&&!mod&&e.shiftKey)Ed.rippleRemove();
  else if((k==='delete'||k==='backspace')&&!mod)Ed.remove();
  else if(!mod&&!e.altKey&&k==='q')Ed.trimTo('start');

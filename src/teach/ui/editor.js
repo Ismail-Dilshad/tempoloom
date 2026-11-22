@@ -320,6 +320,17 @@ const Ed={
   this.after(true);toast(short?'Replaced. The new file is shorter, so the clip is too.':'Replaced');
  },
  // ---------- in and out: a range of the timeline, to export only that part ----------
+ /** Split every track at the playhead (the razor across all tracks); locked tracks are left alone. */
+ splitAll(){const t=this.time,list=this.p.clips.filter(x=>t>x.start+.05&&t<x.start+x.dur-.05&&!this.trackOf(x)?.locked);
+  if(!list.length)return toast('Nothing under the playhead to split.');this.snapshot();const parts=list.map(c=>this.splitClip(c,t));this.regroup(parts);this.pick(null);this.after(true);toast(`Split ${list.length} clip${list.length>1?'s':''} on every track`);},
+ /** Move the selected clips by whole frames (Alt + arrows); stops at the start and at other clips. */
+ nudge(frames){const list=this.picked().filter(c=>!this.trackOf(c)?.locked);if(!list.length)return false;const d=frames/30,ids=new Set(list.map(c=>c.id));
+  if(list.some(c=>c.start+d<-1e-6||!this.fits(c.track,c.start+d,c.dur,ids))){toast('No room to move there.');return true;}
+  this.snapshot();for(const c of list)c.start=Math.round((c.start+d)*1000)/1000;this.after(true);return true;},
+ /** Select every clip from the playhead forward (or back), on all tracks: to move the rest of the edit at once. */
+ selectFrom(dir){const t=this.time;this.junction=null;
+  this.sels=new Set(this.p.clips.filter(c=>!this.trackOf(c)?.locked&&(dir>0?c.start+c.dur>t+.001:c.start<t-.001)).map(c=>c.id));this.sel=[...this.sels].pop()||null;
+  this.drawTimeline();this.drawProps();this.draw();toast(`${this.sels.size} clip${this.sels.size===1?'':'s'} selected ${dir>0?'from the playhead on':'before the playhead'}`);},
  setRange(which){const t=Math.round(this.time*30)/30;this.snapshot();const r={...(this.p.range||{})};r[which]=t;
   if(r.in!=null&&r.out!=null&&r.out<=r.in)delete r[which==='in'?'out':'in'];this.p.range=r;this.after(false);},
  clearRange(){if(!this.p.range)return;this.snapshot();delete this.p.range;this.after(false);},
@@ -464,7 +475,12 @@ const Ed={
     if(t>=c.start&&t<c.start+c.dur)this.drawClip(g,c,t);});
   }
   if(!this.exporting)for(const s of this.picked()){if(!(t>=s.start&&t<s.start+s.dur)||this.kindOf(s)==='audio')continue;const b=this.box(g,s,W,H,t);
-   g.save();g.translate(b.cx,b.cy);g.rotate(this.val(s,'rotate',t)*Math.PI/180);g.strokeStyle='rgba(80,150,255,.95)';g.lineWidth=Math.max(2,W/400);g.setLineDash([W/80,W/120]);g.strokeRect(-b.w/2,-b.h/2,b.w,b.h);g.restore();}
+   g.save();g.translate(b.cx,b.cy);g.rotate(this.val(s,'rotate',t)*Math.PI/180);g.strokeStyle='rgba(80,150,255,.95)';g.lineWidth=Math.max(2,W/400);g.setLineDash([W/80,W/120]);g.strokeRect(-b.w/2,-b.h/2,b.w,b.h);
+   // one selected: corners to resize, the knob above to rotate
+   if(this.picked().length===1&&!this.trackOf(s)?.locked&&!s.adjustment){const hs=edHandleSize(W),kn=edKnob(W);g.setLineDash([]);g.fillStyle='#fff';g.beginPath();g.moveTo(0,-b.h/2);g.lineTo(0,-b.h/2-kn);g.stroke();
+    for(const [x,y] of [[-1,-1],[1,-1],[1,1],[-1,1]]){g.fillRect(x*b.w/2-hs/2,y*b.h/2-hs/2,hs,hs);g.strokeRect(x*b.w/2-hs/2,y*b.h/2-hs/2,hs,hs);}
+    g.beginPath();g.arc(0,-b.h/2-kn,hs*.6,0,Math.PI*2);g.fill();g.stroke();}
+   g.restore();}
   g.restore();
  },
  /** How far a clip's in or out animation is (0 to 1, 1 = fully shown). */
@@ -475,7 +491,7 @@ const Ed={
   one(c.animIn,i);one(c.animOut,o);return r;},
  lines(g,c,W){const tx=String(c.text||'');if(edNoSpace(tx))return edPack(g,edWords(tx,c.lang),'',W*.86).map(l=>l.join(''));const words=tx.split(/\s+/);const out=[];let line='';for(const w of words){const next=line?line+' '+w:w;if(g.measureText(next).width>W*.86&&line){out.push(line);line=w;}else line=next;}if(line)out.push(line);return out.length?out:[''];},
  font(c,t){return `${c.weight||600} ${Math.round((c.size||40)*this.val(c,'scale',t)*this.k())}px "${c.font||'Tempoloom UI'}", "Tempoloom UI", system-ui, sans-serif`;},
- textBox(g,c,W,H,t=this.time){if(c.words?.length)return this.capBox(g,c,W,H,t);g.save();g.font=this.font(c,t);g.letterSpacing=`${(c.spacing||0)*this.k()}px`;const ls=this.lines(g,c,W),lh=(c.size||40)*this.val(c,'scale',t)*this.k()*1.25,w=Math.max(...ls.map(l=>g.measureText(l).width))+lh*.6,h=ls.length*lh+lh*.3;g.restore();
+ textBox(g,c,W,H,t=this.time){if(c.words?.length)return this.capBox(g,c,W,H,t);g.save();g.font=this.font(c,t);g.letterSpacing=`${(c.spacing||0)*this.k()}px`;const ls=this.lines(g,c,W),lh=(c.size||40)*this.val(c,'scale',t)*this.k()*(c.lineH||1.25),w=Math.max(...ls.map(l=>g.measureText(l).width))+lh*.6,h=ls.length*lh+lh*.3;g.restore();
   return {w,h,cx:W/2+this.val(c,'x',t)*W,cy:H/2+this.val(c,'y',t)*H,ls,lh};},
  drawText(g,c,W,H,t=this.time,o={}){
   if(c.words?.length)return this.drawCaption(g,c,W,H,t,o);

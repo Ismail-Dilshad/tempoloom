@@ -62,12 +62,23 @@ Object.assign(Ed,{
    if(!document.contains(this.dom.canvas)){this.pause();return;}
    this.time=this.t0+(now-this.p0)/1000*this.rate;
    if(this.time<=0&&this.rate<0){this.time=0;this.pause();return;}
-   const end=this.exporting?.until??this.end();if(this.time>=end){this.time=end;this.pause();if(this.exporting)this.finishExport();return;}
+   const end=this.exporting?.until??this.span?.e??this.end();
+   if(this.time>=end){
+    // Loop: back to the start of what is playing (the in-out part, or the whole timeline) and keep going.
+    if(this.loop&&!this.exporting&&this.rate>0){this.time=this.t0=this.span?.s??0;this.p0=now;this.sync();}
+    else{this.time=end;this.pause();if(this.exporting)this.finishExport();return;}}
    this.sync();this.draw();this.drawHead();this.drawTime();this.drawMeter?.();
    requestAnimationFrame(tick);};
   requestAnimationFrame(tick);
  },
- pause(){this.playing=false;for(const el of Object.values(this.els))el.pause?.();if(this.p){this.sync();this.draw();this.drawTime();this.drawMeter?.();}},
+ pause(){this.playing=false;this.span=null;for(const el of Object.values(this.els))el.pause?.();if(this.p){this.sync();this.draw();this.drawTime();this.drawMeter?.();}},
+ /** Play only between the in and out marks (Ctrl+Shift+Space); with loop on, round and round. */
+ playRange(){const r=this.rangeSpan();if(!r)return toast('Mark an in and an out first (I, O).');if(this.playing)this.pause();this.span=r;this.time=r.s;this.rate=1;this.start();},
+ toggleLoop(){this.loop=!this.loop;this.drawTime();toast(this.loop?'Loop on':'Loop off');},
+ /** Scrubbing: while the playhead is dragged, a short burst of the sound under it (as in Resolve and Premiere). */
+ scrub(){if(this.playing||!this.p?.clips.length)return;this.audio();this.ac?.resume?.();const t=this.time;
+  for(const c of this.p.clips){if(t<c.start||t>=c.start+c.dur||!this.vol(c,t))continue;const el=this.els[c.id];if(el?.play&&el.paused)el.play().catch(()=>{});}
+  clearTimeout(this._scrubT);this._scrubT=setTimeout(()=>{if(!this.playing)for(const el of Object.values(this.els))el.pause?.();},90);},
  seek(t){this.time=Math.max(0,Math.min(t,Math.max(this.end(),0)));if(this.playing){this.t0=this.time;this.p0=performance.now();}this.sync();this.draw();this.drawHead();this.drawTime();if(!this.playing&&this.sel&&this.clip(this.sel)?.kf)this.drawProps();},
 });
 // ---------- sound effects: equaliser (low, mid, high), compressor, reverb ----------
