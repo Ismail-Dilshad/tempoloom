@@ -102,6 +102,8 @@ function edClipMenu(x,y,c){
   ...(many?[['Group','link',()=>Ed.group(),false,false,'Ctrl+G']]:[]),...(Ed.picked().some(x=>x.group)?[['Ungroup','link',()=>Ed.ungroup(),false,false,'Ctrl+Shift+G']]:[]),'-',
   ...(video&&!many?[[c.detached?'Audio is detached':'Detach audio','detach',()=>Ed.detach(c),!!c.detached]]:[]),
   ...(!many&&c.media&&m?.type!=='image'?[['Speed 0.5×','sliders',()=>edSpeed(c,.5)],['Speed 1×','sliders',()=>edSpeed(c,1)],['Speed 2×','sliders',()=>edSpeed(c,2)]]:[]),
+  ...(!many&&c.media&&m?.type!=='image'&&!c.ramp?[['Fit to fill (the gap after it)','sliders',()=>Ed.fitFill(c)]]:[]),
+  ...(!many&&visual&&c.media?[['Dynamic zoom in','zoomIn',()=>Ed.dynZoom(c,1)],['Dynamic zoom out','zoomOut',()=>Ed.dynZoom(c,-1)]]:[]),
   ...(!many&&video?[['Freeze frame','freeze',()=>{Ed.seek(edClamp(Ed.time,c.start,c.start+c.dur-.04));Ed.freeze();},false,false,'Shift+F']]:[]),
   ...(!many&&video?[['Reverse','undo',()=>Ed.reverseClip(c)],['Stabilise','wand',()=>Ed.runTool(c,'stabilize')],['Auto reframe','crop',()=>Ed.runTool(c,'reframe')]]:[]),
   ...(!many&&c.media&&m?.type!=='audio'&&!c.asAudio?[['Remove background','image',()=>Ed.runTool(c,'cutout')]]:[]),

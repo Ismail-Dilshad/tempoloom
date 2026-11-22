@@ -18,6 +18,13 @@
   "Save style as a template" on any text clip (kept in this browser; right-click one to delete).
 - **Swap clips** with the one before or after (Ctrl+Alt + ←/→, or the clip's right-click menu);
   the gap between them stays.
+- **Voice changer and pitch** (Audio tab): Deep, High, Chipmunk, Robot, Radio, Phone, Megaphone,
+  Echo and Monster, and a Pitch slider (±12 semitones) that keeps the speed. The pitch runs in an
+  AudioWorklet (`editor-pitch.js`), the same in the player and the export.
+- **Media folders and search**: right-click a file in Media to put it in a folder; folders show as
+  chips over the media, and a search box finds files by name.
+- **Fit to fill**: a clip's speed changes so it ends exactly where the next clip starts (right-click).
+- **Dynamic zoom** in or out across a clip in one click (right-click): two scale keyframes.
 
 - **Automatic tests for the Editor.** `tests/editor-logic.test.ts` loads the page's scripts in a
   sandbox and checks the pure parts: grading curves, `.cube` looks and the grade table, speed

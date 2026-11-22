@@ -56,6 +56,16 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('the Editor: import, edit, grade,
     const saved=await Ed.saveTemplate(Ed.p.clips.find((x:any)=>x.text==='B'),'Mine');out.saved=Ed.tpls.some((x:any)=>x.id===saved.id&&x.style.dur===1);Ed.p.clips=Ed.p.clips.filter((x:any)=>x.text!=='Name Surname'&&x.text!=='B');Ed.after(true);}
    {const mc2=Ed.p.clips.find((x:any)=>x.media===m.id);Ed.select(mc2.id);Ed.seek(0);Ed.toggleKf(mc2,'opacity');Ed.seek(1);Ed.setVal(mc2,'opacity',0);Ed.seek(0);
     Ed.setKfCurve(mc2,[0,1,0,1]);out.fastEase=Ed.val(mc2,'opacity',.2);Ed.setKfEase(mc2,'linear');out.linEase=Ed.val(mc2,'opacity',.2);delete mc2.kf;mc2.opacity=1;}
+   // voice changer: +12 semitones doubles the 440 Hz tone (count zero crossings in the offline mix, as the export hears it)
+   {const mc3=Ed.p.clips.find((x:any)=>x.media===m.id),zc=(b:any)=>{const d=b.getChannelData(1);let z=0;for(let i=4800;i<43200;i++)if((d[i-1]<0)!==(d[i]<0))z++;return z;};
+    out.zc0=zc(await Ed.mixAudio(0,1));mc3.afx={pitch:12};out.zc12=zc(await Ed.mixAudio(0,1));mc3.afx={voice:'robot'};out.robot=zc(await Ed.mixAudio(0,1));delete mc3.afx;
+    // fit to fill and dynamic zoom (on a clip with room after it)
+    const vt=Ed.addTrack('video');const v1={...JSON.parse(JSON.stringify(mc3)),id:'fit1',track:vt?.id??Ed.p.tracks.at(-1).id,start:0,dur:1,speed:1},v2={...v1,id:'fit2',start:2};Ed.p.clips.push(v1,v2);
+    Ed.fitFill(Ed.clip('fit1'));out.fit=[Ed.clip('fit1').speed,Ed.clip('fit1').dur];Ed.dynZoom(Ed.clip('fit1'),1);out.zoom=Ed.clip('fit1').kf.scale.map((k:any)=>k.v);
+    Ed.p.clips=Ed.p.clips.filter((x:any)=>!['fit1','fit2'].includes(x.id));Ed.p.tracks=Ed.p.tracks.filter((t:any)=>Ed.p.clips.some((c:any)=>c.track===t.id)||t.main||t.kind!=='video');Ed.after(true);
+    // media folders and search
+    Ed.tab='media';m.folder='Interviews';Ed.drawLib();out.folders=[...document.querySelectorAll('.ed-folders [data-folder]')].map((b:any)=>b.textContent);
+    const ms:any=document.querySelector('[data-msearch]');ms.value='zzz';ms.dispatchEvent(new Event('input'));out.hidden=(document.querySelector('.ed-media') as any).hidden;ms.value='';ms.dispatchEvent(new Event('input'));delete m.folder;Ed.drawLib();}
    Ed.seek(.5);Ed.setRange('in');Ed.seek(1);Ed.setRange('out');Ed.playRange();out.span=Ed.span&&[Ed.span.s,Ed.span.e];out.playingRange=Ed.playing;Ed.pause();Ed.clearRange();Ed.select(null);
    // export an exact MP4 (the file is handed back here instead of downloaded)
    let file:Blob|null=null;(window as any).edSaveFile=(bl:Blob)=>{file=bl;};
@@ -74,6 +84,8 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('the Editor: import, edit, grade,
   expect(r.corner).toBe('scale');expect(r.middle).toBeNull();expect(r.lineRatio).toBeCloseTo(2,1);
   expect(r.tpl1).toEqual({text:'Name Surname',align:'left',box:true});expect(r.swapped).toEqual([0,1]);expect(r.saved).toBe(true);
   expect(r.fastEase).toBeLessThan(.3);expect(r.linEase).toBeCloseTo(.8,2);
+  expect(r.zc0).toBeGreaterThan(400);expect(r.zc12/r.zc0).toBeGreaterThan(1.8);expect(r.zc12/r.zc0).toBeLessThan(2.2);expect(r.robot).toBeGreaterThan(0);
+  expect(r.fit).toEqual([.5,2]);expect(r.zoom).toEqual([1,1.2]);expect(r.folders).toEqual(['All','Interviews']);expect(r.hidden).toBe(true);
   expect(r.span).toEqual([.5,1]);expect(r.playingRange).toBe(true);
   expect(r.reopened).toBe(r.original);
   expect(r.mp4,JSON.stringify(r.toasts)).toBeTruthy();const out=path.join(tmp,'out.mp4');fs.writeFileSync(out,Buffer.from(r.mp4,'base64'));

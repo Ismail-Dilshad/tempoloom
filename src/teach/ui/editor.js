@@ -347,6 +347,15 @@ const Ed={
   if(!o){toast(dir<0?'Nothing before this clip to swap with.':'Nothing after this clip to swap with.');return true;}
   this.snapshot();const [a,b]=dir<0?[o,c]:[c,o],gap=b.start-(a.start+a.dur),s=a.start;b.start=s;a.start=Math.round((s+b.dur+gap)*1000)/1000;
   this.after(true);toast('Swapped');return true;},
+ /** Fit to fill: change the clip's speed so it ends where the next clip on its track starts (the gap fills). */
+ fitFill(c){if(!c?.media||this.mediaOf(c)?.type==='image')return toast('Fit to fill works on video and audio clips.');if(c.ramp)return toast('This clip has a speed curve; remove it first.');
+  const nx=this.p.clips.filter(o=>o.track===c.track&&o.start>=c.start+c.dur-.001).sort((a,b)=>a.start-b.start)[0];
+  if(!nx||nx.start-(c.start+c.dur)<1/60)return toast('There is no gap after this clip to fill.');
+  const target=nx.start-c.start,sp=Math.round(c.dur*(c.speed||1)/target*1000)/1000;if(sp<.1)return toast('The gap is too long: that would be slower than 0.1×.');
+  this.snapshot();c.speed=sp;c.dur=target;this.after(true);toast(`Fit to fill: ${sp}×`);},
+ /** Dynamic zoom: a slow push in (or pull out) across the clip, as two scale keyframes. */
+ dynZoom(c,dir){if(!c||this.kindOf(c)==='audio')return;this.snapshot();const s=this.val(c,'scale',c.start),a={t:0,v:s},b={t:c.dur,v:Math.round(s*1.2*100)/100};
+  c.kf={...(c.kf||{}),scale:dir<0?[{t:0,v:b.v},{t:c.dur,v:s}]:[a,b]};this.after(true);toast(dir<0?'Dynamic zoom: out':'Dynamic zoom: in');},
  splitAll(){const t=this.time,list=this.p.clips.filter(x=>t>x.start+.05&&t<x.start+x.dur-.05&&!this.trackOf(x)?.locked);
   if(!list.length)return toast('Nothing under the playhead to split.');this.snapshot();const parts=list.map(c=>this.splitClip(c,t));this.regroup(parts);this.pick(null);this.after(true);toast(`Split ${list.length} clip${list.length>1?'s':''} on every track`);},
  /** Move the selected clips by whole frames (Alt + arrows); stops at the start and at other clips. */
@@ -406,7 +415,8 @@ const Ed={
  // Sound: every element -> its own gain (so a clip can go above 100%) -> master -> speakers, the recorder and the meter.
  audio(){if(this.ac)return;try{const ac=this.ac=new AudioContext();this.rec=ac.createMediaStreamDestination();this.master=ac.createGain();this.master.connect(ac.destination);this.master.connect(this.rec);
   const sp=ac.createChannelSplitter(2);this.master.connect(sp);this.meters=[0,1].map(i=>{const a=ac.createAnalyser();a.fftSize=1024;sp.connect(a,i);return a;});
-  for(const el of Object.values(this.els))this.route(el);}catch{this.ac=null;}},
+  for(const el of Object.values(this.els))this.route(el);
+  edPitchModule(ac).then(ok=>{if(ok&&!this.playing)this.sync();});}catch{this.ac=null;}},
  route(el){if(el._routed||!this.ac)return;try{const s=this.ac.createMediaElementSource(el),fx=edFxChain(this.ac),g=this.ac.createGain(),p=this.ac.createStereoPanner();s.connect(fx.input);fx.output.connect(g);g.connect(p);p.connect(this.master);el._fx=fx;el._gain=g;el._pan=p;el._routed=true;}catch{}},
  fade(c,t){const tt=edClamp(t,c.start,c.start+c.dur);let v=1;const local=tt-c.start;if(c.fadeIn&&local<c.fadeIn)v*=Math.max(0,local/c.fadeIn);if(c.fadeOut&&c.start+c.dur-tt<c.fadeOut)v*=Math.max(0,(c.start+c.dur-tt)/c.fadeOut);return v;},
  /** A clip's loudness at t: volume (keyframes), fades, loudness match (gainDb) and ducking. Playback and export both use it. */

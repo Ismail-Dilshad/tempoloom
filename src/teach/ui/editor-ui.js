@@ -6,7 +6,9 @@ const ED_LIB=[['media','Media','film'],['audio','Audio','music'],['text','Text',
 Object.assign(Ed,{
  drawLib(){
   const el=this.dom.lib;if(!el)return;
-  const items=this.media.filter(m=>this.tab==='audio'?m.type==='audio':m.type!=='audio');
+  const all=this.media.filter(m=>this.tab==='audio'?m.type==='audio':m.type!=='audio'),folders=[...new Set(all.map(m=>m.folder).filter(Boolean))].sort();
+  if(this.mfolder&&!folders.includes(this.mfolder))this.mfolder='';
+  const items=all.filter(m=>!this.mfolder||m.folder===this.mfolder);
   const tile=m=>`<div class="ed-media" draggable="true" data-mid="${m.id}" title="${esc(m.name)}">
     <div class="ed-media-thumb">${m.type==='audio'?`<span class="ed-media-wave">${I.music}</span>`:m.thumbs?.[0]?`<img src="${m.thumbs[Math.min(2,m.thumbs.length-1)]}" alt="">`:`<span class="ed-media-wave">${I[m.type==='image'?'image':'film']}</span>`}
      ${m.type!=='image'&&m.dur?`<span class="ed-media-dur">${edFmt(m.dur).slice(0,5)}</span>`:''}
@@ -40,7 +42,9 @@ Object.assign(Ed,{
    <div class="ed-filters">${ED_TRANS.map(([id,l])=>`<button type="button" class="ed-filter" data-trans-all="${id}"><span class="ed-trans-swatch t-${id}"></span><span>${l}</span></button>`).join('')}</div>
    <button type="button" class="btn small ghost ed-wide" data-trans-all="none">${I.x} Remove all transitions</button>`;
   else body=`${this.tab==='audio'?(this.recording?`<button type="button" class="btn small ed-wide ed-rec on" data-voice><i class="ed-rec-dot"></i> Stop recording <span data-rec-time>00:00</span></button>`:`<button type="button" class="btn small ed-wide" data-voice>${I.mic} Record voice-over</button>`):''}
-   ${items.length?`<div class="ed-lib-bar"><button type="button" class="btn small" data-import>${I.add} Import</button><span class="ed-sub">${items.length} ${this.tab==='audio'?'audio':'item'}${items.length>1&&this.tab!=='audio'?'s':''}</span></div>
+   ${all.length?`<div class="ed-lib-bar"><button type="button" class="btn small" data-import>${I.add} Import</button><span class="ed-sub">${items.length} ${this.tab==='audio'?'audio':'item'}${items.length>1&&this.tab!=='audio'?'s':''}</span></div>
+      <input type="search" class="ed-msearch" data-msearch placeholder="Search media" aria-label="Search media" value="${esc(this.mq||'')}">
+      ${folders.length?`<div class="ed-chips ed-folders">${[['','All'],...folders.map(f=>[f,f])].map(([f,l])=>`<button type="button" data-folder="${esc(f)}" aria-pressed="${(this.mfolder||'')===f}">${esc(l)}</button>`).join('')}</div>`:''}
       <div class="ed-media-grid${this.tab==='audio'?' list':''}">${items.map(tile).join('')}</div>`:drop}`;
   el.innerHTML=`<nav class="ed-cats" role="tablist" aria-label="Library">${ED_LIB.map(([id,l,ic])=>`<button type="button" role="tab" aria-selected="${this.tab===id}" data-tab="${id}">${I[ic]}<span>${l}</span></button>`).join('')}</nav><div class="ed-lib-body">${body}</div>`;
   el.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{this.tab=b.dataset.tab;this.drawLib();});
@@ -71,6 +75,13 @@ Object.assign(Ed,{
     const lines=cues.map(q=>{const ws=edWords(q.text),d=(q.e-q.s)/Math.max(1,ws.length);return {s:q.s,e:q.e,words:ws.map((w,i)=>({t:w,s:q.s+i*d,e:q.s+(i+1)*d}))};});
     const lang=this.p.capLang&&this.p.capLang!=='auto'?this.p.capLang:'auto',n=this.addCaptions(lines,lang,this.p.capLook||'clean');toast(`Imported ${n} caption${n>1?'s':''}`);};}
   const vo=$('[data-voice]',el);if(vo)vo.onclick=()=>this.recordVoice();
+  const ms=el.querySelector('[data-msearch]'),filt=()=>{const q=(this.mq||'').trim().toLowerCase();el.querySelectorAll('.ed-media').forEach(t=>{const m=this.media.find(x=>x.id===t.dataset.mid);t.hidden=!!q&&!(m?.name||'').toLowerCase().includes(q);});};
+  if(ms){ms.oninput=()=>{this.mq=ms.value;filt();};filt();}
+  el.querySelectorAll('[data-folder]').forEach(b=>b.onclick=()=>{this.mfolder=b.dataset.folder;this.drawLib();});
+  el.querySelectorAll('.ed-media').forEach(t=>t.oncontextmenu=e=>{e.preventDefault();const m=this.media.find(x=>x.id===t.dataset.mid);if(!m)return;
+   const fs=[...new Set(this.media.map(x=>x.folder).filter(Boolean))].sort(),put=f=>{if(f)m.folder=f;else delete m.folder;this.write([['meta','media',this.media]]).catch(()=>{});this.drawLib();};
+   edMenu(e.clientX,e.clientY,[['Add to the timeline','add',()=>this.add(m.id)],'-',...fs.filter(f=>f!==m.folder).map(f=>[`Move to “${esc(f)}”`,'layers',()=>put(f)]),
+    ['New folder…','add',()=>{const n=prompt('Folder name','');if(n?.trim())put(n.trim().slice(0,40));}],...(m.folder?[['Out of the folder','x',()=>put('')]]:[]),'-',['Remove from Media','trash',()=>this.removeMedia(m.id),false,true]]);});
   el.querySelectorAll('.ed-media').forEach(t=>{t.ondragstart=e=>{e.dataTransfer.setData('text/x-ed-media',t.dataset.mid);e.dataTransfer.effectAllowed='copy';};t.ondblclick=()=>{const m=this.media.find(x=>x.id===t.dataset.mid);m&&(m.type==='video'||m.type==='audio')?edSource(m):this.add(t.dataset.mid);};});
  },
  drawTime(){const t=this.dom.time;if(t)t.innerHTML=`<b>${edFmt(this.time)}</b> / ${edFmt(this.end())}${this.playing&&this.rate!==1?` <span class="ed-rate">${this.rate<0?'◀ ':''}${Math.abs(this.rate)}×</span>`:''}`;const p=this.dom.play;if(p){p.innerHTML=this.playing?I.pause:I.play;p.setAttribute('aria-label',this.playing?'Pause':'Play');}this.dom.loop?.setAttribute('aria-pressed',String(!!this.loop));},
@@ -264,6 +275,8 @@ Object.assign(Ed,{
      ${c.duck?row('duckdb','Lower by',-(c.duck.db??-12),{min:3,max:30,suffix:'dB'}):''}<p class="ed-hint">${I.music} The sound goes down while someone speaks in the other clips and comes back after. Use it on music.</p>`):'';
    const af=c.afx||{};const sfx=snd?sec('Equaliser and effects',`${row('afx_low','Low (bass)',af.low||0,{min:-18,max:18,suffix:'dB'})}${row('afx_mid','Mid (voice)',af.mid||0,{min:-18,max:18,suffix:'dB'})}${row('afx_high','High (air)',af.high||0,{min:-18,max:18,suffix:'dB'})}
      ${row('afx_comp','Compressor',af.comp||0,{min:0,max:100,suffix:'%'})}${row('afx_reverb','Reverb',af.reverb||0,{min:0,max:100,suffix:'%'})}
+     <div class="ed-row"><label>Voice</label><div class="ed-ctl"><div class="ed-chips">${ED_VOICES.map(([v,l])=>`<button type="button" data-voice="${v}" aria-pressed="${(af.voice||'')===v}">${l}</button>`).join('')}</div></div></div>
+     ${row('afx_pitch','Pitch',af.pitch||0,{min:-12,max:12,suffix:'st'})}
      <div class="ed-row"><label>Presets</label><div class="ed-ctl"><div class="ed-chips">${[['voice','Clear voice'],['radio','Radio'],['warm','Warm'],['podcast','Podcast'],['hall','Hall'],['flat','Flat']].map(([v,l])=>`<button type="button" data-afx="${v}">${l}</button>`).join('')}</div></div></div>
      <div class="ed-row"><label></label><div class="ed-ctl"><div class="ed-tools-row"><button type="button" class="ed-tool" data-tool="voice">${I.mic} Clean voice (noise, hum)</button><button type="button" class="ed-tool" data-tool="beats">${I.flag} Beat markers</button></div></div></div>
      ${this.toolJobs[c.id]?`<div class="ed-note"><span class="spin"></span> ${esc(this.toolJobs[c.id].label)}…</div>`:''}`,'afx'):'';
@@ -309,7 +322,8 @@ Object.assign(Ed,{
   });
   const segs={align:'align',animIn:'animIn',animOut:'animOut'};
   for(const [attr,key] of Object.entries(segs))el.querySelectorAll(`[data-${attr}]`).forEach(b=>b.onclick=()=>{this.snapshot();c[key]=b.dataset[attr];this.save();this.drawProps();this.draw();});
-  el.querySelectorAll('[data-afx]').forEach(b=>b.onclick=()=>{this.snapshot();const p={voice:{low:-4,mid:3,high:4,comp:45},radio:{low:-14,mid:6,high:-10,comp:70},warm:{low:4,mid:-1,high:-3,comp:20},podcast:{low:2,mid:2,high:3,comp:60},hall:{reverb:45},flat:null}[b.dataset.afx];if(p)c.afx={...p};else delete c.afx;this.after(true);});
+  el.querySelectorAll('[data-afx]').forEach(b=>b.onclick=()=>{this.snapshot();const p={voice:{low:-4,mid:3,high:4,comp:45},radio:{low:-14,mid:6,high:-10,comp:70},warm:{low:4,mid:-1,high:-3,comp:20},podcast:{low:2,mid:2,high:3,comp:60},hall:{reverb:45},flat:null}[b.dataset.afx];if(p)c.afx={...p,...(c.afx?.voice?{voice:c.afx.voice}:{}),...(c.afx?.pitch?{pitch:c.afx.pitch}:{})};else delete c.afx;this.after(true);});
+  el.querySelectorAll('[data-voice]').forEach(b=>b.onclick=()=>{this.snapshot();const v=b.dataset.voice;c.afx={...(c.afx||{})};if(v)c.afx.voice=v;else delete c.afx.voice;if(!Object.values(c.afx).some(Boolean))delete c.afx;this.after(true);});
   const rv=$('[data-reverse]',el);if(rv)rv.onclick=()=>this.reverseClip(c);el.querySelectorAll('[data-trackmo]').forEach(b=>b.onclick=()=>this.trackMotion(c));
   el.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>this.runTool(c,b.dataset.tool));
   el.querySelectorAll('[data-flip]').forEach(b=>b.onclick=()=>{this.snapshot();c[b.dataset.flip]=!c[b.dataset.flip];this.save();this.drawProps();this.draw();});

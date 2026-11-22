@@ -85,14 +85,33 @@ Object.assign(Ed,{
 /** One clip's chain: low shelf (120 Hz), mid bell (1.2 kHz), high shelf (6 kHz), a compressor, and a reverb
  *  (a made-up room, mixed in). set(afx) applies {low,mid,high in dB, comp 0-100, reverb 0-100}. Works in an
  *  AudioContext (the player) and an OfflineAudioContext (the export) alike. */
+/** Voices for the voice changer: a pitch (semitones) and a colour (filters, ring modulation, echo). */
+const ED_VOICES=[['','None'],['deep','Deep',{pitch:-5}],['high','High',{pitch:5}],['chipmunk','Chipmunk',{pitch:10}],['robot','Robot',{ring:55}],
+ ['radio','Radio',{hp:450,lp:3200}],['phone','Phone',{hp:320,lp:3000,pitch:0}],['megaphone','Megaphone',{hp:700,lp:2600,drive:true}],['echo','Echo',{echo:.28}],['monster','Monster',{pitch:-9,ring:30}]];
+/** Load the pitch worklet into a context once (the player's and each export's); false if this browser cannot. */
+function edPitchModule(ac){if(!ac?.audioWorklet)return Promise.resolve(false);return ac._pitchP||(ac._pitchP=ac.audioWorklet.addModule(withKey('/editor-pitch.js')).then(()=>(ac._pitch=true)).catch(()=>false));}
 function edFxChain(ac){
  const input=ac.createGain(),lo=ac.createBiquadFilter(),mid=ac.createBiquadFilter(),hi=ac.createBiquadFilter(),comp=ac.createDynamicsCompressor(),dry=ac.createGain(),wet=ac.createGain(),rev=ac.createConvolver(),output=ac.createGain();
  lo.type='lowshelf';lo.frequency.value=120;mid.type='peaking';mid.frequency.value=1200;mid.Q.value=.9;hi.type='highshelf';hi.frequency.value=6000;
  const len=Math.round(ac.sampleRate*1.8),ir=ac.createBuffer(2,len,ac.sampleRate);let seed=7;const rnd=()=>{seed=(seed*16807)%2147483647;return seed/2147483647*2-1;};
  for(let ch=0;ch<2;ch++){const d=ir.getChannelData(ch);for(let i=0;i<len;i++)d[i]=rnd()*Math.pow(1-i/len,3.2);}rev.buffer=ir;
- input.connect(lo);lo.connect(mid);mid.connect(hi);hi.connect(comp);comp.connect(dry);comp.connect(rev);rev.connect(wet);dry.connect(output);wet.connect(output);
+ // voice changer: band (high-pass, low-pass), drive, ring modulation (robot), echo; and the pitch worklet when used
+ const hp=ac.createBiquadFilter(),lp=ac.createBiquadFilter(),sh=ac.createWaveShaper(),rm=ac.createGain(),osc=ac.createOscillator(),og=ac.createGain(),dl=ac.createDelay(1),fb=ac.createGain(),ew=ac.createGain();
+ hp.type='highpass';hp.frequency.value=10;lp.type='lowpass';lp.frequency.value=22000;osc.frequency.value=55;og.gain.value=0;osc.connect(og);og.connect(rm.gain);osc.start();
+ dl.delayTime.value=.28;fb.gain.value=0;ew.gain.value=0;
+ const curve=k=>{const n=1024,c=new Float32Array(n);for(let i=0;i<n;i++){const x=i/(n-1)*2-1;c[i]=k?Math.tanh(x*k)/Math.tanh(k):x;}return c;};
+ input.connect(lo);lo.connect(mid);mid.connect(hi);hi.connect(hp);hp.connect(lp);lp.connect(sh);sh.connect(rm);rm.connect(comp);comp.connect(dry);comp.connect(rev);rev.connect(wet);dry.connect(output);wet.connect(output);
+ comp.connect(dl);dl.connect(fb);fb.connect(dl);dl.connect(ew);ew.connect(output);
+ let pn=null;
+ const pitch=semis=>{if(!semis&&!pn)return;if(!pn){if(!ac._pitch)return false;try{pn=new AudioWorkletNode(ac,'ed-pitch',{outputChannelCount:[2]});input.disconnect();input.connect(pn);pn.connect(lo);}catch{pn=null;return false;}}
+  pn.parameters.get('ratio').value=Math.pow(2,(semis||0)/12);};
  let last='';
- const set=a=>{const k=JSON.stringify(a||{});if(k===last)return;last=k;a=a||{};lo.gain.value=a.low||0;mid.gain.value=a.mid||0;hi.gain.value=a.high||0;
+ const set=a=>{const k=JSON.stringify(a||{})+!!ac._pitch;if(k===last)return;last=k;a=a||{};
+  const v=ED_VOICES.find(x=>x[0]===a.voice)?.[2]||{};
+  hp.frequency.value=v.hp||10;lp.frequency.value=v.lp||22000;sh.curve=curve(v.drive?4:0);
+  rm.gain.value=v.ring?0:1;og.gain.value=v.ring?1:0;osc.frequency.value=v.ring||55;
+  fb.gain.value=v.echo?.35:0;ew.gain.value=v.echo?.5:0;dl.delayTime.value=v.echo||.28;
+  if(pitch((a.pitch||0)+(v.pitch||0))===false)last='';lo.gain.value=a.low||0;mid.gain.value=a.mid||0;hi.gain.value=a.high||0;
   const c=(a.comp||0)/100;comp.threshold.value=-50*c;comp.ratio.value=1+11*c;comp.knee.value=c?12:0;comp.attack.value=.005;comp.release.value=.2;
   const r=(a.reverb||0)/100;wet.gain.value=r*.6;dry.gain.value=1-r*.25;};
  set({});return {input,output,set};}

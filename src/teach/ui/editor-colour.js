@@ -46,6 +46,7 @@ Object.assign(Ed,{
   *  Faster or slower clips keep their pitch, as in the player (edStretch). */
  async mixAudio(t0,dur){
   const sr=48000,oc=new OfflineAudioContext(2,Math.max(1,Math.round(dur*sr)),sr),bufs=new Map(),silent=new Set();
+  if(this.p.clips.some(c=>c.afx?.pitch||ED_VOICES.find(v=>v[0]===c.afx?.voice)?.[2]?.pitch))await edPitchModule(oc);
   for(const c of this.p.clips){
    const s=Math.max(c.start,t0),e=Math.min(c.start+c.dur,t0+dur);
    if(c.text!==undefined||c.sticker||!(c.dur>0)||e-s<.001)continue;const m=this.mediaOf(c);if(!m||m.type==='image')continue;
