@@ -1,6 +1,6 @@
 {
   "name": "tempoloom",
-  "version": "10.4.0",
+  "version": "10.5.0",
   "license": "Apache-2.0",
   "description": "Open-source AI agent for motion graphics and video editing. English by default, multilingual and right-to-left aware.",
   "private": true,
@@ -122,6 +122,7 @@
   },
   "dependencies": {
     "@jackwener/opencli": "2.0.2",
+    "@modelcontextprotocol/server": "2.4.0",
     "esbuild": "^0.25.0",
     "fflate": "0.8.2",
     "ffmpeg-static": "^5.3.0",

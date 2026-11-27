@@ -10,7 +10,7 @@ import {photoColors} from './product.js';
 export type Device='phone'|'tablet'|'laptop';
 export type MockupMove='float'|'tilt'|'slide';
 export type MockupOptions={device?:Device;move?:MockupMove;seconds?:number;shape?:Shape;background?:string;out:string;draft?:boolean};
-const SCREEN:Record<Device,{w:number;h:number}>={phone:{w:9,h:19.5},tablet:{w:3,h:4},laptop:{w:16,h:10}};
+export const deviceScreenSizes:Record<Device,{w:number;h:number}>={phone:{w:9,h:19.5},tablet:{w:3,h:4},laptop:{w:16,h:10}};
 
 export async function mockupMotion(shots:string[],o:MockupOptions){
  if(!shots.length)throw new Error('Give at least one screenshot');if(shots.length>6)throw new Error('At most 6 screenshots');
@@ -20,7 +20,7 @@ export async function mockupMotion(shots:string[],o:MockupOptions){
  const tmp=path.join(path.dirname(path.resolve(o.out)),'.mockup');fs.mkdirSync(tmp,{recursive:true});
  const shotsIn=await Promise.all(files.map(async(f,i)=>{const s=((await probe(f)).streams as {width?:number;height?:number}[])[0]!,out=path.join(tmp,`shot-${i}.jpg`);
   await run(ffmpeg,['-v','error','-y','-i',f,'-vf','scale=w=min(1200\\,iw):h=-2','-frames:v','1','-q:v','3',out]);return {src:dataUrl(out),ratio:Number(s.height)/Number(s.width),file:out};}));
- const scr=SCREEN[device],col=await photoColors(files[0]!),bg=o.background??`radial-gradient(110% 80% at 50% 30%,${col.light},${col.base} 55%,${col.dark})`;
+ const scr=deviceScreenSizes[device],col=await photoColors(files[0]!),bg=o.background??`radial-gradient(110% 80% at 50% 30%,${col.light},${col.base} 55%,${col.dark})`;
  // The device's size in the frame: as large as fits with room around it.
  const devH=device==='laptop'?Math.min(H*.6,W*.62*scr.h/scr.w):Math.min(H*.78,W*.72*scr.h/scr.w),devW=devH*scr.w/scr.h;
  const html=`<!doctype html><html><head><meta charset="utf-8"><style>

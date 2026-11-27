@@ -34,6 +34,28 @@ const ED_TITLES=[
  {name:'Subscribe button',dur:4,layers:[
   {type:'box',x:.5,y:.8,w:.24,h:.09,fill:'#e5252a',radius:12,anim:'pop'},
   {type:'text',x:.5,y:.8,text:'SUBSCRIBE',size:32,weight:900,color:'#ffffff',align:'center',anim:'pop',delay:.05}]},
+ {name:'Interview ID',dur:5,layers:[
+  {type:'box',x:.31,y:.78,w:.47,h:.14,fill:'#182b50',radius:10,anim:'left'},
+  {type:'box',x:.075,y:.78,w:.008,h:.14,fill:'#7de9dd',anim:'left'},
+  {type:'text',x:.10,y:.76,w:.43,text:'Guest name',size:39,weight:800,color:'#ffffff',align:'left',anim:'up'},
+  {type:'text',x:.10,y:.81,w:.43,text:'Role · Organisation',size:22,weight:600,color:'#a8f3ee',align:'left',anim:'fade',delay:.2}]},
+ {name:'Product spotlight',dur:5,layers:[
+  {type:'box',x:.5,y:.78,w:.66,h:.24,fill:'#162721',opacity:.94,radius:18,anim:'up'},
+  {type:'text',x:.5,y:.73,w:.56,text:'PRODUCT NAME',size:54,weight:850,color:'#f5fff9',align:'center',anim:'up'},
+  {type:'text',x:.5,y:.83,w:.56,text:'One feature that matters',size:26,weight:600,color:'#a8f4ce',align:'center',anim:'fade',delay:.2}]},
+ {name:'Chapter opener',dur:4,layers:[
+  {type:'box',x:.5,y:.5,w:1,h:1,fill:'#152543',opacity:.9,anim:'fade'},
+  {type:'text',x:.5,y:.37,w:.8,text:'CHAPTER 01',size:26,weight:750,color:'#8cc7ff',align:'center',anim:'up'},
+  {type:'text',x:.5,y:.53,w:.79,text:'Getting started',size:78,weight:800,color:'#ffffff',align:'center',anim:'up',delay:.12},
+  {type:'box',x:.5,y:.65,w:.18,h:.008,fill:'#8cc7ff',anim:'wipe',delay:.25}]},
+ {name:'Tutorial step',dur:5,layers:[
+  {type:'box',x:.225,y:.18,w:.32,h:.11,fill:'#f5c947',radius:11,anim:'left'},
+  {type:'text',x:.225,y:.18,w:.28,text:'STEP 01',size:38,weight:900,color:'#271e14',align:'center',anim:'up'},
+  {type:'text',x:.075,y:.29,w:.75,text:'Set up your workspace',size:47,weight:750,color:'#ffffff',align:'left',anim:'up',delay:.13}]},
+ {name:'Location opener',dur:5,layers:[
+  {type:'box',x:.5,y:.71,w:.52,h:.003,fill:'#ffba91',anim:'wipe'},
+  {type:'text',x:.5,y:.63,w:.8,text:'PLACE NAME',size:69,weight:800,color:'#ffffff',align:'center',anim:'up'},
+  {type:'text',x:.5,y:.77,w:.65,text:'Country · Day 01',size:24,weight:600,color:'#ffdec0',align:'center',anim:'fade',delay:.25}]},
 ];
 
 /** How far in a layer is at clip time lt (0..1) and what that does to it. */
@@ -46,25 +68,48 @@ function edTitleAnim(l,lt,fade){const p=edClamp((lt-(l.delay||0))/.45,0,1),e=edE
 function edTitleLines(g,l,W){const max=l.w?l.w*W:Infinity,out=[];for(const para of String(l.text??'').split('\n')){
  if(!isFinite(max)){out.push(para);continue;}const words=para.split(/\s+/);let line='';for(const w of words){const n=line?line+' '+w:w;if(g.measureText(n).width>max&&line){out.push(line);line=w;}else line=n;}out.push(line);}return out;}
 
+const edTitlePaths=new WeakMap();
+function edTitleFont(layer,k){return `${layer.weight||600} ${(layer.size||40)*k}px "${layer.font||'Tempoloom UI'}", "Tempoloom UI", system-ui, sans-serif`;}
+function edDrawTitlePath(g,layer,w,h){
+ let path=edTitlePaths.get(layer);
+ if(!path){path=new Path2D(layer.d);edTitlePaths.set(layer,path);}
+ g.translate(-w/2,-h/2);g.scale(w/1000,h/1000);
+ if(layer.fill){g.fillStyle=layer.fill;g.fill(path,'evenodd');}
+ if(layer.line){g.lineWidth=layer.line;g.lineJoin='round';g.lineCap='round';g.strokeStyle=layer.lineColor||'#ffffff';g.stroke(path);}
+}
+
 /** Draw every layer of a title onto g (frame size W x H, k = the frame's scale from 720p). lt: time within the clip
  *  (layers animate in), fade: the clip's own opacity part. Returns each layer's box in frame pixels (for picking). */
-function edDrawTitle(g,title,W,H,k,lt=99,fade=1){const boxes=[];
+function edDrawTitle(g,title,W,H,k,lt=99,fade=1,measureOnly=false){const boxes=[];
  (title?.layers||[]).forEach((l,i)=>{const an=edTitleAnim(l,lt,fade),x=(l.x+an.dx)*W,y=(l.y+an.dy)*H,a=(l.opacity??1)*an.a;
+  if(measureOnly&&a<=0)return;
   g.save();g.globalAlpha=Math.max(0,Math.min(1,a));g.translate(x,y);g.scale(an.k,an.k);
-  if(l.type==='box'){const w=(l.w||.2)*W,h=(l.h||.1)*H,r=Math.min(w,h)/2*Math.min(1,(l.radius||0)*k/(Math.min(w,h)/2||1));
+  if(l.type==='box'||l.type==='path'){const w=(l.w||.2)*W,h=(l.h||.1)*H,r=Math.min(w,h)/2*Math.min(1,(l.radius||0)*k/(Math.min(w,h)/2||1));
    if(an.clip<1){g.beginPath();g.rect(-w/2,-h/2,w*an.clip,h);g.clip();}
-   g.beginPath();g.roundRect(-w/2,-h/2,w,h,r);if(l.fill){g.fillStyle=l.fill;g.fill();}if(l.line){g.lineWidth=l.line*k;g.strokeStyle=l.lineColor||'#ffffff';g.stroke();}
-   boxes.push({i,x0:x-w/2,y0:y-h/2,x1:x+w/2,y1:y+h/2});}
-  else{const size=(l.size||40)*k;g.font=`${l.weight||600} ${size}px "${l.font||'Tempoloom UI'}", "Tempoloom UI", system-ui, sans-serif`;g.textBaseline='middle';g.textAlign=l.align||'center';
+   if(!measureOnly){if(l.type==='path')edDrawTitlePath(g,l,w,h);else{g.beginPath();g.roundRect(-w/2,-h/2,w,h,r);if(l.fill){g.fillStyle=l.fill;g.fill();}if(l.line){g.lineWidth=l.line*k;g.strokeStyle=l.lineColor||'#ffffff';g.stroke();}}}
+   if(l.fill||l.line||!measureOnly)boxes.push({i,x0:x-w/2,y0:y-h/2,x1:x+w/2,y1:y+h/2});}
+  else{const size=(l.size||40)*k;g.font=edTitleFont(l,k);g.textBaseline='middle';g.textAlign=l.align||'center';
    g.direction=edRtl(l.text||'')?'rtl':'ltr';const ls=edTitleLines(g,l,W),lh=size*1.2,wd=Math.max(1,...ls.map(s=>g.measureText(s).width)),y0=-(ls.length-1)*lh/2;
    if(an.clip<1){const L=l.align==='left'?0:l.align==='right'?-wd:-wd/2;g.beginPath();g.rect(L,y0-lh,wd*an.clip,ls.length*lh+lh);g.clip();}
    if(l.shadow!==false){g.shadowColor='rgba(0,0,0,.45)';g.shadowBlur=size*.18;g.shadowOffsetY=size*.04;}
-   g.fillStyle=l.color||'#ffffff';ls.forEach((s,j)=>g.fillText(s,0,y0+j*lh));
-   const L=l.align==='left'?x:l.align==='right'?x-wd:x-wd/2;boxes.push({i,x0:L,y0:y+y0-lh/2,x1:L+wd,y1:y+y0+(ls.length-.5)*lh});}
+   if(!measureOnly){g.fillStyle=l.color||'#ffffff';ls.forEach((s,j)=>g.fillText(s,0,y0+j*lh));}
+   const L=l.align==='left'?x:l.align==='right'?x-wd:x-wd/2;if(l.text?.trim()||!measureOnly)boxes.push({i,x0:L,y0:y+y0-lh/2,x1:L+wd,y1:y+y0+(ls.length-.5)*lh});}
   g.restore();});
  return boxes;}
 
 Object.assign(Ed,{
+ titleBox(g,c,W,H,t=this.time){
+  const layers=edDrawTitle(g,c.title,W,H,this.k(),99,1,true);
+  const scale=this.val(c,'scale',t),angle=this.val(c,'rotate',t)*Math.PI/180;
+  const pivotX=W/2+this.val(c,'x',t)*W,pivotY=H/2+this.val(c,'y',t)*H;
+  if(!layers.length)return {w:W*.14*scale,h:H*.12*scale,cx:pivotX,cy:pivotY};
+  const left=Math.min(...layers.map(l=>l.x0)),right=Math.max(...layers.map(l=>l.x1));
+  const top=Math.min(...layers.map(l=>l.y0)),bottom=Math.max(...layers.map(l=>l.y1));
+  const x=((left+right)/2-W/2)*scale,y=((top+bottom)/2-H/2)*scale;
+  const cx=pivotX+x*Math.cos(angle)-y*Math.sin(angle),cy=pivotY+x*Math.sin(angle)+y*Math.cos(angle);
+  return {w:(right-left)*scale,h:(bottom-top)*scale,cx,cy,pivotX,pivotY,
+   regions:layers.map(l=>({x0:(l.x0-left)*scale,y0:(l.y0-top)*scale,x1:(l.x1-left)*scale,y1:(l.y1-top)*scale}))};
+ },
  /** A title clip on the frame: its layers, then the clip's own position, size, turn, opacity and in/out animation over all of them. */
  drawTitle(g,c,W,H,t=this.time,o={}){
   const an=this.animApply(c,t),a=this.val(c,'opacity',t)*(o.alpha??1)*an.alpha*this.fade(c,t);if(a<=0)return;
@@ -74,12 +119,13 @@ Object.assign(Ed,{
  /** Add a title (a ready-made one, or an empty one) at the playhead, on a text track; open the title editor. */
  addTitle(tp,open=true){this.snapshot();const T=JSON.parse(JSON.stringify(tp||{name:'Title',layers:[{type:'text',x:.5,y:.5,text:'Your title',size:64,weight:800,color:'#ffffff',align:'center',anim:'up'}]}));
   const c={id:this.uid(),title:{name:T.name||'Title',layers:T.layers},start:this.time,dur:T.dur||4,x:0,y:0,scale:1,rotate:0,opacity:1,animIn:'none',animOut:'fade',animDur:.4};
-  c.track=this.place('text',c.start,c.dur,this.p.tracks.find(t=>t.kind==='text')?.id);this.p.clips.push(c);this.pick(c.id);this.after(true);if(open)edTitleEditor(c);return c;},
+  c.track=this.place('text',c.start,c.dur,this.p.tracks.find(t=>t.kind==='text')?.id,undefined,{visible:true});this.p.clips.push(c);this.pick(c.id);this.after(true);if(open)edTitleEditor(c);return c;},
 });
 
 /** The title editor: the frame on the left (the video under the title, as it is at the playhead), the layers and the chosen
  *  layer's settings on the right. Click a layer to choose it, drag to move it, drag its corner to size it. Save keeps it as one undo step. */
-async function edTitleEditor(c){if(!c?.title)return;await Ed.seekExact?.(Ed.time).catch(()=>{});
+async function edTitleEditor(c){if(!c?.title)return;const project=Ed.p;await Ed.seekExact?.(Ed.time).catch(()=>{});
+ if(Ed.p!==project||Ed.clip(c.id)!==c||!Ed.dom.canvas?.isConnected)return;
  const draft=JSON.parse(JSON.stringify(c.title)),[W,H]=Ed.size();let sel=draft.layers.length?draft.layers.length-1:-1,boxes=[];
  // the frame without this title, under the preview
  c._hide=true;Ed.draw();const under=document.createElement('canvas');under.width=W;under.height=H;under.getContext('2d').drawImage(Ed.dom.canvas,0,0);delete c._hide;Ed.draw();
@@ -91,10 +137,10 @@ async function edTitleEditor(c){if(!c?.title)return;await Ed.seekExact?.(Ed.time
    <ol class="ed-title-layers"></ol><div class="ed-title-props"></div></div></div>`);
  const box=$('.ed-title-ed'),cv=box.querySelector('canvas'),g=cv.getContext('2d'),list=box.querySelector('.ed-title-layers'),props=box.querySelector('.ed-title-props');
  const paint=()=>{g.setTransform(1,0,0,1,0,0);g.clearRect(0,0,W,H);g.drawImage(under,0,0);boxes=edDrawTitle(g,draft,W,H,Ed.k());
-  const b=boxes.find(x=>x.i===sel);if(b){g.save();g.strokeStyle='rgba(80,150,255,.95)';g.lineWidth=Math.max(2,W/500);g.setLineDash([W/90,W/140]);g.strokeRect(b.x0,b.y0,b.x1-b.x0,b.y1-b.y0);g.setLineDash([]);
+  const b=boxes.find(x=>x.i===sel);if(b){g.save();g.strokeStyle=Ed.dom.selectionColor||'#fff';g.lineWidth=Math.max(2,W/500);g.setLineDash([W/90,W/140]);g.strokeRect(b.x0,b.y0,b.x1-b.x0,b.y1-b.y0);g.setLineDash([]);
    const hs=Math.max(8,W/90);g.fillStyle='#fff';g.fillRect(b.x1-hs/2,b.y1-hs/2,hs,hs);g.strokeRect(b.x1-hs/2,b.y1-hs/2,hs,hs);g.restore();}};
  const field=(k,label,type,val,extra='')=>`<label class="ed-tf"><span>${label}</span>${type==='textarea'?`<textarea data-tk="${k}" rows="2" dir="auto">${esc(val??'')}</textarea>`:type==='select'?extra:`<input type="${type}" data-tk="${k}" value="${esc(String(val??''))}" ${extra}>`}</label>`;
- const drawList=()=>{list.innerHTML=draft.layers.map((l,i)=>`<li><button type="button" data-tl="${i}" aria-pressed="${i===sel}">${l.type==='box'?I.shapes:I.text}<span dir="auto">${esc(l.type==='box'?'Box':String(l.text||'Text').split('\n')[0].slice(0,28))}</span></button></li>`).reverse().join('');
+ const drawList=()=>{list.innerHTML=draft.layers.map((l,i)=>`<li><button type="button" data-tl="${i}" aria-pressed="${i===sel}">${l.type==='text'?I.text:I.shapes}<span dir="auto">${esc(l.type==='text'?String(l.text||'Text').split('\n')[0].slice(0,28):l.name||'Box')}</span></button></li>`).reverse().join('');
   list.querySelectorAll('[data-tl]').forEach(b=>b.onclick=()=>{sel=+b.dataset.tl;drawAll();});};
  const drawProps=()=>{const l=draft.layers[sel];if(!l){props.innerHTML='<p class="ed-xnote">Add a text or a box, or choose a layer.</p>';return;}
   const anims=[['none','None'],['fade','Fade'],['up','Rise'],['left','Slide in'],['wipe','Wipe'],['pop','Pop']].map(([v,n])=>`<option value="${v}" ${(l.anim||'none')===v?'selected':''}>${n}</option>`).join('');
@@ -102,7 +148,7 @@ async function edTitleEditor(c){if(!c?.title)return;await Ed.seekExact?.(Ed.time
     field('size','Size','number',l.size||40,'min="8" max="300"')+field('weight','Weight','number',l.weight||600,'min="300" max="900" step="100"')+field('color','Colour','color',l.color||'#ffffff')+
     field('align','Align','select',0,`<select data-tk="align">${[['left','Left'],['center','Centre'],['right','Right']].map(([v,n])=>`<option value="${v}" ${(l.align||'center')===v?'selected':''}>${n}</option>`).join('')}</select>`)+
     field('w','Wrap width %','number',Math.round((l.w||0)*100),'min="0" max="100"')
-   :field('fill','Fill','color',l.fill||'#111111')+field('radius','Round corners','number',l.radius||0,'min="0" max="200"')+field('line','Outline','number',l.line||0,'min="0" max="20"')+field('lineColor','Outline colour','color',l.lineColor||'#ffffff')+
+   :(l.type==='box'||l.fill?field('fill','Fill','color',l.fill||'#111111'):'')+(l.type==='box'?field('radius','Round corners','number',l.radius||0,'min="0" max="200"'):'')+field('line','Outline','number',l.line||0,'min="0" max="20" step="0.1"')+field('lineColor','Outline colour','color',l.lineColor||'#ffffff')+
     field('w','Width %','number',Math.round((l.w||.2)*100),'min="1" max="100"')+field('h','Height %','number',Math.round((l.h||.1)*100),'min="1" max="100"'))+
    field('opacity','Opacity %','number',Math.round((l.opacity??1)*100),'min="0" max="100"')+field('anim','Comes in','select',0,`<select data-tk="anim">${anims}</select>`)+field('delay','After (s)','number',l.delay||0,'min="0" max="10" step=".05"')+
    `<div class="ed-title-order"><button type="button" class="btn small" data-tmv="1">Forward</button><button type="button" class="btn small" data-tmv="-1">Back</button><button type="button" class="btn small" data-tdup>Duplicate</button><button type="button" class="btn small danger" data-tdel>Delete</button></div>`;
@@ -121,7 +167,7 @@ async function edTitleEditor(c){if(!c?.title)return;await Ed.seekExact?.(Ed.time
   if(!corner){const hit=[...boxes].reverse().find(b=>px>=b.x0&&px<=b.x1&&py>=b.y0&&py<=b.y1);sel=hit?hit.i:-1;drawAll();if(!hit)return;}
   const l=draft.layers[sel],o={x:l.x,y:l.y,w:l.w,h:l.h,size:l.size,bw:cur?cur.x1-cur.x0:1},[sx,sy]=[px,py];cv.setPointerCapture(e.pointerId);
   cv.onpointermove=ev=>{const [qx,qy]=at(ev);
-   if(corner){if(l.type==='box'){l.w=edClamp((o.w||.2)+(qx-sx)*2/W,.01,1);l.h=edClamp((o.h||.1)+(qy-sy)*2/H,.005,1);}else l.size=Math.round(edClamp((o.size||40)*(o.bw+(qx-sx))/o.bw,8,300));}
+   if(corner){if(l.type!=='text'){l.w=edClamp((o.w||.2)+(qx-sx)*2/W,.01,1);l.h=edClamp((o.h||.1)+(qy-sy)*2/H,.005,1);}else l.size=Math.round(edClamp((o.size||40)*(o.bw+(qx-sx))/o.bw,8,300));}
    else{let x=o.x+(qx-sx)/W,y=o.y+(qy-sy)/H;if(Math.abs(x-.5)<.01)x=.5;if(Math.abs(y-.5)<.01)y=.5;l.x=Math.round(x*1000)/1000;l.y=Math.round(y*1000)/1000;}paint();};
   cv.onpointerup=()=>{cv.onpointermove=cv.onpointerup=null;drawProps();};};
  box.tabIndex=-1;box.onkeydown=e=>{if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))return;const l=draft.layers[sel];if(!l)return;const d=(e.shiftKey?10:1)/1000,m={ArrowLeft:[-d,0],ArrowRight:[d,0],ArrowUp:[0,-d],ArrowDown:[0,d]}[e.key];

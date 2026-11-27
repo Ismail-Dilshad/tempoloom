@@ -111,8 +111,8 @@ export function plan(request:string,o:{type:string;job?:string;options?:string[]
 }
 
 /** What can be done now: tasks whose needs are done, and gates waiting for the user. */
-export function next(job:string){
- const p=readPlan(job),open=p.tasks.filter(t=>ready(p,t));
+export function next(jobOrPlan:string|Plan){
+ const p=typeof jobOrPlan==='string'?readPlan(jobOrPlan):jobOrPlan,job=p.job,open=p.tasks.filter(t=>ready(p,t));
  const toPick=open.filter(t=>t.gate).flatMap(g=>g.needs.map(n=>taskOf(p,n))).filter(x=>x.choices?.length&&!x.picked);
  return {job,done:p.tasks.filter(t=>t.status==='done').length,of:p.tasks.length,
   ...(toPick.length?{userChooses:toPick.map(x=>({step:x.id,versions:x.choices!.map(c=>c.label),pick:`pnpm tempoloom studio pick ${job} ${x.id} "LABEL"`}))}:{}),
@@ -373,8 +373,8 @@ export function predict(job:string,t:Task){
  return {good:Math.round(Math.max(.05,Math.min(.95,pr))*100)/100,reasons:[...count].sort((a,b)=>b[1]-a[1]).slice(0,2).map(([id])=>RATE_REASONS[id]?.label??id),basis:past.length};
 }
 /** How often the studio's guesses matched the user's ratings. */
-export function predictionRecord(){
- const judged=history().flatMap(p=>p.ratings??[]).filter(r=>r.rating!=='ok'&&r.predicted!==undefined);
+export function predictionRecord(plans=history()){
+ const judged=plans.flatMap(p=>p.ratings??[]).filter(r=>r.rating!=='ok'&&r.predicted!==undefined);
  const matched=judged.filter(r=>(r.predicted!>=.5)===(r.rating==='good')).length;
  return {judged:judged.length,matched,share:judged.length?Math.round(matched/judged.length*100):null,trusted:judged.length>=20&&matched/judged.length>=.7};
 }

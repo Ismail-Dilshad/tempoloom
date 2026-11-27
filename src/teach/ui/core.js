@@ -27,72 +27,96 @@ const I={home:ICON('<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>'),add:IC
 
 /** What each of the mascot's faces means, in plain words. */
 const FACE_LABEL={idle:'Waiting',listening:'Reading',thinking:'Thinking',planning:'Planning',creating:'Making',rendering:'Rendering',done:'Done',excited:'Happy',confused:'Unsure',error:'Stuck','needs-approval':'Needs you',sleeping:'Asleep'};
-/** Notifications in the style of Sileo (sileo.aaryan.design, MIT): a small pill with a badge and a
- *  title springs open into a rounded body with the message, the two joined by an SVG "gooey" filter.
- *  It opens a moment after it appears, closes again before it leaves, opens while you hover or focus
- *  it (its timer waits), and Escape dismisses it. Newest on top. */
-let toastSerial=0;
-const TOAST_H=40,TOAST_BLUR=8,TOAST_R=16;
-function toastLayout(t){
- const W=t.offsetWidth,open=t.dataset.open==='true',head=t.querySelector('.toast-head'),inner=t.querySelector('.toast-head-inner');
- const pw=Math.min(W,Math.max(TOAST_H,Math.ceil(inner.scrollWidth)+16)),px=(W-pw)/2;
- const desc=t.querySelector('.toast-desc'),full=Math.max(TOAST_H*2.25,TOAST_H+desc.scrollHeight),h=open?full:TOAST_H;
- t.style.setProperty('--h',h+'px');t.style.setProperty('--pw',pw+'px');t.style.setProperty('--px',px+'px');
- const svg=t.querySelector('svg'),pill=svg.querySelector('.pill'),body=svg.querySelector('.body'),f=svg.querySelector('filter');
- svg.setAttribute('width',W);svg.setAttribute('height',full);svg.setAttribute('viewBox',`0 0 ${W} ${full}`);
- f.setAttribute('width',W+TOAST_BLUR*4);f.setAttribute('height',full+TOAST_BLUR*4);
- Object.assign(pill.style,{x:px+'px',width:pw+'px',height:(open?TOAST_H+TOAST_BLUR*3:TOAST_H)+'px'});
- Object.assign(body.style,{height:(open?full-TOAST_H:0)+'px'});
- head.style.maxWidth=pw+'px';
+/** Show the complete message immediately. Pause its timer while it is being read. */
+let toastDock,toastDockObserver;
+function positionToasts(){
+ const stack=$('#toasts'),dock=$('#dock-slot > .dock-wrap');
+ if(!stack)return;
+ if(dock!==toastDock){
+  toastDockObserver?.disconnect();
+  toastDock=dock;
+  if(dock){
+   toastDockObserver??=new ResizeObserver(positionToasts);
+   toastDockObserver.observe(dock);
+  }
+ }
+ stack.style.removeProperty('--toast-dock-clearance');
+ if(!dock?.getClientRects().length)return;
+ const area=stack.getBoundingClientRect(),prompt=dock.getBoundingClientRect();
+ if(prompt.right>area.left&&prompt.left<area.right)
+  stack.style.setProperty('--toast-dock-clearance',Math.ceil(innerHeight-prompt.top+8)+'px');
 }
+window.addEventListener('resize',positionToasts);
 function toast(msg,bad){
  const stack=$('#toasts');
  if([...stack.children].some(el=>el.dataset.message===msg&&el.dataset.leaving!=='true'))return;
- const id='toast-goo-'+(++toastSerial),state=bad?'error':'success',life=bad?9000:6000,closeAt=life-2000;
- const t=document.createElement('div');t.className='toast';t.dataset.state=state;t.dataset.message=msg;t.tabIndex=0;
+ const t=document.createElement('div');
+ t.className='toast';
+ t.dataset.state=bad?'error':'success';
+ t.dataset.message=msg;
+ t.title=msg;
+ t.tabIndex=0;
  t.setAttribute('role',bad?'alert':'status');
- const icon=(bad?I.error:I.check)||ICON(bad?'<path d="M12 7v6M12 17h.01"/>':'<path d="m7 12 3 3 7-7"/>');
- t.innerHTML=`<svg class="toast-shape" aria-hidden="true"><defs><filter id="${id}" filterUnits="userSpaceOnUse" x="${-TOAST_BLUR*2}" y="${-TOAST_BLUR*2}" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceGraphic" stdDeviation="${TOAST_BLUR}" result="blur"/><feColorMatrix in="blur" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -10" result="goo"/><feComposite in="SourceGraphic" in2="goo" operator="atop"/></filter></defs>
-  <g filter="url(#${id})"><rect class="pill" x="0" y="0" width="${TOAST_H}" height="${TOAST_H}" rx="${TOAST_R}" ry="${TOAST_R}"/><rect class="body" x="0" y="${TOAST_H}" width="100%" height="0" rx="${TOAST_R}" ry="${TOAST_R}"/></g></svg>
-  <div class="toast-head"><span class="toast-head-inner" style="display:inline-flex;align-items:center;gap:8px"><span class="toast-badge">${icon}</span><strong class="toast-title">${bad?'Something went wrong':'Done'}</strong></span></div>
-  <div class="toast-desc"><p dir="auto">${esc(msg)}</p></div>`;
+ const icon=bad?I.error:I.check;
+ t.innerHTML=`<span class="toast-badge" aria-hidden="true">${icon}</span>
+  <p class="toast-message" dir="auto">${esc(msg)}</p>`;
  stack.prepend(t);
- let timer=null,openTimer=null,closeTimer=null,started=0,remaining=life,held=false,leaving=false;
- const setOpen=on=>{t.dataset.open=String(on);toastLayout(t);};
- const dismiss=()=>{if(leaving)return;leaving=true;[timer,openTimer,closeTimer].forEach(clearTimeout);setOpen(false);t.dataset.leaving='true';
-  t.style.marginBottom=-(TOAST_H+12)+'px';setTimeout(()=>t.remove(),matchMedia('(prefers-reduced-motion: reduce)').matches?0:600);};
- const run=()=>{if(leaving||held)return;started=performance.now();timer=setTimeout(dismiss,remaining);
-  const toClose=remaining-(life-closeAt);if(toClose>0)closeTimer=setTimeout(()=>setOpen(false),toClose);};
- const hold=()=>{if(held||leaving)return;held=true;clearTimeout(timer);clearTimeout(closeTimer);clearTimeout(openTimer);remaining=Math.max(1500,remaining-(performance.now()-started));setOpen(true);};
- const release=()=>{if(!held||t.matches(':hover')||t.contains(document.activeElement))return;held=false;setOpen(false);run();};
- t.onpointerenter=e=>{if(e.pointerType!=='touch')hold();};t.onpointerleave=()=>release();
- t.onfocusin=()=>hold();t.onfocusout=e=>{if(!t.contains(e.relatedTarget))queueMicrotask(release);};
+ positionToasts();
+
+ let timer=null,started=0,remaining=bad?9000:6000;
+ const dismiss=()=>{
+  if(t.dataset.leaving==='true')return;
+  clearTimeout(timer);
+  timer=null;
+  t.dataset.leaving='true';
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches)t.remove();
+  else setTimeout(()=>t.remove(),180);
+ };
+ const run=()=>{
+  if(timer!==null||t.dataset.leaving==='true')return;
+  started=performance.now();
+  timer=setTimeout(dismiss,remaining);
+ };
+ const hold=()=>{
+  if(timer===null)return;
+  clearTimeout(timer);
+  timer=null;
+  remaining=Math.max(1500,remaining-(performance.now()-started));
+ };
+ const release=()=>{
+  if(!t.matches(':hover')&&!t.contains(document.activeElement))run();
+ };
+ t.onpointerenter=e=>{if(e.pointerType!=='touch')hold();};
+ t.onpointerleave=release;
+ t.onfocusin=hold;
+ t.onfocusout=()=>queueMicrotask(release);
  t.onkeydown=e=>{if(e.key==='Escape'){e.stopPropagation();dismiss();}};
- t.onclick=()=>{if(t.dataset.open!=='true')hold();};
- t.dismiss=dismiss;
- toastLayout(t);
- requestAnimationFrame(()=>{t.dataset.ready='true';openTimer=setTimeout(()=>{if(!leaving)setOpen(true);},150);run();});
+ run();
 }
-window.addEventListener('resize',()=>document.querySelectorAll('.toast').forEach(toastLayout));
 /** Routine changes are visible in the refreshed screen; reserve notifications for errors. */
 async function act(fn,done){try{await fn();}catch(e){toast(e.message,true);}await App.refresh(true);}
 /** A question with two answers; resolves true for yes. */
-// A danger question (delete, remove) gets one soft card everywhere: a trash badge, the question, a
-// short line, the thing it acts on when given (file: {name, meta, thumb}), and two equal buttons.
 function ask(title,text,yes='Yes',danger=false,{file}={}){return new Promise(res=>{
- const body=danger?`<div class="confirm">
-   <span class="confirm-badge" aria-hidden="true">${typeof I!=='undefined'&&I.trash||''}</span>
-   <h2 class="confirm-title">${esc(title)}</h2><p class="confirm-text">${esc(text)}</p>
+ const body=danger?`<header class="confirm-heading" data-dialog-header>
+   <span class="confirm-badge" aria-hidden="true">${I.trash}</span>
+   <h2 class="confirm-title">${esc(title)}</h2></header>
+   <div class="confirm-body"><p class="confirm-text" id="confirm-description">${esc(text)}</p>
    ${file?`<div class="confirm-file">${file.thumb?`<img src="${esc(file.thumb)}" alt="" onerror="this.remove()">`:''}<span class="confirm-file-name" dir="auto">${esc(file.name)}</span>${file.meta?`<span class="confirm-file-meta">${esc(file.meta)}</span>`:''}</div>`:''}
-   <div class="confirm-actions"><button class="btn ghost" data-no>Cancel</button><button class="btn confirm-danger" data-yes>${esc(yes)}</button></div></div>`
+   </div><footer class="confirm-actions"><button class="btn ghost" data-no>Cancel</button><button class="btn confirm-danger" data-yes>${esc(yes)}</button></footer>`
   :`<h2>${esc(title)}</h2><p class="muted">${esc(text)}</p><div class="row" style="justify-content:flex-end;margin-top:16px"><button class="btn ghost" data-no>Cancel</button><button class="btn primary" data-yes>${esc(yes)}</button></div>`;
  dialog(body,{onclose:()=>res(false)});
- if(danger)$('#modal .dialog')?.classList.add('dialog-confirm');
+ if(danger){
+  $('#modal .dialog').classList.add('dialog-confirm');
+  $('#modal .modal').setAttribute('aria-describedby','confirm-description');
+ }
  $('#modal [data-yes]').onclick=()=>{closeDialog(true);res(true);};$('#modal [data-no]').onclick=()=>closeDialog();$('#modal [data-'+(danger?'no':'yes')+']').focus();});}
 let dialogClose=null,lastFocus=null;
 function dialog(html,o={}){lastFocus=document.activeElement;dialogClose=o.onclose||null;
- $('#modal').innerHTML=`<div class="modal" role="dialog" aria-modal="true"><div class="dialog ${o.wide?'wide':''}">${html}</div></div>`;
+ $('#modal').innerHTML=`<div class="modal" role="dialog" aria-modal="true"><div class="dialog ${o.wide?'wide':''}">${html}<button type="button" class="iconbtn dialog-close" aria-label="Close dialog">${I.x}</button></div></div>`;
  const surface=$('#modal .modal'),heading=$('h2',surface);
+ const closeButton=surface.querySelector('.dialog-close'),header=surface.querySelector('[data-dialog-header]');
+ if(header)header.append(closeButton);
+ closeButton.onclick=()=>closeDialog();
  if(heading){heading.id='dialog-title';surface.setAttribute('aria-labelledby',heading.id);}
  surface.onkeydown=e=>{
   if(e.key!=='Tab')return;
@@ -101,30 +125,46 @@ function dialog(html,o={}){lastFocus=document.activeElement;dialogClose=o.onclos
   if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}
   else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}
  };
- surface.querySelector('input:not(:disabled),textarea,button')?.focus();
+ surface.querySelector('input:not(:disabled),textarea,button:not(.dialog-close)')?.focus();
  $('#modal .modal').onmousedown=e=>{if(e.target.classList.contains('modal'))closeDialog();};}
 function closeDialog(silent){const f=dialogClose;dialogClose=null;$('#modal').innerHTML='';if(!silent&&f)f();lastFocus?.focus?.();}
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('#modal').innerHTML)closeDialog();});
 async function copyText(t){try{await navigator.clipboard.writeText(t);}catch{toast('Copy it by hand: '+t,true);}}
 function download(name,text,type='text/markdown'){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);}
 
+function eachMatching(root,selector,visit){
+ if(root.matches?.(selector))visit(root);
+ root.querySelectorAll(selector).forEach(visit);
+}
+function addedSubtrees(records){
+ const added=new Set();
+ for(const record of records)for(const node of record.addedNodes){if(node.nodeType===1&&node.isConnected)added.add(node);}
+ return [...added].filter(node=>{
+  for(let parent=node.parentElement;parent;parent=parent.parentElement)if(added.has(parent))return false;
+  return true;
+ });
+}
+
 // Progressive custom select: the original select remains the form's source of truth.
 const Controls={
  open:null,serial:0,numberSyncs:new WeakMap(),numberHold:null,
+ syncValue(input){
+  if(input.type==='range'){
+   const min=Number(input.min||0),max=Number(input.max||100);
+   const percent=(input.valueAsNumber-min)/Math.max(max-min,Number.EPSILON)*100;
+   input.style.setProperty('--slider-fill',Math.min(100,Math.max(0,percent))+'%');
+  }else this.numberSyncs.get(input)?.();
+ },
  mount(root=document){
   this.mountNumbers(root);
-  root.querySelectorAll('input[type=range]:not(.studio-slider)').forEach(slider=>{
+  eachMatching(root,'input[type=range]:not(.studio-slider)',slider=>{
    slider.classList.add('studio-slider');
-   const update=()=>{
-    const min=Number(slider.min||0),max=Number(slider.max||100);
-    const percent=(slider.valueAsNumber-min)/Math.max(max-min,Number.EPSILON)*100;
-    slider.style.setProperty('--slider-fill',Math.min(100,Math.max(0,percent))+'%');
-   };
+   const update=()=>this.syncValue(slider);
    slider.addEventListener('input',update);
    slider.addEventListener('change',update);
    update();
   });
-  root.querySelectorAll('select:not([multiple])').forEach(select=>{
+  eachMatching(root,'select:not([multiple]):not([data-enhanced])',select=>{
    if(select.dataset.enhanced)return;
    select.dataset.enhanced='true';select.hidden=true;
    const wrap=document.createElement('div');wrap.className='select-control';
@@ -142,7 +182,7 @@ const Controls={
   });
  },
  mountNumbers(root){
-  root.querySelectorAll('input[type=number]').forEach(input=>{
+  eachMatching(root,'input[type=number]',input=>{
    const existing=this.numberSyncs.get(input);
    if(existing){existing();return;}
    if(!input.id)input.id='number-control-'+(++this.serial);
@@ -268,7 +308,7 @@ const Controls={
   this.close();if(select.disabled)return;
   const options=[...select.options],enabled=options.map((o,i)=>!o.disabled&&!o.parentElement.disabled?i:-1).filter(i=>i>=0);
   if(!enabled.length)return;
-  const menu=document.createElement('div');menu.className='select-menu';if(trigger.closest('.video-settings'))menu.classList.add('video-select-menu');menu.id=trigger.id+'-list';menu.setAttribute('role','listbox');menu.setAttribute('aria-label',trigger.getAttribute('aria-label'));
+  const menu=document.createElement('div');menu.className='select-menu dropdown-surface';if(trigger.closest('.video-settings'))menu.classList.add('video-select-menu');menu.id=trigger.id+'-list';menu.setAttribute('role','listbox');menu.setAttribute('aria-label',trigger.getAttribute('aria-label'));
   menu.innerHTML=options.map((o,i)=>`<div id="${menu.id}-${i}" class="select-option" role="option" aria-label="${esc(o.textContent)}" aria-selected="${o.selected}" aria-disabled="${!enabled.includes(i)}" data-index="${i}">${esc(o.textContent)}</div>`).join('');
   document.body.append(menu);const r=trigger.getBoundingClientRect();const height=Math.min(280,menu.scrollHeight,innerHeight-24),below=innerHeight-r.bottom-8;
   menu.style.width=Math.min(Math.max(r.width,180),innerWidth-16)+'px';menu.style.left=Math.max(8,Math.min(r.left,innerWidth-menu.offsetWidth-8))+'px';
@@ -286,7 +326,13 @@ const Controls={
  move(key){const o=this.open;if(!o)return;const p=o.enabled.indexOf(o.index);o.index=key==='Home'?o.enabled[0]:key==='End'?o.enabled.at(-1):o.enabled[(p+(key==='ArrowUp'?-1:1)+o.enabled.length)%o.enabled.length];this.highlight();},
  choose(index){const o=this.open;if(!o||!o.enabled.includes(index))return;const changed=o.select.selectedIndex!==index;o.select.selectedIndex=index;this.close(true);if(changed){o.select.dispatchEvent(new Event('input',{bubbles:true}));o.select.dispatchEvent(new Event('change',{bubbles:true}));}},
  start(){
-  new MutationObserver(()=>{if(this.open&&!this.open.trigger.isConnected)this.close();if(this.numberHold&&(!this.numberHold.button.isConnected||this.numberHold.button.disabled))this.numberHold.stop();this.mount();}).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['disabled','readonly','min','max','step']});
+  new MutationObserver(records=>{
+   if(this.open&&!this.open.trigger.isConnected)this.close();
+   if(this.numberHold&&(!this.numberHold.button.isConnected||this.numberHold.button.disabled))this.numberHold.stop();
+   for(const root of addedSubtrees(records))this.mount(root);
+   const changed=new Set(records.filter(record=>record.type==='attributes'&&record.target.matches('input[type=number],input[type=range]')).map(record=>record.target));
+   for(const input of changed)if(input.isConnected)this.syncValue(input);
+  }).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['disabled','readonly','min','max','step']});
   document.addEventListener('pointerdown',e=>{if(this.open&&!this.open.menu.contains(e.target)&&!this.open.trigger.contains(e.target))this.close();});
   document.addEventListener('keydown',e=>{const o=this.open;if(!o)return;
    if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();this.close(true);}
@@ -301,15 +347,14 @@ const Controls={
 };
 
 const Tooltips={
- target:null,timer:null,tip:null,
- mount(){
-  document.querySelectorAll('[title],.iconbtn[aria-label]').forEach(el=>{
-   const text=el.getAttribute('title')||el.getAttribute('aria-label');
-   if(text)el.dataset.tooltip=text;
-   if(el.hasAttribute('title'))el.removeAttribute('title');
-  });
-  if(this.target&&!this.target.isConnected)this.hide();
+ target:null,timer:null,tip:null,autoLabels:new WeakSet(),
+ prepare(el){
+  const title=el.getAttribute('title'),label=el.matches('.iconbtn')&&el.getAttribute('aria-label');
+  if(title){el.dataset.tooltip=title;this.autoLabels.delete(el);}
+  else if(label&&(!el.dataset.tooltip||this.autoLabels.has(el))){el.dataset.tooltip=label;this.autoLabels.add(el);}
+  if(el.hasAttribute('title'))el.removeAttribute('title');
  },
+ mount(root=document){eachMatching(root,'[title],.iconbtn[aria-label]',el=>this.prepare(el));},
  hide(){
   clearTimeout(this.timer);
   if(this.target){
@@ -344,7 +389,12 @@ const Tooltips={
  start(){
   this.tip=document.createElement('div');this.tip.id='dashboard-tooltip';this.tip.className='soft-tooltip';this.tip.setAttribute('role','tooltip');document.body.append(this.tip);
   this.mount();
-  new MutationObserver(()=>this.mount()).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['title']});
+  new MutationObserver(records=>{
+   for(const root of addedSubtrees(records))this.mount(root);
+   const changed=new Set(records.filter(record=>record.type==='attributes').map(record=>record.target));
+   for(const el of changed)if(el.isConnected&&el.matches('[title],.iconbtn[aria-label]'))this.prepare(el);
+   if(this.target&&!this.target.isConnected)this.hide();
+  }).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['title','aria-label']});
   document.addEventListener('pointermove',e=>{
    if(e.pointerType==='touch'||e.buttons)return;
    const target=e.target.closest('[data-tooltip]');
@@ -500,6 +550,7 @@ const App={
     <a class="navlink" href="#/trash" aria-label="Trash" ${railTip('Trash')} ${this.place==='trash'?'aria-current="page"':''}>${I.trash}<span class="lbl">Trash</span></a>
     <button type="button" class="navlink bell" id="rail-bell" aria-haspopup="menu" aria-expanded="false" ${railTip('Notifications')} onclick="Shell.bell(this)">${I.bell}<span class="lbl">Notifications</span><span class="n hot" hidden></span><span class="dot" hidden></span></button>
     <a class="navlink" id="rail-settings" href="#/settings" aria-label="Settings" ${railTip('Settings')} ${this.place==='settings'?'aria-current="page"':''}>${I.gear}<span class="lbl">Settings</span></a>
+    <button type="button" class="navlink version-btn" id="rail-version" aria-label="v${esc(h.version||'10.5.0')} · What's new" onclick="Shell.whatsNew()">${I.spark}<span class="lbl"><b class="ver-pill">v${esc(h.version||'10.5.0')}</b>Updates</span></button>
     <button type="button" class="navlink collapse-btn" id="rail-collapse" aria-controls="side" onclick="App.collapse()">${I.collapse}<span class="lbl">Collapse</span></button>
     </footer>`;
   if(markup!==this.railMarkup){

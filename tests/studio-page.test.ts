@@ -213,6 +213,9 @@ describe('the app',()=>{
    await page.getByRole('menuitem',{name:'Rename'}).click();
    const editor=page.locator('.rename-pop').getByRole('textbox',{name:'File name'});
    expect(await editor.inputValue()).toBe('sample.png');
+   const renameDialog=page.getByRole('dialog',{name:'Rename',exact:true});
+   expect(await renameDialog.evaluate(el=>getComputedStyle(el).borderRadius)).toBe('6px');
+   expect(await editor.evaluate(el=>getComputedStyle(el).borderRadius)).toBe('0px');
    await editor.fill('Unsaved.png');
    await page.getByRole('button',{name:'Cancel rename'}).click();
    await page.getByRole('button',{name:'More options for sample.png'}).click();
@@ -285,6 +288,9 @@ describe('the app',()=>{
    expect(await (await fetch(base+'/?k='+s.key)).text()).toContain('/core.js');
    const home=await (await fetch(base+'/api/home',{headers:h})).json() as {brain:{total:number};teach:{lessons:number};activity:{kind:string}[];agent:unknown[]};
    expect(home.brain.total).toBeGreaterThan(50);expect(home.activity.some(a=>a.kind==='rating')).toBe(true);
+   const overview=rq.overview();
+   expect(home).toMatchObject({studio:overview.totals,guesses:overview.scores.guesses,scores:{good:overview.scores.good,bad:overview.scores.bad},
+    made:overview.jobs.reduce((count,job)=>count+job.tasks.reduce((total,task)=>total+(task.gate?0:task.show.filter(file=>file.type==='video').length),0),0)});
    expect((await fetch(base+'/api/lessons',{method:'POST',headers:jh,body:JSON.stringify({text:'short',topics:['design']})})).status).toBe(400);
    const made=await (await fetch(base+'/api/lessons',{method:'POST',headers:jh,body:JSON.stringify({text:'End every ad on the logo for at least 2 seconds, with the website address under it.',topics:['design'],avoid:false})})).json() as {id:string;status:string;mine:boolean};
    expect(made).toMatchObject({status:'approved',mine:true});

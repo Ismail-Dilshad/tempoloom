@@ -66,7 +66,8 @@ Object.assign(Ed,{
  },
  /** A caption look on one clip. */
  capLook(c,name){const base={stroke:3,strokeColor:'#000000',shadow:true,box:false,animIn:'fade',animOut:'none',animDur:.15,upper:false,capStyle:'phrase',hl:c.hl||'#FFD400',weight:Math.max(700,c.weight||700)};
-  const looks={clean:{},karaoke:{capStyle:'karaoke'},word:{capStyle:'word',upper:true,weight:800,size:Math.max(c.size||34,56),animIn:'none'},build:{capStyle:'build'},boxed:{box:true,boxColor:'#000000',stroke:0,shadow:false,animIn:'slide',animDur:.2}};
+  const looks={clean:{},karaoke:{capStyle:'karaoke'},word:{capStyle:'word',upper:true,weight:800,size:Math.max(c.size||34,56),animIn:'none'},build:{capStyle:'build'},boxed:{box:true,boxColor:'#000000',stroke:0,shadow:false,animIn:'slide',animDur:.2},
+   documentary:{stroke:2,weight:600,animIn:'none'},interview:{box:true,boxColor:'#19233a',stroke:0,shadow:false,weight:650,animIn:'none'},highlight:{capStyle:'karaoke',hl:'#78efbc',weight:800,animIn:'none'}};
   Object.assign(c,base,looks[name]||{},{capLook:name});},
  /** New text in a caption: its words keep their times when the count is the same, else share the clip's length evenly. */
  retime(c,text){const ws=edWords(text,c.lang);// a reviewed caption: its "check" marks go

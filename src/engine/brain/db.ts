@@ -96,6 +96,7 @@ export function removeVideo(id:string){watch?.('taught',id,()=>getVideo(id));db(
 export function putJob(d:import('node:sqlite').DatabaseSync,j:Job){watch?.('brainjob',j.id,()=>{const r=d.prepare('select data from jobs where id=?').get(j.id) as {data:string}|undefined;return r?JSON.parse(r.data) as Job:null;});d.prepare('insert into jobs(id,data,created,verdict) values(?,?,?,?) on conflict(id) do update set data=excluded.data,verdict=excluded.verdict').run(j.id,JSON.stringify(j),j.created,j.verdict);}
 export function getJob(id:string){const r=db().prepare('select data from jobs where id=?').get(id) as {data:string}|undefined;return r?JSON.parse(r.data) as Job:null;}
 export function allJobs(){return (db().prepare('select data from jobs order by created').all() as {data:string}[]).map(r=>JSON.parse(r.data) as Job);}
+export function jobCount(){return (db().prepare('select count(*) as total from jobs').get() as {total:number}).total;}
 
 // ---------- committed copy (agent/brain/*.jsonl) ----------
 const readLines=(f:string)=>{try{return fs.readFileSync(f,'utf8').split(/\r?\n/).filter(l=>l.trim());}catch{return [];}};

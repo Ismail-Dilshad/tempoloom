@@ -15,15 +15,24 @@ Object.assign(Ed,{
   const look=g.lut?.id?this.luts.get(g.lut.id):null;if(g.lut?.id&&!look){this.loadLuts().then(()=>{if(!this.playing)this.draw();});return null;}
   t=edBuildLut(g,look);this._gl.set(key,t);if(this._gl.size>40)this._gl.delete(this._gl.keys().next().value);return t;},
  async exportReady(){
-  if(this.p.clips.some(c=>c.grade?.lut?.id))await this.loadLuts();
+  if(edAll(this.p.clips).some(c=>c.grade?.lut?.id))await this.loadLuts();
   await document.fonts?.ready;
-  const waits=[];
-  for(const c of this.p.clips){
-   if(c.text!==undefined){waits.push(document.fonts?.load(this.font(c,c.start),c.text||'a').catch(()=>{}));continue;}
-   if(c.sticker||c.asAudio)continue;const m=this.mediaOf(c);if(!m)continue;
-   if(m.type==='image')waits.push(this.image(m).decode().catch(()=>{throw new Error('The picture '+m.name+' could not be read');}));
-   else if(m.type==='video')waits.push(edReady(this.element(c),m.name));
-  }
+  const waits=[],images=new Set(),k=this.k();
+  const font=(spec,text)=>waits.push(document.fonts?.load(spec,text||'a').catch(()=>{}));
+  const visit=depth=>{
+   for(const c of this.p.clips){
+    if(c.nest){if(depth<5)this.withNest(c,()=>visit(depth+1));continue;}
+    if(c.text!==undefined){font(this.font(c,c.start),c.text);continue;}
+    if(c.title){for(const layer of c.title.layers||[])if(layer.type==='text')font(edTitleFont(layer,k),layer.text);continue;}
+    if(c.sticker||c.asAudio)continue;
+    const m=this.mediaOf(c);if(!m)continue;
+    if(m.type==='image'&&!images.has(m.id)){
+     images.add(m.id);
+     waits.push(this.image(m).decode().catch(()=>{throw new Error('The picture '+m.name+' could not be read');}));
+    }else if(m.type==='video')waits.push(edReady(this.element(c),m.name));
+   }
+  };
+  visit(0);
   await Promise.all(waits);
  },
  /** Every video that can be on screen at t (or held for a transition) shows exactly its frame for t. Same targets as sync(). */
@@ -55,7 +64,7 @@ Object.assign(Ed,{
   // off: what to add to a clip's times to get timeline times; [lo, hi]: where it can be heard; mul: the nested clips' own volume.
   const parts=[];
   const gather=(off,lo,hi,mul,depth)=>{for(const c of this.p.clips){
-   const [cs,ce]=c.nest||c.text!==undefined||c.sticker?[c.start,c.start+c.dur]:this.sndSpan(c),s=Math.max(off+cs,lo),e=Math.min(off+ce,hi);if(c.text!==undefined||c.sticker||!(c.dur>0)||e-s<.001)continue;
+   const [cs,ce]=c.nest||c.text!==undefined||c.sticker?[c.start,c.start+c.dur]:this.sndSpan(c),s=Math.max(off+cs,lo),e=Math.min(off+ce,hi);if(c.muted||c.text!==undefined||c.sticker||!(c.dur>0)||e-s<.001)continue;
    if(c.nest){if(depth>4||this.trackOf(c)?.muted||(this._mcA&&this.trackOf(c)?.id!==this._mcA))continue;const P=this.p,A=this._mcA,o0=off,vol=T=>{const k=this.p,ka=this._mcA;this.p=P;this._mcA=A;try{return this.vol(c,T-o0);}finally{this.p=k;this._mcA=ka;}};
     this.withNest(c,()=>gather(off+c.start-(c.in||0),s,e,T=>mul(T)*vol(T),depth+1));continue;}
    const m=this.mediaOf(c);if(!m||m.type==='image')continue;if(this.trackOf(c)?.muted||(c.detached&&!c.asAudio)||(this._mcA&&this.trackOf(c)?.id!==this._mcA))continue;
@@ -77,23 +86,82 @@ Object.assign(Ed,{
   return oc.startRendering();
  },
  async exportLive(o){
-  if(typeof MediaRecorder==='undefined')return toast('This browser cannot record video.',true);
-  this.audio();await this.ac?.resume?.();
-  const scale=o.height/Math.min(...this.base()),fps=o.fps;
-  this.exporting={scale,format:o.format,fps,name:o.name,studio:!!o.studio,until:o.range?.e};if(this.media.some(m=>m.proxy))this.resetElements();this.pick(null);this.drawTimeline();this.drawProps();this.fit();this.draw();
-  const v=this.dom.canvas.captureStream(fps),tracks=[...v.getVideoTracks(),...(this.rec?this.rec.stream.getAudioTracks():[])];
-  const type=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'].find(t=>MediaRecorder.isTypeSupported(t));
-  const [W,H]=this.size(),bits=Math.round(W*H*fps*.15);
-  const rec=new MediaRecorder(new MediaStream(tracks),{mimeType:type,videoBitsPerSecond:Math.min(60e6,Math.max(4e6,bits))});const parts=[];
-  rec.ondataavailable=e=>{if(e.data.size)parts.push(e.data);};
-  rec.onstop=async()=>{const ex=this.exporting;const ok=ex&&!ex.cancelled;
-   if(ok&&ex.format==='mp4'){this.drawExport('Making the MP4…');
-    try{const r=await fetch(withKey('/api/editor/mp4?fps='+fps),{method:'POST',body:new Blob(parts,{type:'video/webm'})});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Could not make the MP4');const out=await r.blob();edSaveFile(out,ex.name+'.mp4');toast('Exported');if(ex.studio)this.toStudio(out,ex.name+'.mp4');}
-    catch(e){toast(e.message+'. Saved as WebM instead.',true);edSaveFile(new Blob(parts,{type:'video/webm'}),ex.name+'.webm');}}
-   else if(ok){const out=new Blob(parts,{type:'video/webm'});edSaveFile(out,ex.name+'.webm');toast('Exported');if(ex.studio)this.toStudio(out,ex.name+'.webm');}
-   this.exporting=null;if(this.media.some(m=>m.proxy))this.resetElements();this.drawExport();this.fit();this.draw();};
-  this.drawExport('Recording…');this.pause();this.rate=1;this.seek(o.range?.s??0);
-  setTimeout(()=>{rec.start(250);this.exporting.rec=rec;this.play();},400);
+  if(this.exporting)return;
+  if(typeof MediaRecorder==='undefined'||!this.dom.canvas.captureStream)return toast('This browser cannot record video.',true);
+  const fps=o.fps,scale=o.height/Math.min(...this.base()),time=this.time;
+  const job={scale,format:o.format,fps,name:o.name,studio:!!o.studio,until:o.range?.e,controller:new AbortController()};
+  let capture,recorder,startTimer;
+  const cleanup=()=>{
+   clearTimeout(startTimer);
+   capture?.getTracks().forEach(track=>track.stop());
+   if(this.exporting!==job)return;
+   this.exporting=null;
+   if(this.media.some(m=>m.proxy))this.resetElements();
+   this.drawExport();this.fit();this.seek(time);
+  };
+  job.cancel=()=>{
+   this.pause();
+   if(recorder&&recorder.state!=='inactive')recorder.stop();
+   else cleanup();
+  };
+  this.pause();
+  this.exporting=job;
+  this.drawExport('Getting ready.');
+  try{
+   this.audio();
+   await this.ac?.resume?.();
+   if(job.cancelled)return;
+   if(this.media.some(m=>m.proxy))this.resetElements();
+   this.pick(null);this.drawTimeline();this.drawProps();this.fit();
+   this.rate=1;this.seek(o.range?.s??0);
+   capture=this.dom.canvas.captureStream(fps);
+   const tracks=[...capture.getVideoTracks(),...(this.rec?this.rec.stream.getAudioTracks():[])];
+   const mimeType=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'].find(type=>MediaRecorder.isTypeSupported(type));
+   const [width,height]=this.size(),bits=Math.round(width*height*fps*.15);
+   recorder=new MediaRecorder(new MediaStream(tracks),{mimeType,videoBitsPerSecond:Math.min(60e6,Math.max(4e6,bits))});
+   job.rec=recorder;
+   const parts=[];
+   recorder.ondataavailable=event=>{if(event.data.size)parts.push(event.data);};
+   recorder.onerror=()=>{
+    if(this.exporting!==job)return;
+    job.cancelled=true;
+    this.pause();cleanup();
+    toast('The browser stopped recording the video.',true);
+   };
+   recorder.onstop=async()=>{
+    if(this.exporting!==job)return;
+    capture.getTracks().forEach(track=>track.stop());
+    capture=null;
+    const webm=new Blob(parts,{type:'video/webm'});
+    try{
+     if(job.cancelled)return;
+     let output=webm,format=job.format;
+     if(format==='mp4'){
+      this.drawExport('Making the MP4.');
+      try{
+       const response=await fetch(withKey('/api/editor/mp4?fps='+fps),{method:'POST',body:webm,signal:job.controller.signal});
+       if(!response.ok)throw new Error((await response.json().catch(()=>({}))).error||'Could not make the MP4');
+       output=await response.blob();
+      }catch(error){
+       if(job.cancelled)return;
+       toast(error.message+'. Saved as WebM instead.',true);
+       format='webm';
+      }
+     }
+     if(job.cancelled)return;
+     const name=job.name+'.'+format;
+     edSaveFile(output,name);
+     if(format===job.format){toast('Exported');if(job.studio)this.toStudio(output,name);}
+    }finally{cleanup();}
+   };
+   startTimer=setTimeout(()=>{
+    if(this.exporting!==job||job.cancelled)return;
+    try{recorder.start(250);this.drawExport('Recording.');this.start();}
+    catch(error){cleanup();toast(error.message,true);}
+   },400);
+  }catch(error){
+   if(!job.cancelled){cleanup();toast(error.message,true);}
+  }
  },
  /** The frame under the playhead as a PNG, at 1080 on the short side, without selection outlines. */
  async saveFrame(){if(!this.p.clips.length||this.exporting)return;this.pause();const t=this.time;
@@ -102,8 +170,18 @@ Object.assign(Ed,{
    if(!blob)throw new Error('Could not make the picture');edSaveFile(blob,`${this.p.name} ${edFmt(t).replace(/:/g,'.')}.png`);toast('Frame saved');}
   catch(e){toast(e.message,true);}finally{this.exporting=null;if(this.media.some(m=>m.proxy))this.resetElements();this.fit();this.draw();}},
  toStudio(blob,name){edSaveToStudio(blob,name).then(()=>toast('Saved to Studio')).catch(e=>toast(e.message,true));},
- finishExport(){const e=this.exporting;if(e?.rec&&e.rec.state!=='inactive')setTimeout(()=>e.rec.stop(),200);},
- cancelExport(){const e=this.exporting;if(!e)return;e.cancelled=true;if(e.offline){this.drawExport('Stopping…');return;}this.pause();if(e.rec&&e.rec.state!=='inactive')e.rec.stop();else{this.exporting=null;this.drawExport();this.fit();this.draw();}},
+ finishExport(){
+  const job=this.exporting;
+  if(job?.rec?.state==='recording')setTimeout(()=>{
+   if(this.exporting===job&&job.rec.state!=='inactive')job.rec.stop();
+  },200);
+ },
+ cancelExport(){
+  const job=this.exporting;if(!job||job.cancelled)return;
+  job.cancelled=true;job.controller?.abort();
+  this.drawExport('Stopping.');
+  job.cancel?.();
+ },
 });
 // ---------- clip effects: shake, glow, sharpen, grain ----------
 /** Camera shake: a smooth, repeatable wobble (the same at the same time, so preview and export match). */

@@ -44,7 +44,7 @@ Object.assign(Ed,{
   const [x0,y0]=toSrc(b.cx-b.w/2,b.cy-b.h/2),[x1,y1]=toSrc(b.cx+b.w/2,b.cy+b.h/2);
   const cl=v=>edClamp(v,0,1),bx=[cl(x0),cl(y0),Math.max(.03,cl(x1)-cl(x0)),Math.max(.03,cl(y1)-cl(y0))];
   return this.runTool(c,'track',{media:mv,video:v,query:{box:bx.map(x=>x.toFixed(4)).join(','),start:this.srcAt(v,c.start).toFixed(3),end:this.srcAt(v,c.start+c.dur).toFixed(3)}});},
- applyTrack(c,v,points){const mv=this.mediaOf(v),[W,H]=this.base(),r0=this.rect(v,W,H,c.start),s=this.src(v);if(!points?.length)return;
+ applyTrack(c,v,points){if(c.positionLocked||!points?.length)return;const mv=this.mediaOf(v),[W,H]=this.base(),r0=this.rect(v,W,H,c.start),s=this.src(v);
   const p0=points[0],ox=this.val(c,'x',c.start),oy=this.val(c,'y',c.start);
   const toCanvas=(p,t)=>{const r=this.rect(v,W,H,t);return [(r.cx-r.w/2)+((p.x*(mv.w||1))-s.sx)/s.sw*r.w,(r.cy-r.h/2)+((p.y*(mv.h||1))-s.sy)/s.sh*r.h];};
   const [ax,ay]=toCanvas(p0,c.start),xs=[],ys=[];let last=-1;void r0;
@@ -57,12 +57,15 @@ Object.assign(Ed,{
  /** Recreates the video elements (after switching between proxies and originals). */
  resetElements(){for(const el of Object.values(this.els))el.pause?.();this.els={};},
  /** Scene detection: the clip is split wherever its picture cuts (measured by ffmpeg on this computer). */
- async detectScenes(c,thr=.3){const m=this.mediaOf(c);if(!c||m?.type!=='video'||c.asAudio)return toast('Select a video clip.'),0;if(c.ramp)return toast('This clip has a speed curve; remove it first.'),0;
+ async detectScenes(c,thr=.3,review=false){const m=this.mediaOf(c);if(!c||m?.type!=='video'||c.asAudio)return toast('Select a video clip.'),0;if(c.ramp)return toast('This clip has a speed curve; remove it first.'),0;
+  const project=this.p,source=JSON.stringify(c);
   const blob=await this.get(m.id).catch(()=>null);if(!blob)return toast('The file is missing.',true),0;const sp=c.speed||1;toast('Looking for the cuts in '+m.name+'…');
   let cuts;try{const r=await fetch(withKey(`/api/editor/scenes?name=${encodeURIComponent(m.name)}&thr=${thr}&ss=${c.in||0}&t=${c.dur*sp}`),{method:'POST',body:blob}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Could not look for cuts');cuts=j.cuts||[];}
   catch(e){toast(e.message,true);return 0;}
-  if(!this.p.clips.includes(c))return 0;const at=cuts.map(x=>c.start+x/sp).filter(x=>x>c.start+.2&&x<c.start+c.dur-.2);if(!at.length){toast('No cuts found in this clip.');return 0;}
-  this.snapshot();for(const x of at.reverse())this.splitClip(c,x);this.after(true);toast(`Split into ${at.length+1} scenes`);return at.length;},
+  if(this.p!==project||!this.p.clips.includes(c)||JSON.stringify(c)!==source||this.trackOf(c)?.locked)return 0;const at=cuts.map(x=>c.start+x/sp).filter(x=>x>c.start+.2&&x<c.start+c.dur-.2);if(!at.length){toast('No cuts found in this clip.');return 0;}
+  const plan={project,cuts:at.map(a=>({clip:c,source,a,b:a,kind:'split',label:m.name}))};
+  if(review){edReviewCuts(plan);return 0;}
+  return this.applyReviewCuts(plan,plan.cuts);},
  /** Colour match: the target's red, green and blue curves set so its shadows, middle and highlights match the reference's. */
  async colorMatch(target,ref){if(!target||!ref)return toast('Select two clips: the one to change, then the one it should look like.'),false;
   const grab=async c=>{const m=this.mediaOf(c);if(!m||m.type==='audio')return null;const cv=document.createElement('canvas');cv.width=160;cv.height=90;const g=cv.getContext('2d',{willReadFrequently:true});
@@ -89,7 +92,7 @@ Object.assign(Ed,{
   const c={id:this.uid(),track:tr.id,media:mid,start:t,in:a,dur:d,speed:1,volume:1,scale:1,x:0,y:0,rotate:0,opacity:1,fadeIn:0,fadeOut:0};
   this.p.clips.push(c);const magnet=this.p.magnet;if(mode==='overwrite')this.p.magnet=false;this.pick(c.id);this.after(true);this.p.magnet=magnet;this.seek(t+d);},
  /** Auto reframe: the clip fills the frame and follows the face (x, and y when there is room), with smooth keyframes every half second. */
- applyReframe(c,track){const m=this.mediaOf(c),[W,H]=this.base(),s=this.src(c),fit=Math.min(W/s.sw,H/s.sh),cover=Math.max(W/s.sw,H/s.sh),Dw=s.sw*cover,Dh=s.sh*cover;
+ applyReframe(c,track){if(c.positionLocked)return;const m=this.mediaOf(c),[W,H]=this.base(),s=this.src(c),fit=Math.min(W/s.sw,H/s.sh),cover=Math.max(W/s.sw,H/s.sh),Dw=s.sw*cover,Dh=s.sh*cover;
   const maxX=Math.max(0,(Dw-W)/(2*W)),maxY=Math.max(0,(Dh-H)/(2*H)),pts=(track||[]).filter(p=>p.face&&p.x!=null);if(!pts.length)return toast('No face was found to follow.');
   // face position in the cropped picture (0..1), averaged over 1.5 s around each moment
   const at=src=>{const near=pts.filter(p=>Math.abs(p.time-src)<=.75),use=near.length?near:[pts.reduce((a,b)=>Math.abs(b.time-src)<Math.abs(a.time-src)?b:a)];
@@ -101,22 +104,23 @@ Object.assign(Ed,{
   if(maxY>0.001){const fy=thin(ys);if(fy.length>1)c.kf.y=fy;else{delete c.kf.y;c.y=fy[0]?.v||0;}}else{delete c.kf.y;c.y=0;}
   if(!Object.keys(c.kf).length)delete c.kf;this.after(true);toast('Reframed: the picture follows the face');},
  /** An adjustment layer: applies its adjustments, grade, mask and effects to everything under it. */
- addAdjustment(){this.snapshot();const c={id:this.uid(),adjustment:true,start:this.time,dur:5,opacity:1,scale:1,x:0,y:0,rotate:0,fadeIn:0,fadeOut:0,adj:{contrast:15,saturation:10}};
-  c.track=this.place('video',c.start,c.dur);this.p.clips.push(c);this.pick(c.id);this.ptab='adjust';this.after(true);toast('Adjustment layer added: it changes everything under it');},
+ addAdjustment(preset={adj:{contrast:15,saturation:10}}){this.snapshot();const c={id:this.uid(),adjustment:true,start:this.time,dur:5,opacity:1,scale:1,x:0,y:0,rotate:0,fadeIn:0,fadeOut:0,...structuredClone(preset)};
+  c.track=this.addTrack('video','top').id;this.p.clips.push(c);this.pick(c.id);this.ptab=c.fx?'effects':'adjust';this.after(true);return c;},
  /** Paste attributes (as in Premiere): the copied clip's settings, by group, onto every selected clip of a kind that has them. */
  pasteAttributes(groups){const src=this.clipboard?.[0];if(!src)return toast('Copy a clip first (Ctrl+C).');const list=this.picked().filter(c=>c.id!==src.id);if(!list.length)return toast('Select the clips to paste onto.');
   this.snapshot();const cp=v=>v===undefined?undefined:JSON.parse(JSON.stringify(v));let n=0;
   for(const c of list){const visual=this.kindOf(c)!=='audio';
    const set=(keys)=>{for(const k of keys){if(src[k]===undefined)delete c[k];else c[k]=cp(src[k]);}};
-   if(groups.transform&&visual)set(['scale','x','y','rotate','flipH','flipV','crop']);
+   if(groups.transform&&visual&&!c.positionLocked)set(['scale','x','y','rotate','flipH','flipV','crop']);
    if(groups.opacity&&visual)set(['opacity','blend']);
    if(groups.colour&&visual&&c.text===undefined&&!c.sticker)set(['adj','grade']);
    if(groups.effects&&visual)set(['key','mask']);
    if(groups.speed&&c.media&&src.media){const S=this.srcSpan(c);c.speed=src.speed||1;if(src.ramp){c.ramp=cp(src.ramp);c.rampName=src.rampName;}else{delete c.ramp;delete c.rampName;}c.dur=Math.max(.1,S/(c.speed*(c.ramp?edRampAvg(c.ramp):1)));}
    if(groups.audio&&c.media)set(['volume','gainDb','duck','fadeIn','fadeOut']);
    if(groups.text&&c.text!==undefined&&src.text!==undefined)set(['font','size','weight','color','stroke','strokeColor','shadow','box','boxColor','align','spacing','animIn','animOut','animDur','capLook','capStyle','hl','upper']);
-   if(groups.keyframes&&src.kf){const ok=new Set([...(visual?['x','y','scale','rotate','opacity']:[]),...(c.media?['volume']:[])]);c.kf={};
-    for(const [k,f] of Object.entries(src.kf))if(ok.has(k))c.kf[k]=f.filter(x=>x.t<=c.dur).map(x=>({...x}));if(!Object.keys(c.kf).length)delete c.kf;}
+   if(groups.keyframes&&src.kf){const ok=new Set([...(visual?['x','y','scale','rotate','opacity']:[]),...(c.media?['volume']:[])]);
+    c.kf=c.positionLocked?Object.fromEntries(Object.entries(c.kf||{}).filter(([key])=>ED_POSITION_KEYS.has(key))):{};
+    for(const [k,f] of Object.entries(src.kf))if(ok.has(k)&&!(c.positionLocked&&ED_POSITION_KEYS.has(k)))c.kf[k]=f.filter(x=>x.t<=c.dur).map(x=>({...x}));if(!Object.keys(c.kf).length)delete c.kf;}
    c.fadeIn=Math.min(c.fadeIn||0,c.dur/2);c.fadeOut=Math.min(c.fadeOut||0,c.dur/2);n++;}
   this.after(true);toast(`Pasted onto ${n} clip${n>1?'s':''}`);},
  paste(){const cb=this.clipboard;if(!cb?.length)return;this.snapshot();const min=Math.min(...cb.map(c=>c.start)),off=this.time-min;this.sels.clear();
@@ -128,6 +132,8 @@ Object.assign(Ed,{
   this.snapshot();
   const g=c.group||this.uid();c.group=g;
   const a={id:this.uid(),media:m.id,asAudio:true,start:c.start,in:c.in||0,dur:c.dur,speed:c.speed||1,volume:c.volume??1,fadeIn:0,fadeOut:0,group:g,...(c.ramp?{ramp:c.ramp.map(x=>[...x])}:{})};
+  if(c.muted)a.muted=true;
+  if(c.kf?.volume?.length)a.kf={volume:c.kf.volume.map(point=>({...point}))};
   a.track=this.place('audio',a.start,a.dur);c.detached=true;this.p.clips.push(a);this.after(true);toast('The sound is on its own track now');
   if(!m.peaks){const b=await this.get(m.id).catch(()=>null);if(b){m.peaks=await edPeaks(b).catch(()=>null);this.save();this.drawTimeline();}}
  },

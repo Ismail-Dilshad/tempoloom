@@ -38,7 +38,7 @@ function anthropicBody(model:string,msgs:Msg[],tools:Tool[],max:number){
    if(last&&last.role==='user'&&Array.isArray(last.content)&&(last.content as {type:string}[]).every(b=>b.type==='tool_result'))(last.content as unknown[]).push(block);else out.push({role:'user',content:[block]});continue;}
   if(m.role==='assistant'){out.push({role:'assistant',content:[...(typeof m.content==='string'&&m.content?[{type:'text',text:m.content}]:[]),...(m.toolCalls??[]).map(c=>({type:'tool_use',id:c.id,name:c.name,input:c.args}))]});continue;}
   out.push({role:'user',content:parts(m.content)});}
- return {model,max_tokens:max,system,messages:out,tools:tools.map(t=>({name:t.name,description:t.description,input_schema:t.parameters}))};
+ return {model,max_tokens:max,system,messages:out,...(tools.length?{tools:tools.map(t=>({name:t.name,description:t.description,input_schema:t.parameters}))}:{})};
 }
 /** One turn: the model answers or asks for tools. Throws with the service's own words on failure. */
 export async function chat(p:Pick,msgs:Msg[],tools:Tool[],o:{max?:number;signal?:AbortSignal;fetch?:typeof fetch}={}):Promise<Reply>{
@@ -58,7 +58,7 @@ export async function chat(p:Pick,msgs:Msg[],tools:Tool[],o:{max?:number;signal?
   return {text:blocks.filter(b=>b.type==='text').map(b=>b.text).join('\n'),calls:blocks.filter(b=>b.type==='tool_use').map(b=>({id:b.id!,name:b.name!,args:b.input??{}})),
    tokensIn:tin,tokensOut:tout,usd:e.price?(tin*e.price.in+tout*e.price.out)/1e6:null,stop:String(j.stop_reason??'')};}
  const j=await call(e.url+'/chat/completions',{...(e.key?{authorization:'Bearer '+e.key}:{}),...(p.provider==='openrouter'?{'x-title':'Tempoloom'}:{})},
-  {model:p.model,messages:msgs.map(toOpenAI),tools:tools.map(t=>({type:'function',function:t})),max_tokens:max,...(p.provider==='openrouter'?{usage:{include:true}}:{})});
+  {model:p.model,messages:msgs.map(toOpenAI),...(tools.length?{tools:tools.map(t=>({type:'function',function:t}))}:{}),max_tokens:max,...(p.provider==='openrouter'?{usage:{include:true}}:{})});
  const c=j.choices?.[0]?.message??{},tin=Number(j.usage?.prompt_tokens??0),tout=Number(j.usage?.completion_tokens??0);
  const calls=((c.tool_calls??[]) as {id:string;function:{name:string;arguments:string}}[]).map(t=>{let args:Record<string,unknown>={};try{args=JSON.parse(t.function.arguments||'{}');}catch{args={_unreadable:t.function.arguments};}return {id:t.id,name:t.function.name,args};});
  const usd=typeof j.usage?.cost==='number'?j.usage.cost:e.local?0:e.price?(tin*e.price.in+tout*e.price.out)/1e6:null;

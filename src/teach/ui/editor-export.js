@@ -6,11 +6,34 @@ Object.assign(Ed,{
  // ffmpeg on this computer puts them together. Browsers without WebCodecs record while it plays (exportLive). ----------
  /** Sound only: the mix of the whole video (or in to out) as WAV, or MP3 made by ffmpeg here. */
  async exportSound(o){
-  if(this.exporting)return;const span=o.range||{s:0,e:this.end()};this.pause();this.exporting={offline:true,format:o.format,name:o.name};this.drawExport('Mixing the sound…');
-  try{await this.ensureEnvs();let out=edWav(await this.mixAudio(span.s,span.e-span.s));
-   if(o.format==='mp3'){this.drawExport('Making the MP3…');const r=await fetch(withKey('/api/editor/audio?format=mp3'),{method:'POST',body:out});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Could not make the MP3');out=await r.blob();}
-   edSaveFile(out,o.name+'.'+o.format);toast('Sound exported');}
-  catch(e){toast('Export stopped: '+(e?.message||e),true);}finally{this.exporting=null;this.drawExport();}},
+  if(this.exporting)return;
+  const span=o.range||{s:0,e:this.end()};
+  const job={offline:true,format:o.format,name:o.name,controller:new AbortController()};
+  this.pause();
+  this.exporting=job;
+  this.drawExport('Mixing the sound.');
+  try{
+   o.progress?.('Mixing the sound');
+   await this.ensureEnvs();
+   if(job.cancelled)return;
+   const mixed=await this.mixAudio(span.s,span.e-span.s);
+   if(job.cancelled)return;
+   let out=edWav(mixed);
+   if(o.format==='mp3'){
+    this.drawExport('Making the MP3.');
+    const response=await fetch(withKey('/api/editor/audio?format=mp3'),{method:'POST',body:out,signal:job.controller.signal});
+    if(!response.ok)throw new Error((await response.json().catch(()=>({}))).error||'Could not make the MP3');
+    out=await response.blob();
+   }
+   if(job.cancelled)return;
+   edSaveFile(out,o.name+'.'+o.format);
+   toast('Sound exported');
+   return true;
+  }catch(error){
+   if(o.strict)throw error;
+   if(!job.cancelled)toast('Export stopped: '+(error?.message||error),true);
+  }finally{this.exporting=null;this.drawExport();}
+ },
  async exportVideo(o){
   if(this.exporting)return;while(this.stack?.length)this.exitNest();// the export is of the whole timeline
   if(o.format==='mp3'||o.format==='wav')return this.exportSound(o);
@@ -20,13 +43,20 @@ Object.assign(Ed,{
   const quality={standard:.08,high:.12,best:.2}[o.quality||'high']||.12,crf={standard:23,high:19,best:16}[o.quality||'high']||19;
   const scale=o.height/Math.min(...this.base()),fps=o.fps,t0=this.time;
   this.pause();
-  this.exporting={scale,format:o.format,fps,name:o.name,studio:!!o.studio,offline:true};if(this.media.some(m=>m.proxy))this.resetElements();
+  this.exporting={scale,format:o.format,fps,name:o.name,studio:!!o.studio,offline:true,controller:new AbortController()};if(this.media.some(m=>m.proxy))this.resetElements();
+  this.drawExport('Getting ready.');
   const ex=this.exporting,[W,H]=this.size(),cfg=await edVideoConfig(W,H,fps,Math.min(80e6,Math.max(4e6,Math.round(W*H*fps*quality))));
-  if(!cfg){this.exporting=null;if(o.format==='gif')return toast('This browser cannot make a GIF (no WebCodecs).',true);return this.exportLive(o);}
+  if(ex.cancelled||!cfg){
+   this.exporting=null;this.drawExport();
+   if(this.media.some(m=>m.proxy))this.resetElements();
+   if(ex.cancelled){this.seek(t0);return;}
+   if(o.strict)throw new Error('This Chromium installation cannot encode editor frames');
+   if(o.format==='gif')return toast('This browser cannot make a GIF (no WebCodecs).',true);return this.exportLive(o);}
   this.pick(null);this.drawTimeline();this.drawProps();this.fit();this.drawExport('Getting ready…');
   const span=o.range||{s:0,e:this.end()},frames=Math.max(1,Math.ceil((span.e-span.s)*fps-1e-6)),chunks=[];let err=null;
   try{
    await this.exportReady();
+   if(ex.cancelled)return;
    this.drawExport('Mixing the sound…');
    await this.ensureEnvs();const wav=edWav(await this.mixAudio(span.s,frames/fps));if(ex.cancelled)return;
    const enc=ex.enc=new VideoEncoder({output:ch=>{const b=new Uint8Array(ch.byteLength);ch.copyTo(b);chunks.push({b,pts:Math.round(ch.timestamp*fps/1e6)});},error:e=>{err=e;}});
@@ -37,17 +67,20 @@ Object.assign(Ed,{
     const f=new VideoFrame(this.dom.canvas,{timestamp:Math.round(i*1e6/fps),duration:Math.round(1e6/fps)});
     enc.encode(f,{keyFrame:i%(fps*2)===0});f.close();
     while(enc.encodeQueueSize>4&&!err)await new Promise(r=>setTimeout(r,2));
+    if(i%24===0)o.progress?.('Exporting '+Math.floor(i/frames*90)+'%');
     if(i%4===0){this.drawExport(`Exporting… ${Math.floor(i/frames*90)}%`);this.drawHead();this.drawTime();}
    }
    if(ex.cancelled)return;
    await enc.flush();if(err)throw err;enc.close();
    const ivf=edIvf(chunks,W,H,fps,cfg.codec.startsWith('vp09')?'VP90':'VP80');chunks.length=0;
    this.drawExport(ex.format==='mp4'?'Making the MP4…':'Making the WebM…');
-   const r=await fetch(withKey(`/api/editor/mux?fps=${fps}&format=${ex.format}&crf=${crf}&v=${ivf.size}`),{method:'POST',body:new Blob([ivf,wav])});
+   o.progress?.('Encoding the final file');
+   const r=await fetch(withKey(`/api/editor/mux?fps=${fps}&format=${ex.format}&crf=${crf}&v=${ivf.size}`),{method:'POST',body:new Blob([ivf,wav]),signal:ex.controller.signal});
    if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Could not make the video');
    if(ex.cancelled)return;
-   const out=await r.blob(),name=ex.name+'.'+ex.format;edSaveFile(out,name);toast(`Exported (${frames} frames)`);if(ex.studio)this.toStudio(out,name);
-  }catch(e){if(!ex.cancelled)toast('Export stopped: '+(e?.message||e),true);}
+   const out=await r.blob(),name=ex.name+'.'+ex.format;if(ex.cancelled)return;edSaveFile(out,name);toast(`Exported (${frames} frames)`);if(ex.studio)this.toStudio(out,name);
+   return true;
+  }catch(e){if(o.strict)throw e;if(!ex.cancelled)toast('Export stopped: '+(e?.message||e),true);}
   finally{try{if(ex.enc&&ex.enc.state!=='closed')ex.enc.close();}catch{}
    this.exporting=null;if(this.media.some(m=>m.proxy))this.resetElements();this.drawExport();this.fit();this.time=Math.min(t0,this.end());this.sync();this.draw();this.drawHead();this.drawTime();}
  },

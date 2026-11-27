@@ -41,6 +41,7 @@ Object.assign(Ed,{
   try{this.withNest(c,()=>{const lt=t-c.start+(c.in||0);if(!c.nest.multi)return this.paint(g,lt);const T=this.p.tracks,v=T.filter(x=>x.kind==='video'),a=v[this.angleAt(c,lt)];this.p.tracks=a?[a]:[];try{this.paint(g,lt);}finally{this.p.tracks=T;}});}finally{n.layer=this._layer;n.adj=this._adjSnap;[this._layer,this._adjSnap,this._adjFrame]=keep;this._depth--;}
   return n.cv;},
  /** The whole project: the timeline, also while editing inside a nested clip (then this.p is the nested clip's own). */
+ fps(){const fps=this.root()?.fps;return [24,25,30,60].includes(fps)?fps:30;},
  root(){return this.stack?.[0]?.P||this.p;},
  /** Edits inside a nested clip go back into it (its tracks and clips, and how long its contents are), level by level. */
  relink(){const S=this.stack||[];for(let i=S.length-1;i>=0;i--){const child=i===S.length-1?this.p:S[i+1].P,c=S[i].P.clips.find(x=>x.id===S[i].cid);if(!c?.nest)continue;

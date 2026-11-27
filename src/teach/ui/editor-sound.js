@@ -4,7 +4,7 @@
 Object.assign(Ed,{
  // ---------- ducking: music goes down while someone speaks ----------
  /** Clips that count as speech: every clip with sound that is not itself ducked. */
- voices(){return this.p.clips.filter(c=>c.media&&!c.duck&&!this.trackOf(c)?.muted&&!(c.detached&&!c.asAudio)&&this.mediaOf(c)?.type!=='image');},
+ voices(){return this.p.clips.filter(c=>c.media&&!c.muted&&!c.duck&&!this.trackOf(c)?.muted&&!(c.detached&&!c.asAudio)&&this.mediaOf(c)?.type!=='image');},
  /** 0..1 at 20 per second: how far ducked clips are pulled down. Speech holds it, it eases in 0.15 s early and out over 0.5 s. */
  duckCurve(){if(this._dk)return this._dk;const R=20,n=Math.ceil(this.end()*R)+2,on=new Float32Array(n);
   for(const c of this.voices()){const m=this.mediaOf(c);if(!m.env){this.loadEnv(m);continue;}const sp=c.speed||1;
@@ -34,19 +34,22 @@ Object.assign(Ed,{
    if(c.nest){if((this._depth||0)>4)continue;const on=t>=c.start&&t<c.start+c.dur,vm=on?this.vol(c,t):0,K=this._vm;this._vm=(K??1)*vm;this._depth=(this._depth||0)+1;
     try{this.withNest(c,()=>this.sync(on?t-c.start+(c.in||0):-100));}finally{this._vm=K;this._depth--;}continue;}
    if(c.text!==undefined||c.sticker)continue;const m=this.mediaOf(c);if(!m||m.type==='image')continue;
-   const el=this.element(c);if(!el)continue;
-   const [s0,e0]=this.sndSpan(c),on=t>=s0&&t<e0,want=t<c.start||t>=c.start+c.dur?Math.max(0,(c.in||0)+(t-c.start)*(c.speed||1)):this.srcAt(c,t);
+   const [s0,e0]=this.sndSpan(c),on=t>=s0&&t<e0;
+   // Warm media near the playhead. Distant clips only need attention if they already have a player.
+   const pre=c.start-t>0&&c.start-t<1.5,post=t-(c.start+c.dur)>=0&&t-(c.start+c.dur)<1.5;
+   const key=(this._nk||'')+c.id;
+   const el=on||pre||post?this.element(c):this.els[key];if(!el)continue;
    if(on){
+    const want=t<c.start||t>=c.start+c.dur?Math.max(0,(c.in||0)+(t-c.start)*(c.speed||1)):this.srcAt(c,t);
     const fwd=this.playing&&this.rate>0;
-    el.playbackRate=edClamp(this.rateAt(c,t)*(fwd?this.rate:1),.0625,16);const v=this.vol(c,t);if(el._gain){el.volume=1;el._gain.gain.value=v;if(el._pan)el._pan.pan.value=edClamp(this.trackOf(c)?.pan||0,-1,1);if(el._fx)el._fx.set(c.afx);}else el.volume=Math.min(1,v);
+    el.playbackRate=edClamp(this.rateAt(c,t)*(fwd?this.rate:1),.0625,16);const v=this.vol(c,t);if(el._gain){el.volume=1;el._gain.gain.value=v;if(el._pan)el._pan.pan.value=edClamp(this.trackOf(c)?.pan||0,-1,1);if(el._fx)el._fx.set(c.afx);}else el.volume=Math.min(1,v)*this.previewLevel();
     if(fwd){if(el.paused){try{el.currentTime=want;}catch{}el.play().catch(()=>{});}else if(Math.abs(el.currentTime-want)>.3*Math.max(1,this.rate))el.currentTime=want;}
     else{if(!el.paused)el.pause();if(Math.abs(el.currentTime-want)>.03){try{el.currentTime=want;}catch{}}}
     if(c.frameBlend&&m.type==='video'&&!c.asAudio){const e2=this.element(c,'#b'),w2=want+1/30;e2.playbackRate=el.playbackRate;
      if(fwd){if(e2.paused){try{e2.currentTime=w2;}catch{}e2.play().catch(()=>{});}else if(Math.abs(e2.currentTime-w2)>.3*Math.max(1,this.rate))e2.currentTime=w2;}
      else{if(!e2.paused)e2.pause();if(Math.abs(e2.currentTime-w2)>.03){try{e2.currentTime=w2;}catch{}}}}
-   }else{if(!el.paused)el.pause();const e2=this.els[(this._nk||'')+c.id+'#b'];if(e2&&!e2.paused)e2.pause();
+   }else{if(!el.paused)el.pause();const e2=this.els[key+'#b'];if(e2&&!e2.paused)e2.pause();
     // Just before or after its turn, a clip waits on its first or last frame (for transitions).
-    const pre=c.start-t>0&&c.start-t<1.5,post=t-(c.start+c.dur)>=0&&t-(c.start+c.dur)<1.5;
     if(pre||post){const w=pre?(c.in||0):this.srcAt(c,c.start+c.dur)-.05;if(Math.abs(el.currentTime-w)>.06){try{el.currentTime=Math.max(0,w);}catch{}}}}
   }
  },
@@ -56,12 +59,13 @@ Object.assign(Ed,{
   this.rate=1;this.start();
  },
  start(){
-  if(!this.p.clips.length)return;
+  if(this.playing||!this.p?.clips.length)return;
   this.audio();this.ac?.resume?.();
-  if(this.rate>0&&this.time>=this.end()-.05)this.time=0;
-  if(this.rate<0&&this.time<=.05)this.time=this.end();
+  if(this.rate>0&&this.time>=this.end())this.time=0;
+  if(this.rate<0&&this.time<=0)this.time=this.end();
   this.playing=true;this.t0=this.time;this.p0=performance.now();this.drawTime();
   const tick=now=>{
+   this.playFrame=null;
    if(!this.playing)return;
    if(!document.contains(this.dom.canvas)){this.pause();return;}
    this.time=this.t0+(now-this.p0)/1000*this.rate;
@@ -69,13 +73,21 @@ Object.assign(Ed,{
    const end=this.exporting?.until??this.span?.e??this.end();
    if(this.time>=end){
     // Loop: back to the start of what is playing (the in-out part, or the whole timeline) and keep going.
-    if(this.loop&&!this.exporting&&this.rate>0){this.time=this.t0=this.span?.s??0;this.p0=now;this.sync();}
+    if(this.loop&&!this.span?.once&&!this.exporting&&this.rate>0){this.time=this.t0=this.span?.s??0;this.p0=now;this.sync();}
     else{this.time=end;this.pause();if(this.exporting)this.finishExport();return;}}
    this.sync();this.draw();this.drawHead();this.drawTime();this.drawMeter?.();
-   requestAnimationFrame(tick);};
-  requestAnimationFrame(tick);
+   this.playFrame=requestAnimationFrame(tick);};
+  this.playFrame=requestAnimationFrame(tick);
  },
- pause(){this.playing=false;this.span=null;this._mcSnap=false;for(const el of Object.values(this.els))el.pause?.();if(this.p){this.sync();this.draw();this.drawTime();this.drawMeter?.();}},
+ pause(){
+  this.playing=false;
+  if(this.playFrame!=null)cancelAnimationFrame(this.playFrame);
+  this.playFrame=null;
+  clearTimeout(this._scrubT);
+  this.span=null;this._mcSnap=false;
+  for(const el of Object.values(this.els))el.pause?.();
+  if(this.p){this.sync();this.draw();this.drawHead();this.drawTime();this.drawMeter?.();}
+ },
  /** The multicam angle viewer: each angle's picture now, small, in the panel (the one showing is outlined). */
  drawAngles(){const box=this.dom.props?.querySelector('.ed-angles');if(!box)return;const c=this.sel&&this.clip(this.sel);if(!c?.nest?.multi)return;
   const t=this.time,on=t>=c.start&&t<c.start+c.dur,lt=t-c.start+(c.in||0),cur=this.angleAt(c,lt),[W,H]=this.size();
@@ -84,9 +96,9 @@ Object.assign(Ed,{
    g.setTransform(cv.width/W,0,0,cv.width/W,0,0);const keep=[this._layer,this._adjSnap,this._adjFrame];
    try{this.withNest(c,()=>{const T=this.p.tracks,v=T.filter(x=>x.kind==='video');this.p.tracks=v[i]?[v[i]]:[];try{this.paint(g,lt);}finally{this.p.tracks=T;}});}finally{[this._layer,this._adjSnap,this._adjFrame]=keep;}});},
  /** A built-in sound effect at the playhead: made once, then kept in Media like any sound. */
- async addSfx(kind){const name=`SFX ${ED_SFX.find(x=>x[0]===kind)?.[1]||kind}.wav`;let m=this.media.find(x=>x.name===name&&x.type==='audio');
+ async addSfx(kind){const project=this.p,at=this.time,name=`SFX ${ED_SFX.find(x=>x[0]===kind)?.[1]||kind}.wav`;let m=this.media.find(x=>x.name===name&&x.type==='audio');
   if(!m){const buf=await edMakeSfx(kind),made=await this.importFiles([new File([edWav(buf)],name,{type:'audio/wav'})]);m=made?.[0];}
-  if(!m)return null;return this.add(m.id);},
+  if(!m||this.p!==project)return null;return this.add(m.id,at);},
  /** Play only between the in and out marks (Ctrl+Shift+Space); with loop on, round and round. */
  playRange(){const r=this.rangeSpan();if(!r)return toast('Mark an in and an out first (I, O).');if(this.playing)this.pause();this.span=r;this.time=r.s;this.rate=1;this.start();},
  toggleLoop(){this.loop=!this.loop;this.drawTime();toast(this.loop?'Loop on':'Loop off');},

@@ -1,73 +1,137 @@
 'use strict';
 // Editor, the properties panel: every tab of the selected clip (basic, adjust, colour, effects, mask, animation, audio, speed, text), a transition, or the project.
-// Loaded after editor-ui.js (see index.html); adds drawProps to Ed.
+function edDetailsPanel(){return '<section class="ed-panel ed-props" aria-label="Details and clip properties"></section>';}
+
+const ED_PROP_ICONS={
+ basic:'crop',adjust:'sliders',colour:'palette',effects:'spark',mask:'shapes',anim:'live',audio:'sound',speed:'trend',
+ caption:'captions',text:'text',title:'text',sticker:'shapes',
+ Transform:'crop','Opacity and blend':'trans',Crop:'crop','Smart tools':'wand','Motion tracking':'flag',Fade:'wave',
+ Filter:'filter',Adjust:'sliders','Green screen':'key',Effects:'spark',Look:'eye',Frame:'safe',
+ 'Colour wheels':'palette',Curves:'live','HSL: one colour':'sliders','Look (LUT)':'image',Shape:'shapes',Mask:'shapes',
+ Caption:'captions',Text:'text',Style:'brush','Text effects':'spark','Outline and shadow':'box',Title:'text',Emoji:'heart',
+ In:'play',Out:'back',Speed:'trend','Speed curve':'live','Smooth slow motion':'film',Sound:'sound',Volume:'sound',
+ Loudness:'wave','Equaliser and effects':'sliders',Ducking:'mix',Multicam:'film','Keyframe at the playhead':'diamond',
+ Canvas:'monitor',Background:'image',Playback:'film',Markers:'flag',Transition:'trans',Timing:'history',Video:'film',Tracks:'layers',
+ 'Caption settings':'captions','Type and alignment':'brush',
+};
+const edPropsIcon=key=>`<span class="ed-prop-icon" aria-hidden="true">${I[ED_PROP_ICONS[key]]||I.gear}</span>`;
+const edPropsHead=(label,action='')=>`<header class="ed-ph ed-props-head"><h2>Details</h2><span class="ed-props-context" dir="auto" data-tooltip="${esc(label)}">${esc(label)}</span>${action}</header>`;
+const ED_VIDEO_OPTIONAL_SETTINGS={
+ flipH:false,flipV:false,blend:'normal',animIn:'none',animOut:'none',animDur:.5,muted:false,gainDb:0,frameBlend:false,
+ crop:undefined,adj:undefined,grade:undefined,key:undefined,mask:undefined,fx:undefined,afx:undefined,duck:undefined,
+ ramp:undefined,rampName:undefined,kf:undefined,
+};
+
 Object.assign(Ed,{
+ resetVideoSettings(c){
+  const media=this.mediaOf(c);
+  if(media?.type!=='video'||c.asAudio||c.positionLocked||this.trackOf(c)?.locked||this.exporting||this.toolJobs[c.id])return;
+  const defaults={...ED_MEDIA_DEFAULTS,scale:c.initialScale??1};
+  const changed=entries=>entries.some(([key,value])=>(c[key]??value)!==value);
+  if(!changed(Object.entries(defaults))&&!changed(Object.entries(ED_VIDEO_OPTIONAL_SETTINGS)))return;
+  this.snapshot();
+  if((c.speed??1)!==1||c.ramp){
+   const available=media.dur-(c.in||0);
+   if(available>0)c.dur=Math.min(c.dur,available);
+  }
+  Object.assign(c,defaults);
+  for(const key of Object.keys(ED_VIDEO_OPTIONAL_SETTINGS))delete c[key];
+  const blendPlayer=(this._nk||'')+c.id+'#b';
+  this.els[blendPlayer]?.pause();delete this.els[blendPlayer];
+  if(this.picking===c.id){this.picking=null;this.dom.frame?.classList.remove('picking');}
+  this.after(true);toast('Video settings reset');
+ },
  drawProps(){
   const el=this.dom.props;if(!el)return;const [W,H]=this.base(),n=this.sels.size;
   // A transition between two clips.
   if(this.junction&&this.clip(this.junction)){const c=this.clip(this.junction),tr=c.trans;
-   el.innerHTML=`<nav class="ed-ptabs" role="tablist"><button type="button" role="tab" aria-selected="true">Transition</button>${tr?`<span class="grow"></span><button type="button" class="iconbtn sm" data-remove aria-label="Remove transition" data-tooltip="Remove">${I.trash}</button>`:''}</nav>
-    <div class="ed-pbody"><div class="ed-filters trans">${[['none','None'],...(this.kindOf(c)==='audio'?ED_ATRANS:ED_TRANS)].map(([id,l])=>`<button type="button" class="ed-filter" data-tr="${id}" aria-pressed="${(tr?.type||'none')===id}"><span class="ed-trans-swatch t-${id}"></span><span>${l}</span></button>`).join('')}</div>
+   el.innerHTML=`${edPropsHead('Transition',tr?`<button type="button" class="iconbtn sm" data-remove aria-label="Remove transition" data-tooltip="Remove transition">${I.trash}</button>`:'')}
+    <div class="ed-pbody"><section class="ed-sec"><header><h3>${edPropsIcon('Transition')}<span>Transition</span></h3></header><div class="ed-filters trans">${[['none','None'],...(this.kindOf(c)==='audio'?ED_ATRANS:ED_TRANS)].map(([id,l])=>`<button type="button" class="ed-filter" data-tr="${id}" aria-pressed="${(tr?.type||'none')===id}"><span class="ed-trans-swatch t-${id}"></span><span>${l}</span></button>`).join('')}</div></section>
     ${tr?`<section class="ed-sec"><div class="ed-row"><label for="ed-trd">Length</label><div class="ed-ctl"><input type="range" id="ed-trd" min=".2" max="2" step=".1" value="${tr.dur}"><span class="ed-num"><b data-trd>${tr.dur.toFixed(1)}</b><i>s</i></span></div></div>
      <div class="ed-row"><label></label><div class="ed-ctl"><button type="button" class="ed-tool" data-tr-all>${I.layers} Use on every cut</button></div></div></section>`:''}</div>`;
    el.querySelectorAll('[data-tr]').forEach(b=>b.onclick=()=>{this.setTrans(c,b.dataset.tr);this.selectJoin(c.id);});
    const d=$('#ed-trd',el);if(d){d.onpointerdown=d.onfocus=()=>{if(!d._s){this.snapshot();d._s=true;}};d.oninput=()=>{c.trans.dur=Number(d.value);$('[data-trd]',el).textContent=c.trans.dur.toFixed(1);this.draw();};d.onchange=()=>{d._s=false;this.save();};}
-   const all=$('[data-tr-all]',el);if(all)all.onclick=()=>{this.transAll(tr.type,tr.dur,this.kindOf(c));toast('Used on every cut');this.selectJoin(c.id);};
+   const all=$('[data-tr-all]',el);if(all)all.onclick=()=>{const count=this.transAll(tr.type,tr.dur,this.kindOf(c));edTransitionFeedback(tr.type,count);if(count)this.selectJoin(c.id);};
    const rm=$('[data-remove]',el);if(rm)rm.onclick=()=>{this.setTrans(c,'none');this.selectJoin(c.id);};return;}
   const c=this.sel&&this.clip(this.sel),m=c&&this.mediaOf(c);
-  if(n>1){el.innerHTML=`<nav class="ed-ptabs" role="tablist"><button type="button" role="tab" aria-selected="true">${n} clips</button><span class="grow"></span><button type="button" class="iconbtn sm" data-remove aria-label="Delete clips" data-tooltip="Delete">${I.trash}</button></nav>
-   <div class="ed-pbody"><div class="ed-multi"><span class="ed-multi-icon">${I.layers}</span><b>${n} clips selected</b><div class="ed-multi-actions"><button type="button" class="btn small" data-act="dup">${I.copy} Duplicate</button><button type="button" class="btn small" data-act="copy">Copy</button><button type="button" class="btn small ghost danger-text" data-act="del">${I.trash} Delete</button></div><small>Drag any of them to move them together.</small></div></div>`;
-   el.querySelector('[data-remove]').onclick=el.querySelector('[data-act=del]').onclick=()=>this.remove();el.querySelector('[data-act=dup]').onclick=()=>this.duplicate();el.querySelector('[data-act=copy]').onclick=()=>this.copy();return;}
+  if(n>1){el.innerHTML=`${edPropsHead(`${n} clips selected`)}
+   <div class="ed-pbody"><section class="ed-sec"><header><h3>${I.layers}<span>Selection</span></h3></header><div class="ed-tools-row"><button type="button" class="ed-tool" data-act="copy">${I.copy} Copy</button><button type="button" class="ed-tool" data-act="dup">${I.layers} Duplicate</button><button type="button" class="ed-tool danger-text" data-act="del">${I.trash} Delete</button></div></section></div>`;
+   el.querySelector('[data-act=del]').onclick=()=>this.remove();el.querySelector('[data-act=dup]').onclick=()=>this.duplicate();el.querySelector('[data-act=copy]').onclick=()=>this.copy();return;}
   const conv={pct:[v=>Math.round(v*100),v=>v/100],pxx:[v=>Math.round(v*W),v=>v/W],pxy:[v=>Math.round(v*H),v=>v/H],raw:[v=>Math.round(v*100)/100,v=>v]};
-  const kfBtn=key=>c&&ED_KFKEYS.has(key)?`<button type="button" class="ed-kfbtn${this.kfAt(c,key)>=0?' on':''}${c.kf?.[key]?.length?' has':''}" data-kf="${key}" aria-label="Keyframe" data-tooltip="Keyframe">${I.diamond}</button>`:'';
+  const kfBtn=(key,label)=>c&&ED_KFKEYS.has(key)?`<button type="button" class="ed-kfbtn${this.kfAt(c,key)>=0?' on':''}${c.kf?.[key]?.length?' has':''}" data-kf="${key}" aria-label="${label} keyframe" data-tooltip="${label} keyframe" aria-pressed="${this.kfAt(c,key)>=0}">${I.diamond}</button>`:'';
   const cur=(key,def)=>c?(ED_KFKEYS.has(key)?this.val(c,key):(c[key]??def)):def;
   const row=(key,label,val,{min,max,step=1,unit='raw',suffix='',slider=true}={})=>{const [show]=conv[unit];
    return `<div class="ed-row"><label for="ed-${key}">${label}</label><div class="ed-ctl">${slider?`<input type="range" data-k="${key}" data-u="${unit}" min="${min}" max="${max}" step="${step}" value="${show(val)}" aria-label="${label}">`:''}
-    <span class="ed-num"><input type="number" id="ed-${key}" data-k="${key}" data-u="${unit}" min="${min}" max="${max}" step="${step}" value="${show(val)}">${suffix?`<i>${suffix}</i>`:''}</span>${kfBtn(key)}</div></div>`;};
-  const sec=(title,body,reset)=>`<section class="ed-sec"><header><h4>${title}</h4>${reset?`<button type="button" class="iconbtn sm" data-reset="${reset}" aria-label="Reset ${title}" data-tooltip="Reset">${I.refresh}</button>`:''}</header>${body}</section>`;
+    <span class="ed-num"><input type="number" id="ed-${key}" data-k="${key}" data-u="${unit}" min="${min}" max="${max}" step="${step}" value="${show(val)}">${suffix?`<i>${suffix}</i>`:''}</span>${kfBtn(key,label)}</div></div>`;};
+  const sec=(title,body,reset)=>`<section class="ed-sec"><header><h3>${edPropsIcon(title)}<span>${title}</span></h3>${reset?`<button type="button" class="iconbtn sm" data-reset="${reset}" aria-label="Reset ${title}" data-tooltip="Reset ${title}">${I.refresh}</button>`:''}</header>${body}</section>`;
+  const edFold=(label,body,busy=false)=>`<details class="ed-fold" data-fold="${label}" ${busy||this.foldState?.[label]?'open':''}><summary>${edPropsIcon(label)}<span>${label}</span>${I.chevron}</summary>${body}</details>`;
+  const pair=(...rows)=>`<div class="ed-prop-pair">${rows.join('')}</div>`;
+  const alignments=[['left','Left',I.alignStart],['center','Center',I.alignCenter],['right','Right',I.alignEnd],['top','Top',I.alignStart],['middle','Middle',I.alignCenter],['bottom','Bottom',I.alignEnd]];
+  const visualClipAlignment=media=>media?`<div class="ed-row"><label>Align</label><div class="ed-ctl ed-seg ed-prop-icons" role="group" aria-label="Align to canvas">${alignments.map(([key,label,icon],i)=>`<button type="button" data-frame-align="${key}" ${i>=3?'class="ed-align-vertical"':''} aria-label="Align ${label.toLowerCase()}" data-tooltip="Align ${label.toLowerCase()}">${icon}</button>`).join('')}</div></div>`:'';
   const seg=(attr,list,val)=>`<div class="ed-seg">${list.map(([v,l])=>`<button type="button" data-${attr}="${v}" aria-pressed="${val===v}">${l}</button>`).join('')}</div>`;
   const kind=!c?'':c.title?'title':c.nest?'nest':c.adjustment?'adjustment':c.text!==undefined?'text':c.sticker?'sticker':this.kindOf(c)==='audio'?'audio':m?.type||'video';
-  const tabs=!c?[['details','Details']]:kind==='title'?[['title','Title'],['anim','Animation'],['basic','Basic']]:kind==='text'?[['text','Text'],['anim','Animation'],['basic','Basic']]:kind==='sticker'?[['sticker','Sticker'],['anim','Animation'],['basic','Basic']]:kind==='audio'?[['audio','Audio'],['speed','Speed']]:kind==='adjustment'?[['adjust','Adjust'],['colour','Colour'],['effects','Effects'],['mask','Mask'],['basic','Basic']]:kind==='nest'?[['basic','Basic'],['adjust','Adjust'],['colour','Colour'],['effects','Effects'],['mask','Mask']]:kind==='image'?[['basic','Basic'],['adjust','Adjust'],['colour','Colour'],['effects','Effects'],['mask','Mask'],['anim','Animation']]:[['basic','Basic'],['adjust','Adjust'],['colour','Colour'],['effects','Effects'],['mask','Mask'],['anim','Animation'],['audio','Audio'],['speed','Speed']];
+  const tabs=!c?[['details','Details']]:kind==='title'?[['title','Title'],['anim','Animation'],['basic','Basic']]:(c?.words||c?.cap)?[['caption','Caption'],['text','Style'],['anim','Animation'],['basic','Basic']]:kind==='text'?[['text','Text'],['anim','Animation'],['basic','Basic']]:kind==='sticker'?[['sticker','Sticker'],['anim','Animation'],['basic','Basic']]:kind==='audio'?[['audio','Audio'],['speed','Speed']]:kind==='adjustment'?[['adjust','Adjust'],['colour','Colour'],['effects','Effects'],['mask','Mask'],['basic','Basic']]:kind==='nest'?[['basic','Basic'],['adjust','Adjust'],['colour','Colour'],['effects','Effects'],['mask','Mask']]:kind==='image'?[['basic','Basic'],['adjust','Adjust'],['colour','Colour'],['effects','Effects'],['mask','Mask'],['anim','Animation']]:[['basic','Basic'],['adjust','Adjust'],['colour','Colour'],['effects','Effects'],['mask','Mask'],['anim','Animation'],['audio','Audio'],['speed','Speed']];
   if(!tabs.some(([id])=>id===this.ptab))this.ptab=tabs[0][0];
   const t=this.ptab,locked=c&&this.trackOf(c)?.locked;let body='';
   const fades=()=>sec('Fade',`${row('fadeIn','Fade in',c.fadeIn||0,{min:0,max:Math.min(5,+(c.dur/2).toFixed(1)),step:.1,suffix:'s'})}${row('fadeOut','Fade out',c.fadeOut||0,{min:0,max:Math.min(5,+(c.dur/2).toFixed(1)),step:.1,suffix:'s'})}`);
-  if(!c)body=`<dl class="ed-details"><dt>Name</dt><dd dir="auto">${esc(this.p.name)}</dd><dt>Shape</dt><dd>${seg('ratio',Object.keys(ED_RATIOS).map(r=>[r,r]),this.p.ratio)}</dd>
-    <dt>Resolution</dt><dd>${W} × ${H}</dd><dt>Length</dt><dd>${edFmt(this.end())}</dd><dt>Clips</dt><dd>${this.p.clips.length} on ${this.p.tracks.length} tracks</dd>
-    <dt>Background</dt><dd>${seg('bgmode',[['color','Colour'],['gradient','Gradient'],['image','Picture'],['blur','Blur']],this.p.bgMode)}</dd>${this.p.bgMode==='color'||this.p.bgMode==='gradient'?`<dt></dt><dd><input type="color" data-bg value="${esc(this.p.bg||'#000000')}" aria-label="Background colour">${this.p.bgMode==='gradient'?` <input type="color" data-bg2 value="${esc(this.p.bg2||'#3a1c71')}" aria-label="Second background colour">`:''}</dd>`:''}${this.p.bgMode==='image'?`<dt></dt><dd><select data-bgimg aria-label="Background picture"><option value="">Choose a photo from Media…</option>${this.media.filter(m=>m.type==='image').map(m=>`<option value="${esc(m.id)}" ${this.p.bgImage===m.id?'selected':''}>${esc(m.name)}</option>`).join('')}</select></dd>`:''}
-    <dt>Proxies</dt><dd>${this.media.some(m=>m.proxy)?`<label class="ed-xopt"><input type="checkbox" data-useproxy ${this.p.useProxy===false?'':'checked'}> Play with proxies</label>`:''}${this.p.clips.some(c=>{const m=this.mediaOf(c);return m&&m.type==='video'&&!m.proxy&&Math.max(m.w||0,m.h||0)>1280;})?` <button type="button" class="ed-link" data-proxies>Make proxies for big videos</button>`:this.media.some(m=>m.proxy)?'':'None needed'}</dd>
-    <dt>Markers</dt><dd>${this.p.markers.length?`${this.p.markers.length} · <button type="button" class="ed-link" data-clear-markers>Clear</button>`:'Press M to add one'}</dd></dl>
-    ${this.p.markers.length?`<div class="ed-mlist">${this.p.markers.map((m,i)=>`<button type="button" class="ed-mrow" data-mgo="${i}"><i class="ed-swatch" style="background:${m.color?edLabel(m.color):'var(--warn)'}"></i><span>${edFmt(edMt(m))}</span><b dir="auto">${esc(m.name||'Marker')}</b>${m.note?`<small dir="auto">${esc(m.note)}</small>`:''}</button>`).join('')}</div>`:''}`;
-  else if(t==='text')body=(c.words?sec('Caption',`<div class="ed-seg wrap">${ED_CAPS.map(([v,l])=>`<button type="button" data-caplook="${v}" aria-pressed="${(c.capLook||'clean')===v}">${l}</button>`).join('')}</div>
+  if(!c){
+   const stat=(label,value,icon)=>`<div><dt>${edPropsIcon(icon)}${label}</dt><dd>${value}</dd></div>`;
+   const hasProxy=this.media.some(media=>media.proxy);
+   const canMakeProxy=this.p.clips.some(clip=>{const media=this.mediaOf(clip);return media?.type==='video'&&!media.proxy&&Math.max(media.w||0,media.h||0)>1280;});
+   body=`<dl class="ed-project-stats">${stat('Resolution',W+' × '+H,'Canvas')}${stat('Duration',edTimecode(this.end(),this.fps()),'Timing')}${stat('Clips',this.p.clips.length,'Video')}${stat('Tracks',this.p.tracks.length,'Tracks')}</dl>`+
+    pair(sec('Canvas',`<div class="ed-row"><label>Aspect ratio</label><div class="ed-ctl">${seg('ratio',Object.keys(ED_RATIOS).map(r=>[r,r]),this.p.ratio)}</div></div>
+     <div class="ed-row"><label for="ed-fps">Frame rate</label><div class="ed-ctl"><select id="ed-fps">${[24,25,30,60].map(fps=>`<option value="${fps}" ${fps===this.fps()?'selected':''}>${fps} fps</option>`).join('')}</select></div></div>`),
+    sec('Background',`${seg('bgmode',[['color','Colour'],['gradient','Gradient'],['image','Picture'],['blur','Blur']],this.p.bgMode)}
+     ${this.p.bgMode==='color'||this.p.bgMode==='gradient'?`<div class="ed-row"><label for="ed-bg">Colour</label><div class="ed-ctl"><input type="color" id="ed-bg" data-bg value="${esc(this.p.bg||'#000000')}" aria-label="Background colour">${this.p.bgMode==='gradient'?`<input type="color" data-bg2 value="${esc(this.p.bg2||'#3a1c71')}" aria-label="Second background colour">`:''}</div></div>`:''}
+     ${this.p.bgMode==='image'?`<div class="ed-row"><label for="ed-bgimg">Picture</label><div class="ed-ctl"><select id="ed-bgimg" data-bgimg aria-label="Background picture"><option value="">Choose from Media</option>${this.media.filter(media=>media.type==='image').map(media=>`<option value="${esc(media.id)}" ${this.p.bgImage===media.id?'selected':''}>${esc(media.name)}</option>`).join('')}</select></div></div>`:''}`))+
+    ((hasProxy||canMakeProxy)?sec('Playback',`<div class="ed-tools-row">${hasProxy?`<label class="ed-xopt"><input type="checkbox" data-useproxy ${this.p.useProxy===false?'':'checked'}> Play with proxies</label>`:''}${canMakeProxy?`<button type="button" class="ed-tool" data-proxies>${I.film} Make proxies</button>`:''}</div>`):'')+
+    (this.p.markers.length?sec('Markers',`<div class="ed-mlist">${this.p.markers.map((marker,i)=>`<button type="button" class="ed-mrow" data-mgo="${i}"><i class="ed-swatch" style="background:${marker.color?edLabel(marker.color):'var(--warn)'}"></i><span>${edFmt(edMt(marker))}</span><b dir="auto">${esc(marker.name||'Marker')}</b>${marker.note?`<small dir="auto">${esc(marker.note)}</small>`:''}</button>`).join('')}</div><button type="button" class="ed-tool" data-clear-markers>${I.trash} Clear markers</button>`):'');
+  }
+  else if(t==='caption'||t==='text'){
+   const caption=t==='caption'?sec('Caption settings',`<div class="ed-seg wrap">${ED_CAPS.map(([v,l])=>`<button type="button" data-caplook="${v}" aria-pressed="${(c.capLook||'clean')===v}">${l}</button>`).join('')}</div>
      ${c.capStyle==='karaoke'||c.capStyle==='build'?`<div class="ed-row"><label>Highlight</label><div class="ed-ctl"><input type="color" data-k="hl" value="${esc(c.hl||'#FFD400')}" aria-label="Highlight colour"></div></div>`:''}
-     ${c.words.some(w=>w.alt)?`<div class="ed-checks"><b>${I.flag} Check these words</b>${c.words.map((w,i)=>w.alt?`<div class="ed-check"><span class="ed-check-words"><bdi>${esc(c.words.slice(i,i+(w.altSpan||1)).map(x=>x.t).join(' '))}</bdi><i>other model heard</i><bdi>${esc(w.alt)}</bdi></span><span class="ed-check-btns"><button type="button" class="btn small" data-alt="${i}">Use</button><button type="button" class="btn small ghost" data-keep="${i}">Keep</button></span></div>`:'').join('')}</div>`:''}
+     ${c.words?.some(w=>w.alt)?`<div class="ed-checks"><b>${I.flag} Check these words</b>${c.words.map((w,i)=>w.alt?`<div class="ed-check"><span class="ed-check-words"><bdi>${esc(c.words.slice(i,i+(w.altSpan||1)).map(x=>x.t).join(' '))}</bdi><i>other model heard</i><bdi>${esc(w.alt)}</bdi></span><span class="ed-check-btns"><button type="button" class="btn small" data-alt="${i}">Use</button><button type="button" class="btn small ghost" data-keep="${i}">Keep</button></span></div>`:'').join('')}</div>`:''}
      <div class="ed-row"><label>Capitals</label><div class="ed-ctl"><input type="checkbox" role="switch" data-k="upper" ${c.upper?'checked':''} aria-label="Capitals"></div></div>
      <div class="ed-row"><label>Language</label><div class="ed-ctl"><span class="ed-val" dir="auto">${esc(edLangName(c.lang||'auto'))}</span></div></div>
-     <div class="ed-row"><label></label><div class="ed-ctl"><button type="button" class="ed-tool" data-cap-all>${I.layers} Use this look on every caption</button></div></div>`):'')+(c.words?'':sec('Text effects',`<div class="ed-row"><label for="ed-grad">Gradient</label><div class="ed-ctl"><input type="checkbox" id="ed-grad" data-k="grad" ${c.grad?'checked':''}><input type="color" data-k="color2" value="${esc(c.color2||'#ffb000')}" aria-label="Second colour"></div></div>
+     <div class="ed-row"><label></label><div class="ed-ctl"><button type="button" class="ed-tool" data-cap-all>${I.layers} Use this look on every caption</button></div></div>`):'';
+   const effects=c.words?'':sec('Text effects',`<div class="ed-row"><label for="ed-grad">Gradient</label><div class="ed-ctl"><input type="checkbox" id="ed-grad" data-k="grad" ${c.grad?'checked':''}><input type="color" data-k="color2" value="${esc(c.color2||'#ffb000')}" aria-label="Second colour"></div></div>
      ${row('glow','Glow',c.glow||0,{min:0,max:100})}<div class="ed-row"><label>Glow colour</label><div class="ed-ctl"><input type="color" data-k="glowColor" value="${esc(c.glowColor||c.color||'#ffffff')}" aria-label="Glow colour"></div></div>
      ${row('depth','3D depth',c.depth||0,{min:0,max:20,suffix:'px'})}<div class="ed-row"><label>Depth colour</label><div class="ed-ctl"><input type="color" data-k="depthColor" value="${esc(c.depthColor||'#000000')}" aria-label="Depth colour"></div></div>
-     ${row('curve','Curve',c.curve||0,{min:-100,max:100})}<div class="ed-row"><label for="ed-bubble">Speech bubble</label><div class="ed-ctl"><input type="checkbox" id="ed-bubble" data-k="bubble" ${c.bubble?'checked':''}></div></div>`,'textfx'))+
-    sec('Text',`<textarea data-k="text" rows="3" dir="auto" aria-label="Text">${esc(c.text||'')}</textarea>${c.words?'':`<div class="ed-row"><label></label><div class="ed-ctl"><button type="button" class="ed-tool" data-tpl-save>${I.add} Save style as a template</button></div></div>`}`)+
-    sec('Style',`<div class="ed-row"><label>Font</label><div class="ed-ctl"><select data-k="font" aria-label="Font">${ED_FONTS.map(([f,l])=>`<option value="${esc(f)}" ${c.font===f?'selected':''}>${l}</option>`).join('')}</select></div></div>
+     ${row('curve','Curve',c.curve||0,{min:-100,max:100})}<div class="ed-row"><label for="ed-bubble">Speech bubble</label><div class="ed-ctl"><input type="checkbox" id="ed-bubble" data-k="bubble" ${c.bubble?'checked':''}></div></div>`,'textfx');
+   const content=sec('Text',`<textarea data-k="text" rows="3" dir="auto" aria-label="Text">${esc(c.text||'')}</textarea>${c.words?'':`<div class="ed-row"><label></label><div class="ed-ctl"><button type="button" class="ed-tool" data-tpl-save>${I.add} Save style as a template</button></div></div>`}`);
+   const style=sec('Type and alignment',`<div class="ed-row"><label>Font</label><div class="ed-ctl"><select data-k="font" aria-label="Font">${ED_FONTS.map(([f,l])=>`<option value="${esc(f)}" ${c.font===f?'selected':''}>${l}</option>`).join('')}</select></div></div>
      ${row('size','Size',c.size||40,{min:12,max:200})}${row('weight','Weight',c.weight||600,{min:300,max:900,step:100})}${row('spacing','Letter spacing',c.spacing||0,{min:-5,max:30})}${row('lineH','Line spacing',c.lineH||1.25,{min:80,max:250,step:5,unit:'pct',suffix:'%'})}
      <div class="ed-row"><label>Colour</label><div class="ed-ctl"><input type="color" data-k="color" value="${esc(c.color||'#ffffff')}" aria-label="Colour"></div></div>
-     <div class="ed-row"><label>Align</label><div class="ed-ctl">${seg('align',[['left','Left'],['center','Center'],['right','Right']],c.align||'center')}</div></div>`)+
-    sec('Outline and shadow',`${row('stroke','Outline',c.stroke||0,{min:0,max:12})}<div class="ed-row"><label>Outline colour</label><div class="ed-ctl"><input type="color" data-k="strokeColor" value="${esc(c.strokeColor||'#000000')}" aria-label="Outline colour"></div></div>
+     <div class="ed-row"><label>Align</label><div class="ed-ctl ed-seg ed-prop-icons" role="group" aria-label="Text alignment">${[['left','Left',I.text],['center','Center',I.alignCenter],['right','Right',I.text]].map(([key,label,icon])=>`<button type="button" data-align="${key}" aria-pressed="${(c.align||'center')===key}" aria-label="Align ${label.toLowerCase()}" data-tooltip="Align ${label.toLowerCase()}">${icon}</button>`).join('')}</div></div>`);
+   const outline=sec('Outline and shadow',`${row('stroke','Outline',c.stroke||0,{min:0,max:12})}<div class="ed-row"><label>Outline colour</label><div class="ed-ctl"><input type="color" data-k="strokeColor" value="${esc(c.strokeColor||'#000000')}" aria-label="Outline colour"></div></div>
      <div class="ed-row"><label>Shadow</label><div class="ed-ctl"><input type="checkbox" role="switch" data-k="shadow" ${c.shadow?'checked':''} aria-label="Shadow"></div></div>
      <div class="ed-row"><label>Background</label><div class="ed-ctl"><input type="checkbox" role="switch" data-k="box" ${c.box?'checked':''} aria-label="Background box">${c.box?`<input type="color" data-k="boxColor" value="${esc(c.boxColor||'#000000')}" aria-label="Box colour">`:''}</div></div>`);
-  else if(t==='sticker')body=c.sticker.type==='shape'?sec('Colour',`<div class="ed-row"><label>Fill</label><div class="ed-ctl"><input type="color" data-k="color" value="${esc(c.color||'#ffd23f')}" aria-label="Fill colour"></div></div>`)+sec('Shape',`<div class="ed-stickers small">${ED_SHAPES.map(([s,l])=>`<button type="button" class="ed-sticker" data-reshape="${s}" aria-pressed="${c.sticker.shape===s}" title="${l}"><svg viewBox="0 0 40 40">${edShapeSvg(s)}</svg></button>`).join('')}</div>`)
-    :sec('Emoji',`<div class="ed-stickers small">${ED_EMOJI.map(e=>`<button type="button" class="ed-sticker emoji" data-reemoji="${e}" aria-pressed="${c.sticker.emoji===e}">${e}</button>`).join('')}</div>`);
-  else if(t==='anim'){const AN=c.text!==undefined?ED_ANIMS:ED_CLIP_ANIMS;body=sec('In',seg('animIn',AN,c.animIn||'none'))+sec('Out',seg('animOut',AN.filter(a=>a[0]!=='type'&&a[0]!=='words'),c.animOut||'none'))+sec('Speed',row('animDur','Length',c.animDur||.5,{min:.1,max:2,step:.1,suffix:'s'}));}
+   body=t==='caption'?content+caption:((c.words||c.cap)?'':content)+style+outline+effects;
+  }
+  else if(t==='sticker'){
+   const shape=c.sticker.shape??c.sticker.id;
+   body=c.sticker.type==='shape'?sec('Colour',`<div class="ed-row"><label>Fill</label><div class="ed-ctl"><input type="color" data-k="color" value="${esc(c.color||'#ffd23f')}" aria-label="Fill colour"></div></div>`)+sec('Shape',`<div class="ed-stickers small">${ED_SHAPES.map(([s,l])=>`<button type="button" class="ed-sticker" data-reshape="${s}" aria-pressed="${shape===s}" title="${l}"><svg viewBox="0 0 40 40">${edShapeSvg(s)}</svg></button>`).join('')}</div>`)
+    :c.sticker.type==='graphic'?sec('Sticker',`<div class="ed-row"><label for="ed-sticker-colour">Accent colour</label><div class="ed-ctl"><input type="color" id="ed-sticker-colour" data-k="color" value="${esc(c.color||ED_GRAPHICS[c.sticker.id]?.[2]||'#ffffff')}"></div></div>`):sec('Sticker',`<span class="ed-val">${esc(c.sticker.emoji||'Sticker')}</span>`);
+   if(c.sticker.type==='mesh')body=sec('Model',`<p class="ed-val">${esc(c.sticker.name)}</p><div class="ed-row"><label for="ed-mesh-colour">Fill</label><div class="ed-ctl"><input type="color" id="ed-mesh-colour" data-k="color" value="${esc(c.color||'#71A7F4')}"></div></div>`);
+   if(c.sticker.type==='mesh'||c.sticker.type==='shape'&&shape==='cuboid')body+=sec('3D geometry',
+    row('tiltX','Tilt X',cur('tiltX'),{min:-180,max:180,suffix:'°'})+
+    row('tiltY','Tilt Y',cur('tiltY'),{min:-180,max:180,suffix:'°'})+
+    row('depth3d','Depth',cur('depth3d'),{min:10,max:100,unit:'pct',suffix:'%'}));
+  }
+  else if(t==='anim'){const AN=c.text!==undefined?ED_ANIMS:ED_CLIP_ANIMS;body=pair(sec('In',seg('animIn',AN,c.animIn||'none')),sec('Out',seg('animOut',AN.filter(a=>a[0]!=='type'&&a[0]!=='words'),c.animOut||'none')))+sec('Timing',row('animDur','Duration',c.animDur||.5,{min:.1,max:2,step:.1,suffix:'s'}));}
   else if(t==='basic'){const cr=c.crop||{},media=kind!=='text'&&kind!=='sticker';
-   body=sec('Transform',`${kind!=='text'?row('scale','Scale',cur('scale'),{min:10,max:300,unit:'pct',suffix:'%'}):row('scale','Scale',cur('scale'),{min:20,max:300,unit:'pct',suffix:'%'})}
-     <div class="ed-row"><label>Position</label><div class="ed-ctl two"><span class="ed-num"><b>X</b><input type="number" data-k="x" data-u="pxx" step="1" value="${Math.round(cur('x')*W)}" aria-label="Position X"></span><span class="ed-num"><b>Y</b><input type="number" data-k="y" data-u="pxy" step="1" value="${Math.round(cur('y')*H)}" aria-label="Position Y"></span>${kfBtn('x')}</div></div>
+   body=sec('Transform',`${row('scale','Scale',cur('scale'),{min:1,max:500,unit:'pct',suffix:'%'})}
+     <div class="ed-row"><label>Position</label><div class="ed-ctl two"><span class="ed-num"><b>X</b><input type="number" data-k="x" data-u="pxx" step="1" value="${Math.round(cur('x')*W)}" aria-label="Position X"></span><span class="ed-num"><b>Y</b><input type="number" data-k="y" data-u="pxy" step="1" value="${Math.round(cur('y')*H)}" aria-label="Position Y"></span>${kfBtn('x','Position')}</div></div>
      ${row('rotate','Rotate',cur('rotate'),{min:-180,max:180,suffix:'°',slider:false})}
-     ${media?`<div class="ed-row"><label>Flip</label><div class="ed-ctl"><button type="button" class="ed-tool" data-flip="flipH" aria-pressed="${!!c.flipH}">${I.flipH} Mirror</button><button type="button" class="ed-tool" data-flip="flipV" aria-pressed="${!!c.flipV}">${I.flipV} Flip</button></div></div>`:''}`,'transform')+
-    (media?sec('Crop',`${['l','t','r','b'].map(s=>row('crop'+s,{l:'Left',t:'Top',r:'Right',b:'Bottom'}[s],cr[s]||0,{min:0,max:45,unit:'pct',suffix:'%'})).join('')}`,'crop'):'')+
-    (media&&c.media?sec('Smart tools',this.toolJobs[c.id]?`<div class="ed-note"><span class="spin"></span> ${esc(this.toolJobs[c.id].label)}…${this.toolJobs[c.id].progress!=null?` ${Math.round(this.toolJobs[c.id].progress*100)}%`:''}<br><small>${esc(this.toolJobs[c.id].note||'Working on this computer; you can keep editing.')}</small></div>`:
+     ${visualClipAlignment(media)}
+     ${media?`<div class="ed-row"><label>Flip</label><div class="ed-ctl ed-seg ed-prop-icons" role="group" aria-label="Flip clip">${[['flipH','Flip horizontally'],['flipV','Flip vertically']].map(([key,label])=>`<button type="button" data-flip="${key}" aria-pressed="${!!c[key]}" aria-label="${label}" data-tooltip="${label}">${I[key]}</button>`).join('')}</div></div>`:''}`,'transform')+
+    sec('Opacity and blend',row('opacity','Opacity',cur('opacity'),{min:0,max:100,unit:'pct',suffix:'%'})+`<div class="ed-row"><label for="ed-blend">Blend</label><div class="ed-ctl"><select id="ed-blend" data-k="blend" aria-label="Blend mode">${ED_BLENDS.map(([v,l])=>`<option value="${v}" ${(c.blend||'normal')===v?'selected':''}>${l}</option>`).join('')}</select></div></div>`)+
+    (media?edFold('Crop',sec('Crop',`${['l','t','r','b'].map(s=>row('crop'+s,{l:'Left',t:'Top',r:'Right',b:'Bottom'}[s],cr[s]||0,{min:0,max:45,unit:'pct',suffix:'%'})).join('')}`,'crop')):'')+
+    (media&&c.media?edFold('Smart tools',sec('Smart tools',this.toolJobs[c.id]?`<div class="ed-note"><span class="spin"></span> ${esc(this.toolJobs[c.id].label)}…${this.toolJobs[c.id].progress!=null?` ${Math.round(this.toolJobs[c.id].progress*100)}%`:''}<br><small>${esc(this.toolJobs[c.id].note||'Working on this computer; you can keep editing.')}</small></div>`:
      `<div class="ed-tools-row">${m?.type==='video'?`<button type="button" class="ed-tool" data-tool="stabilize">${I.wand} Stabilise</button>`:''}<button type="button" class="ed-tool" data-tool="cutout">${I.image} Remove background</button>${m?.type==='video'?`<button type="button" class="ed-tool" data-reverse>${I.undo} Reverse</button>`:''}${this.trackOf(c)&&!this.trackOf(c).main?`<button type="button" class="ed-tool" data-trackmo>${I.flag} Track motion</button>`:''}${m?.type==='video'?`<button type="button" class="ed-tool" data-tool="reframe">${I.crop} Auto reframe</button>`:''}</div>
-     <p class="ed-hint">Stabilise steadies shaky footage. Remove background cuts out the person or object. Auto reframe fills the ${esc(this.p.ratio)} frame and follows the face.</p>`):'')+
+     <p class="ed-hint">Stabilise steadies shaky footage. Remove background cuts out the person or object. Auto reframe fills the ${esc(this.p.ratio)} frame and follows the face.</p>`),!!this.toolJobs[c.id]):'')+
     (!c.media&&!c.adjustment?sec('Motion tracking',this.toolJobs[c.id]?`<div class="ed-note"><span class="spin"></span> ${esc(this.toolJobs[c.id].label)}…</div>`:`<div class="ed-tools-row"><button type="button" class="ed-tool" data-trackmo>${I.flag} Track motion</button></div><p class="ed-hint">Place this over the thing to follow at the clip's start, then press: it moves with it in the video below.</p>`):'')+
-    sec('Opacity and blend',row('opacity','Opacity',cur('opacity'),{min:0,max:100,unit:'pct',suffix:'%'})+`<div class="ed-row"><label for="ed-blend">Blend</label><div class="ed-ctl"><select id="ed-blend" data-k="blend" aria-label="Blend mode">${ED_BLENDS.map(([v,l])=>`<option value="${v}" ${(c.blend||'normal')===v?'selected':''}>${l}</option>`).join('')}</select></div></div>`)+(media?fades():'')+
+    (media?fades():'')+
     `<p class="ed-hint">${I.diamond} Keyframes: move the playhead, press the diamond, change the value. It animates between them.</p>`;}
   else if(t==='adjust'){const a=c.adj||{};body=sec('Filter',`<div class="ed-filters small">${ED_FILTERS.map(([id,l,f])=>`<button type="button" class="ed-filter" data-filter="${id}" aria-pressed="${JSON.stringify(a)===JSON.stringify(f)}"><span class="ed-filter-swatch" style="filter:${edCssFilter(f)}"></span><span>${l}</span></button>`).join('')}</div>`)+
     sec('Adjust',ED_ADJ.map(([k,l,mn,mx])=>row('adj_'+k,l,a[k]||0,{min:mn,max:mx})).join(''),'adjust')+
@@ -117,7 +181,7 @@ Object.assign(Ed,{
      <div class="ed-row"><label></label><div class="ed-ctl"><div class="ed-tools-row"><button type="button" class="ed-tool" data-tool="voice">${I.mic} Clean voice (noise, hum)</button><button type="button" class="ed-tool" data-tool="beats">${I.flag} Beat markers</button></div></div></div>
      ${this.toolJobs[c.id]?`<div class="ed-note"><span class="spin"></span> ${esc(this.toolJobs[c.id].label)}…</div>`:''}`,'afx'):'';
    body=(kind==='video'?sec('Sound',c.detached?`<div class="ed-note">${I.detach} The sound is on its own audio track.</div>`:`${row('volume','Volume',cur('volume'),{min:0,max:200,unit:'pct',suffix:'%'})}<div class="ed-row"><label></label><div class="ed-ctl"><button type="button" class="ed-tool" data-detach>${I.detach} Detach audio</button></div></div>`)
-    :sec('Volume',row('volume','Volume',cur('volume'),{min:0,max:200,unit:'pct',suffix:'%'})))+(snd?loud:'')+sfx+duck+(kind==='audio'?fades():'');}
+    :sec('Volume',row('volume','Volume',cur('volume'),{min:0,max:200,unit:'pct',suffix:'%'})))+(kind==='audio'?fades():'')+(snd?pair(loud,duck):'')+sfx;}
   else if(t==='speed')body=sec('Speed',`${row('speed','Speed',c.speed||1,{min:.25,max:4,step:.05,suffix:'×'})}<div class="ed-chips">${[.5,1,1.5,2,3].map(s=>`<button type="button" data-speed="${s}" aria-pressed="${(c.speed||1)===s}">${s}×</button>`).join('')}</div>
      <div class="ed-row"><label>Length</label><div class="ed-ctl"><span class="ed-val">${edFmt(c.dur)}</span></div></div>`,'speed')+
     sec('Smooth slow motion',`<div class="ed-row"><label for="ed-fb">Frame blending</label><div class="ed-ctl"><input type="checkbox" id="ed-fb" data-k="frameBlend" ${c.frameBlend?'checked':''}></div></div><p class="ed-hint">Below 1×, mixes each frame into the next so slow motion glides instead of stepping. No AI: two frames, blended.</p>`)+
@@ -131,10 +195,37 @@ Object.assign(Ed,{
     <p class="ed-hint">Play and press 1–9 to cut between angles as it plays; each press is a cut from the playhead on. Double-click the clip to move an angle by hand; Break apart turns it into ordinary clips.</p>`)+body;}
   if(ke)body=sec('Keyframe at the playhead',`<div class="ed-row"><label>To the next</label><div class="ed-ctl"><div class="ed-seg wrap">${[...ED_EASES,...(Array.isArray(ke)?[['custom','Custom']]:[])].map(([v,l])=>`<button type="button" data-ease="${v}" aria-pressed="${Array.isArray(ke)?v==='custom':ke===v}">${l}</button>`).join('')}</div></div></div>
    ${ke!=='hold'?`<div class="ed-ecurve">${edEaseSvg(Array.isArray(ke)?ke:ED_EASE_BZ[ke]||ED_EASE_BZ.smooth)}</div><p class="ed-hint">Drag the two handles to shape the move to the next keyframe: steep is fast, flat is slow.</p>`:''}`)+body;
-  el.innerHTML=`<nav class="ed-ptabs" role="tablist">${tabs.map(([id,l])=>`<button type="button" role="tab" aria-selected="${t===id}" data-ptab="${id}">${l}</button>`).join('')}
-    ${c?`<span class="grow"></span><button type="button" class="iconbtn sm" data-remove aria-label="Delete clip" data-tooltip="Delete">${I.trash}</button>`:''}</nav><div class="ed-pbody${locked?' locked':''}">${locked?`<div class="ed-note">${I.lock} This track is locked.</div>`:''}${body}</div>`;
-  el.querySelectorAll('[data-ptab]').forEach(b=>b.onclick=()=>{this.ptab=b.dataset.ptab;this.drawProps();});
+  const clipName=m?.name||c?.title?.name||c?.nest?.name||c?.adjustmentName||(c?.sticker&&this.timelineClipName(c))||(c?.text!==undefined?c.text:'')||{adjustment:'Adjustment layer',sticker:'Sticker',caption:'Caption',audio:'Audio clip'}[kind]||'Clip';
+  const propsTabs=tabs.map(([id,label])=>[id,id==='basic'&&kind==='video'?'Video':id==='basic'&&kind==='image'?'Image':label]);
+  const viewKey=c?`${c.id}:${t}`:'project',previous=el.querySelector('.ed-pbody');
+  const scrollTop=previous?.dataset.propsView===viewKey?previous.scrollTop:0;
+  const resetVideo=kind==='video'&&m?.type==='video'?`<button type="button" class="ed-tool ed-reset-video" data-reset-video aria-label="Reset video settings" data-tooltip="Reset video settings" ${locked||c.positionLocked||this.exporting||this.toolJobs[c.id]?'disabled':''}>${I.restore} Reset</button>`:'';
+  const lockLabel=c?.positionLocked?'Unlock position':'Lock position';
+  const positionLock=c&&kind!=='audio'&&!c.adjustment?`<button type="button" class="iconbtn sm ed-position-lock" data-position-lock aria-label="${lockLabel}" data-tooltip="${lockLabel}" aria-pressed="${!!c.positionLocked}" ${locked||this.exporting?'disabled':''}>${c.positionLocked?I.lock:I.unlock}</button>`:'';
+  el.innerHTML=`${edPropsHead(c?clipName:'Project',positionLock+resetVideo)}${c?`<nav class="ed-ptabs" role="tablist" aria-label="Clip properties">${propsTabs.map(([id,label])=>`<button type="button" role="tab" id="ed-prop-tab-${id}" aria-controls="ed-prop-panel" aria-selected="${t===id}" tabindex="${t===id?0:-1}" data-ptab="${id}" aria-label="${label}" data-tooltip="${label}">${edPropsIcon(id)}<span class="ed-ptab-label">${label}</span></button>`).join('')}</nav>`:''}
+   <div class="ed-pbody${locked?' locked':''}" data-props-view="${esc(viewKey)}" ${c?`id="ed-prop-panel" role="tabpanel" aria-labelledby="ed-prop-tab-${t}"`:''}>${locked?`<div class="ed-note">${I.lock} This track is locked.</div>`:''}${body}</div>`;
+  el.querySelector('.ed-pbody').scrollTop=scrollTop;
+  const resetButton=el.querySelector('[data-reset-video]');
+  if(resetButton)resetButton.onclick=()=>{this.resetVideoSettings(c);el.querySelector('[data-reset-video]')?.focus({preventScroll:true});};
+  const pin=el.querySelector('[data-position-lock]');
+  if(pin)pin.onclick=()=>{this.togglePositionLock(c);el.querySelector('[data-position-lock]')?.focus({preventScroll:true});};
+  if(c?.positionLocked){
+   for(const control of el.querySelectorAll('[data-k],[data-kf]'))if(ED_POSITION_KEYS.has(control.dataset.k||control.dataset.kf))control.disabled=true;
+   for(const button of el.querySelectorAll('[data-frame-align],[data-reset="transform"],[data-trackmo],[data-tool="reframe"]'))button.disabled=true;
+  }
+  const selectTab=id=>{this.ptab=id;this.drawProps();el.querySelector(`[data-ptab="${id}"]`)?.focus({preventScroll:true});};
+  el.querySelectorAll('[data-ptab]').forEach((button,index)=>{
+   button.onclick=()=>selectTab(button.dataset.ptab);
+   button.onkeydown=e=>{
+    if(e.altKey||e.ctrlKey||e.metaKey||e.shiftKey)return;
+    const count=propsTabs.length,next={ArrowLeft:(index+count-1)%count,ArrowRight:(index+1)%count,Home:0,End:count-1}[e.key];
+    if(!Number.isInteger(next))return;
+    e.preventDefault();e.stopPropagation();selectTab(propsTabs[next][0]);
+   };
+  });
+  el.querySelectorAll('details.ed-fold').forEach(details=>details.ontoggle=()=>{this.foldState??={};this.foldState[details.dataset.fold]=details.open;});
   if(!c){
+   el.querySelector('#ed-fps').onchange=e=>{this.root().fps=Number(e.target.value);this.save();this.drawTimeline();this.drawTime();};
    el.querySelectorAll('[data-ratio]').forEach(b=>b.onclick=()=>{this.snapshot();this.p.ratio=b.dataset.ratio;this.save();this.drawProps();this.fit();this.draw();const lb=this.dom.root?.querySelector('.ed-ratio');if(lb)lb.textContent=this.p.ratio;});
    el.querySelectorAll('[data-bgmode]').forEach(b=>b.onclick=()=>{this.snapshot();this.p.bgMode=b.dataset.bgmode;this.save();this.drawProps();this.draw();});
    const bg=$('[data-bg]',el);if(bg){bg.onfocus=()=>this.snapshot();bg.oninput=()=>{this.p.bg=bg.value;this.save();this.draw();};}
@@ -147,9 +238,10 @@ Object.assign(Ed,{
   const setSpeed=v=>{const mm=this.mediaOf(c),max=mm?.dur&&mm.type!=='image'?((mm.dur-(c.in||0))/(v*(c.ramp?edRampAvg(c.ramp):1))):Infinity;c.dur=Math.max(.1,Math.min(c.dur*(c.speed||1)/v,max));c.speed=v;};
   el.querySelectorAll('[data-k]').forEach(inp=>{
    const k=inp.dataset.k,u=inp.dataset.u||'raw';
-   const snap=()=>{if(!inp._snap){this.snapshot();inp._snap=true;}};inp.addEventListener('focus',snap);inp.addEventListener('pointerdown',snap);
-   inp.addEventListener('change',()=>{inp._snap=false;this.save();if(k==='text'&&c?.words?.length)this.learnFix(c);if(['speed','text','box','font'].includes(k))this.drawTimeline();if(k==='box'||k==='key_on'||k==='upper')this.drawProps();if(k==='font')document.fonts?.load(`40px "${c.font}"`).then(()=>this.draw()).catch(()=>{});this.drawTime();if(k==='speed')this.after(false);});
-   inp.addEventListener('input',()=>{
+   const snap=()=>{if(!inp._snap){this.snapshot();inp._snap=true;}};
+   const finish=()=>{inp._snap=false;this.save();if(k==='text'&&c?.words?.length)this.learnFix(c);if(['speed','text','box','font'].includes(k))this.drawTimeline();if(k==='box'||k==='key_on'||k==='upper')this.drawProps();if(k==='font')document.fonts?.load(`40px "${c.font}"`).then(()=>this.draw()).catch(()=>{});this.drawTime();if(k==='speed')this.after(false);};
+   const apply=()=>{
+    snap();
     let v=inp.type==='checkbox'?inp.checked:inp.type==='range'||inp.type==='number'?Number(inp.value):inp.value;
     if(inp.type==='number'&&!Number.isFinite(v))return;
     if(u!=='raw')v=conv[u][1](v);
@@ -161,9 +253,33 @@ Object.assign(Ed,{
     else if(k.startsWith('key_'))c.key={color:'#00b140',sim:25,smooth:10,spill:50,...(c.key||{}),[k.slice(4)]:v};
     else if(k.startsWith('mask_'))c.mask={...(c.mask||{shape:'rect'}),[k.slice(5)]:v};else if(k.startsWith('crop'))c.crop={...(c.crop||{}),[k.slice(4)]:edClamp(v,0,.45)};else if(k.startsWith('adj_'))c.adj={...(c.adj||{}),[k.slice(4)]:v};
     else if(ED_KFKEYS.has(k))this.setVal(c,k,v);else c[k]=v;
-    el.querySelectorAll(`[data-k="${k}"]`).forEach(o=>{if(o!==inp&&o.type!=='checkbox')o.value=conv[u][0](v);});
+    el.querySelectorAll(`[data-k="${k}"]`).forEach(o=>{if(o!==inp&&o.type!=='checkbox'){o.value=conv[u][0](v);Controls.syncValue(o);}});
     if(k==='speed'||k==='text'){this.drawTimeline();this.drawTime();}
-    this.sync();this.draw();});
+    this.sync();this.draw();};
+   if(inp.type!=='number'){
+    inp.addEventListener('input',apply);
+    inp.addEventListener('change',finish);
+    inp.addEventListener('blur',()=>{inp._snap=false;});
+    return;
+   }
+   inp.addEventListener('focus',()=>{inp.dataset.committed=inp.value;});
+   inp.addEventListener('change',()=>{
+    const previous=inp.dataset.committed??inp.defaultValue;
+    if(!Number.isFinite(inp.valueAsNumber)){inp.value=previous;return;}
+    const min=inp.min===''?-Infinity:Number(inp.min),max=inp.max===''?Infinity:Number(inp.max);
+    inp.value=String(edClamp(inp.valueAsNumber,min,max));
+    if(inp.value===previous)return;
+    inp.dataset.committed=inp.value;
+    apply();
+    finish();
+   });
+   inp.addEventListener('keydown',e=>{
+    if(e.key==='Escape')inp.value=inp.dataset.committed??inp.defaultValue;
+    else if(e.key!=='Enter')return;
+    e.preventDefault();
+    e.stopPropagation();
+    inp.blur();
+   });
   });
   const segs={align:'align',animIn:'animIn',animOut:'animOut'};
   for(const [attr,key] of Object.entries(segs))el.querySelectorAll(`[data-${attr}]`).forEach(b=>b.onclick=()=>{this.snapshot();c[key]=b.dataset[attr];this.save();this.drawProps();this.draw();});
@@ -171,6 +287,18 @@ Object.assign(Ed,{
   el.querySelectorAll('[data-voice]').forEach(b=>b.onclick=()=>{this.snapshot();const v=b.dataset.voice;c.afx={...(c.afx||{})};if(v)c.afx.voice=v;else delete c.afx.voice;if(!Object.values(c.afx).some(Boolean))delete c.afx;this.after(true);});
   const rv=$('[data-reverse]',el);if(rv)rv.onclick=()=>this.reverseClip(c);el.querySelectorAll('[data-trackmo]').forEach(b=>b.onclick=()=>this.trackMotion(c));
   el.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>this.runTool(c,b.dataset.tool));
+  el.querySelectorAll('[data-frame-align]').forEach(button=>button.onclick=()=>{
+   if(locked)return;
+   const [width,height]=this.size();
+   const box=this.box(this.dom.canvas.getContext('2d'),c,width,height);
+   const angle=this.val(c,'rotate')*Math.PI/180;
+   const halfWidth=(Math.abs(box.w*Math.cos(angle))+Math.abs(box.h*Math.sin(angle)))/2;
+   const halfHeight=(Math.abs(box.w*Math.sin(angle))+Math.abs(box.h*Math.cos(angle)))/2;
+   const align=button.dataset.frameAlign,targets={left:halfWidth,center:width/2,right:width-halfWidth,top:halfHeight,middle:height/2,bottom:height-halfHeight};
+   const horizontal=['left','center','right'].includes(align),axis=horizontal?'x':'y';
+   const delta=horizontal?(targets[align]-box.cx)/width:(targets[align]-box.cy)/height;
+   this.snapshot();this.setVal(c,axis,this.val(c,axis)+delta);this.after(true);
+  });
   el.querySelectorAll('[data-flip]').forEach(b=>b.onclick=()=>{this.snapshot();c[b.dataset.flip]=!c[b.dataset.flip];this.save();this.drawProps();this.draw();});
   el.querySelectorAll('[data-speed]').forEach(b=>b.onclick=()=>{this.snapshot();setSpeed(Number(b.dataset.speed));this.after(true);});
   el.querySelectorAll('[data-ramp]').forEach(b=>b.onclick=()=>{const id=b.dataset.ramp;if(id==='custom')return;const r=ED_RAMPS.find(x=>x[0]===id);this.setRamp(c,r?r[2].map(x=>[...x]):null);if(r)c.rampName=id;else delete c.rampName;this.save();this.drawProps();});
@@ -178,9 +306,14 @@ Object.assign(Ed,{
   el.querySelectorAll('[data-kf]').forEach(b=>b.onclick=()=>{const k=b.dataset.kf;if(k==='x'){this.toggleKf(c,'x');this.toggleKf(c,'y');this.past.splice(-1,1);}else this.toggleKf(c,k);});
   el.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{this.snapshot();const a=ED_FILTERS.find(f=>f[0]===b.dataset.filter)[2];if(Object.keys(a).length)c.adj={...a};else delete c.adj;this.after(true);});
   el.querySelectorAll('[data-reshape]').forEach(b=>b.onclick=()=>{this.snapshot();c.sticker={...c.sticker,shape:b.dataset.reshape};this.after(true);});
-  el.querySelectorAll('[data-reemoji]').forEach(b=>b.onclick=()=>{this.snapshot();c.sticker={...c.sticker,emoji:b.dataset.reemoji};this.after(true);});
   el.querySelectorAll('[data-reset]').forEach(b=>b.onclick=()=>{this.snapshot();const r=b.dataset.reset;
-   if(r==='transform'){Object.assign(c,{scale:1,x:0,y:0,rotate:0,flipH:false,flipV:false});if(c.kf){for(const k of ['scale','x','y','rotate'])delete c.kf[k];}}else if(r==='crop')delete c.crop;else if(r==='mask')delete c.mask;else if(r==='afx')delete c.afx;else if(r==='fx')delete c.fx;else if(r==='grade')delete c.grade;else if(r==='adjust')delete c.adj;else setSpeed(1);this.after(true);});
+   if(r==='transform'){Object.assign(c,{scale:c.initialScale??1,x:0,y:0,rotate:0,flipH:false,flipV:false});if(c.kf){for(const k of ED_POSITION_KEYS)delete c.kf[k];}}
+   else if(r==='textfx'){for(const key of ['grad','color2','glow','glowColor','depth','depthColor','curve','bubble'])delete c[key];}
+   else if(r==='hsl'){if(c.grade?.hsl)delete c.grade.hsl[this.hslBand||'red'];}
+   else if(r==='speed')setSpeed(1);
+   else delete c[r==='adjust'?'adj':r];
+   this.after(true);
+  });
   const det=$('[data-detach]',el);if(det)det.onclick=()=>this.detach(c);
   const busy=b=>{b.disabled=true;b.innerHTML='<span class="spin"></span> Measuring…';};
   const ld=$('[data-loud]',el);if(ld)ld.onclick=()=>{busy(ld);this.matchLoudness([c]).finally(()=>this.drawProps());};
@@ -220,6 +353,5 @@ Object.assign(Ed,{
   const mca=el.querySelector('[data-mc-audio]');if(mca)mca.onchange=()=>{this.snapshot();c.nest.audio=mca.value;this.after(true);};
   const ts=$('[data-tpl-save]',el);if(ts)ts.onclick=async()=>{const n=prompt('Template name',String(c.text||'Text').slice(0,30));if(!n?.trim())return;await this.saveTemplate(c,n.trim().slice(0,40));if(this.tab==='text')this.drawLib();};
   const kp=$('[data-key-pick]',el);if(kp)kp.onclick=()=>{this.picking=this.picking===c.id?null:c.id;this.dom.frame?.classList.toggle('picking',!!this.picking);this.drawProps();this.draw();};
-  $('[data-remove]',el).onclick=()=>this.remove();
- },
+  },
 });

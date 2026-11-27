@@ -11,6 +11,16 @@ import {say,FACES} from './studio-events.js';
 import {recall} from './brain/brain.js';
 import {providers,defaultProviders,providerFor} from './sourcing/providers.js';
 import {kinds,type Kind} from './sourcing/core.js';
+import * as Editor from '../editor/shared-projects.js';
+import {cancelEditorExport,exportRequest,getEditorExport,startEditorExport} from '../editor/shared-exports.js';
+import {captionsRequest,planSharedCaptions,transcribeSharedMedia,transcriptRequest} from '../editor/shared-transcript.js';
+import {deviceMockupRequest,kineticTitleRequest,motionRequest,planDeviceMockup,planKineticTitle,planSharedMotion,planProductReveal,productRevealRequest,planRouteMap,routeMapRequest} from '../editor/shared-motion.js';
+import {objRequest,parseObjMesh} from '../editor/obj-mesh.js';
+import {multicamRequest,planSharedMulticam} from '../editor/shared-multicam.js';
+import {coverRequest,setSharedCover} from '../editor/shared-cover.js';
+import {editorModelRun,runEditorModel} from '../editor/editor-agent.js';
+import {loadKeys} from './models/settings.js';
+import {cancelEditorModelJob,getEditorModelJob,startEditorModelJob} from '../editor/editor-model-jobs.js';
 
 export type Tool={name:string;description:string;input:z.ZodObject<z.ZodRawShape>;run:(input:any)=>Promise<unknown>|unknown};
 const job=z.string().regex(/^[a-z0-9][a-z0-9-]{0,60}$/).describe('The studio job name');
@@ -39,6 +49,30 @@ export function writable(jobName:string,name:string){
 }
 
 export const TOOLS:Tool[]=[
+ {name:'editor_list',description:'List the editor projects explicitly shared with agents.',input:z.object({}),run:Editor.listProjects},
+ {name:'editor_inspect',description:'Read a shared editor project and its revision, tracks, clips, and media.',input:z.object({projectId:Editor.projectId}),run:i=>Editor.inspectProject(i.projectId)},
+ {name:'editor_validate',description:'Validate an edit batch against a shared project revision and inspect the proposed timeline before committing.',input:z.object({projectId:Editor.projectId,base:Editor.revision,edits:Editor.operations}),run:i=>({base:i.base,project:Editor.previewEdit(i.projectId,i.base,i.edits).project})},
+ {name:'editor_edit',description:'Apply one atomic edit batch to a shared project. Inspect it first and use its revision. Clip times are in timeline seconds.',input:z.object({projectId:Editor.projectId,base:Editor.revision,edits:Editor.operations}),run:i=>Editor.editProject(i.projectId,i.base,i.edits)},
+ {name:'editor_restore',description:'Restore an earlier revision of a shared editor project by creating an undo revision.',input:z.object({projectId:Editor.projectId,base:Editor.revision,restore:Editor.revision}),run:i=>Editor.restoreProject(i.projectId,i.base,i.restore)},
+ {name:'editor_export_start',description:'Start a background MP4, WebM, GIF, MP3, or WAV export of an exact shared editor revision. Returns a job ID.',input:exportRequest,run:i=>startEditorExport(i)},
+ {name:'editor_export_status',description:'Read an editor export job. When finished it reports the exported file path.',input:z.object({jobId:Editor.projectId}),run:i=>getEditorExport(i.jobId)},
+ {name:'editor_export_cancel',description:'Cancel a running editor export job.',input:z.object({jobId:Editor.projectId}),run:i=>cancelEditorExport(i.jobId)},
+ {name:'editor_transcribe',description:'Transcribe a shared audio or video asset using the installed on-device engine. Returned times are relative to the original media.',input:transcriptRequest,run:i=>transcribeSharedMedia(i)},
+ {name:'editor_plan_captions',description:'Create a reviewable caption edit batch for a shared timeline clip with the on-device speech model.',input:captionsRequest,run:i=>planSharedCaptions(i)},
+ {name:'editor_plan_motion',description:'Plan an editable motion composition from script text using the local Tempoloom scene planner. Returns edits for review before applying.',input:motionRequest,run:i=>planSharedMotion(i)},
+ {name:'editor_plan_product_reveal',description:'Plan an editable product reveal from a shared image or video. Returns separate title, visual motion, and backdrop layers for review.',input:productRevealRequest,run:planProductReveal},
+ {name:'editor_plan_device_mockup',description:'Plan an editable phone, tablet, or laptop mockup from shared screen media. Returns separate frame, screen, and backdrop layers for review.',input:deviceMockupRequest,run:planDeviceMockup},
+ {name:'editor_plan_route_map',description:'Plan an editable route map with 2 to 6 stops. Use built-in place names or Name@latitude,longitude for custom coordinates.',input:routeMapRequest,run:planRouteMap},
+ {name:'editor_parse_obj',description:'Parse Wavefront OBJ text into an editable mesh sticker. Pass the returned sticker to addSticker.',input:objRequest,run:parseObjMesh},
+ {name:'editor_plan_kinetic_titles',description:'Plan an editable phrase-rise sequence from 1 to 8 phrases.',input:kineticTitleRequest,run:planKineticTitle},
+ {name:'editor_plan_multicam',description:'Match shared camera tracks locally by sound and propose an editable multicam clip. Review the offsets before applying.',input:multicamRequest,run:i=>planSharedMulticam(i)},
+ {name:'editor_set_cover',description:'Set the shared cover from a registered image or an exact timeline time. Pass a null media ID to remove it.',input:coverRequest,run:i=>setSharedCover(i)},
+ {name:'editor_run_model',description:'Run a configured model against a pinned shared revision and apply its validated edit batch. Use only when explicitly asked to apply without review.',input:editorModelRun,run:async i=>{
+  await loadKeys();return runEditorModel(i,{signal:AbortSignal.timeout(60_000)});
+ }},
+ {name:'editor_model_job_start',description:'Start a background model run that applies a validated batch to a pinned shared revision. Use only when explicitly asked to apply without review.',input:editorModelRun,run:startEditorModelJob},
+ {name:'editor_model_job_status',description:'Read the status and resulting revision of an editor model job.',input:z.object({jobId:Editor.projectId}),run:i=>getEditorModelJob(i.jobId)},
+ {name:'editor_model_job_cancel',description:'Cancel a queued or running editor model job.',input:z.object({jobId:Editor.projectId}),run:i=>cancelEditorModelJob(i.jobId)},
  {name:'studio_next',description:'What can be done now in a job: the ready tasks, and the approvals waiting for the user.',input:z.object({job}),run:i=>St.next(i.job)},
  {name:'studio_status',description:'Every task of a job, its owner and its state.',input:z.object({job}),run:i=>St.status(i.job)},
  {name:'studio_start',description:'Start a task: returns the role\'s playbook, the task\'s inputs, the lessons the brain has for this role, the user\'s taste and feedback, and where to write the output.',

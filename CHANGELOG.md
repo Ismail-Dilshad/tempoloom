@@ -1,5 +1,20 @@
 # Changelog
 
+## 10.5.0: Pro Desktop Editor Redesign & In-App Versioning
+
+- **Pro Video Editor Workspace**:
+  - Full desktop NLE aesthetic inspired by DaVinci Resolve, Premiere Pro, and CapCut Pro.
+  - Premium deep obsidian/zinc dark palette (`#0B0C0E` app chrome, `#131418` panel containers, `#1A1D24` surfaces).
+  - 1px crisp separation borders with semantic clip role color-coding (Video teal, Audio cyan, Text orange, Effects violet).
+  - Consolidated single-lane caption & word timing markers avoiding timeline vertical bloat.
+  - Realistic smartphone bezel framing preview with toggleable TikTok, Instagram Reels, and YouTube Shorts safe area overlay guides.
+  - Real-time SMPTE timecode display and calibrated L/R stereo peak volume meters.
+  - Dynamic Inspector panel in the top-right that automatically adapts to the selected clip type (Video, Audio, Text, Effect).
+- **Sidebar App Version & Update Tracker**:
+  - Live version badge (`v10.5.0`) in the sidebar footer.
+  - Interactive "What's New" modal displaying release notes and features for every version update.
+  - Synced version manifest across `package.json`, engine APIs, and web client.
+
 ## Unreleased: The Editor is tested and split into parts
 
 - **Basic tools found missing next to CapCut, Premiere and Resolve:**

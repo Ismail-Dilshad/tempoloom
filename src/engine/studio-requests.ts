@@ -261,8 +261,21 @@ async function finalNow(job:string,i:RateInput){
 const TEXT=/\.(md|txt|json|srt|vtt|csv)$/i,MEDIA:Record<string,'image'|'video'|'audio'>={'.png':'image','.jpg':'image','.jpeg':'image','.webp':'image','.gif':'image','.svg':'image','.mp4':'video','.webm':'video','.mov':'video','.m4v':'video','.mp3':'audio','.wav':'audio','.m4a':'audio'};
 const readText=(f:string|undefined)=>{if(!f||!TEXT.test(f))return null;try{const s=fs.readFileSync(f,'utf8');return s.length>12000?s.slice(0,12000)+'\n…':s;}catch{return null;}};
 const mediaOf=(f:string)=>MEDIA[path.extname(f).toLowerCase()]??null;
+const planMode=(p:Plan)=>p.type==='footage-edit'?'edit':p.type==='painting'?'art':'motion';
+function jobProgress(p:Plan){
+ const n=next(p),finished=n.finished===true;
+ // A driver from an earlier server process is no longer running.
+ let drive=null;
+ try{
+  const st=JSON.parse(fs.readFileSync(path.join(jobDir(p.job),'driver.json'),'utf8')) as {state:string;why:string;spent:number;model:{model:string}|null;task:string|null;updated:string};
+  const lost=st.state==='running'&&!isRunning(p.job);
+  drive={state:lost?'stopped':st.state,why:lost?'The page was closed while it worked. Run it again: it continues from the step it was on.':st.why,spent:st.spent,model:st.model?.model??null,task:st.task,updated:st.updated};
+ }catch{/* never driven here */}
+ const waitingFor=finished?'nothing':drive?.state==='asking'?'you':drive?.state==='running'?'page':n.ready.length?'agent':n.waitingForUser.length?'you':'agent';
+ return {n,finished,drive,waitingFor};
+}
 export function jobView(p:Plan){
- const n=next(p.job),readyGates=new Set(n.waitingForUser.map(g=>g.gate)),counts=versionCounts(p.job);
+ const {n,finished,drive,waitingFor}=jobProgress(p),readyGates=new Set(n.waitingForUser.map(g=>g.gate)),counts=versionCounts(p.job);
  const tasks=p.tasks.map((t,index)=>{
   if(t.gate)return {id:t.id,gate:true as const,title:t.title,status:t.status==='done'?'approved' as const:readyGates.has(t.id)?'waiting' as const:'later' as const,
    blockedBy:readyGates.has(t.id)?t.needs.map(x=>p.tasks.find(y=>y.id===x)!).filter(x=>x.choices?.length&&!x.picked).map(x=>x.id):[]};
@@ -282,16 +295,10 @@ export function jobView(p:Plan){
    canComment:t.status==='done'&&!['intake','brief','learn'].includes(t.id),
    comments:(p.comments??[]).filter(c=>c.task===t.id).map(c=>({id:c.id,slot:c.slot,time:c.time,scene:c.scene.n,label:c.scene.label,text:c.text,version:c.round+1,answered:c.answered===undefined?null:c.answered+1,current:c.round===t.rounds})),
    scope:t.scope?{scenes:t.scope.scenes.map(s=>({n:s.n,label:s.label,from:s.start,to:s.end}))}:null};});
- const finished=p.tasks.every(t=>t.status==='done');
  let briefInput:unknown=null;if(p.source){try{briefInput=request(p.source).input;}catch{/* the request folder is gone */}}
- // Who works on it: the page's own agents (with their state and what they spent) or the terminal agent.
- let drive:unknown=null;try{const st=JSON.parse(fs.readFileSync(path.join(jobDir(p.job),'driver.json'),'utf8')) as {state:string;why:string;spent:number;model:{model:string}|null;task:string|null;updated:string};
-  // Working, but not in this page's process: the page was closed while it worked.
-  const lost=st.state==='running'&&!isRunning(p.job);
-  drive={state:lost?'stopped':st.state,why:lost?'The page was closed while it worked. Run it again: it continues from the step it was on.':st.why,spent:st.spent,model:st.model?.model??null,task:st.task,updated:st.updated};}catch{/* never driven here */}
- return {drive,job:p.job,kind:p.title,mode:p.type==='footage-edit'?'edit':p.type==='painting'?'art':'motion',request:p.request,created:p.created,updated:p.updated,verdict:p.verdict??null,finished,archived:!!p.archived,brief:briefInput,script:scriptView(p),
+ return {drive,job:p.job,kind:p.title,mode:planMode(p),request:p.request,created:p.created,updated:p.updated,verdict:p.verdict??null,finished,archived:!!p.archived,brief:briefInput,script:scriptView(p),
   ratings:(p.ratings??[]).map(r=>({task:r.task,rating:r.rating,round:r.round,at:r.at})),locked:(p.locked??[]).map(l=>({id:l.id,scene:l.n,label:l.label})),
-  done:n.done,of:n.of,waitingFor:finished?'nothing':(drive as {state:string}|null)?.state==='asking'?'you':(drive as {state:string}|null)?.state==='running'?'page':n.ready.length?'agent':n.waitingForUser.length?'you':'agent',
+  done:n.done,of:n.of,waitingFor,
   agentReady:n.ready.map(x=>x.task),tasks,textEdits:p.type==='footage-edit'?textEdits().filter(d=>d.job===p.job).map(d=>({id:d.id,title:d.title,made:d.renders.length})):[],feedback:p.feedback.map(f=>({said:f.said,rule:f.rule,goesTo:f.roles.map(id=>roleOf(id).title)}))};
 }
 /** The script doctor's view of the job's script, and whether lines can still be changed (until the storyboard starts). */
@@ -321,20 +328,40 @@ export function uploadFile(id:string,kind:FileKind,name:string){
  const f=request(id).files.find(x=>x.kind===kind&&x.name===name);if(!f)throw new Error('No such file');return f.file;
 }
 export const trashedUpload=(id:string,trashId:string)=>trashedFile(request(id),trashId).file;
+function studioTotals(allRequests:StudioRequest[],jobs:{finished:boolean;waitingFor:string}[]){
+ return {waitingForAgent:allRequests.filter(r=>r.status==='waiting').length+jobs.filter(j=>!j.finished&&j.waitingFor==='agent').length,
+  waitingForYou:jobs.filter(j=>j.waitingFor==='you').length,jobs:jobs.length};
+}
+
+/** The header polls this summary. Task output files and script details belong to the Studio view. */
+export function studioHome(){
+ const allPlans=plans(),allRequests=requests();
+ let made=0,good=0,bad=0;
+ const jobs=allPlans.map(p=>{
+  for(const task of p.tasks)if(!task.gate)for(const file of task.show??[])if(mediaOf(file)==='video')made++;
+  const ratings=p.ratings??[];
+  for(const rating of ratings){if(rating.rating==='good')good++;if(rating.rating==='bad')bad++;}
+  const finished=p.tasks.every(task=>task.status==='done');
+  const waitingFor=finished?'nothing':jobProgress(p).waitingFor;
+  return {job:p.job,mode:planMode(p),request:p.request,created:p.created,archived:!!p.archived,finished,waitingFor,ratings};
+ });
+ return {jobs,made,totals:studioTotals(allRequests,jobs),scores:{guesses:predictionRecord(allPlans),good,bad}};
+}
+
 /** Everything the Studio page shows. */
 export function overview(){
- const jobs=plans().map(jobView),allRequests=requests(),rs=allRequests.filter(r=>r.status==='draft'||r.status==='waiting');
- const all=plans().flatMap(p=>(p.ratings??[]).map(r=>({...r,step:r.task})));
+ const allPlans=plans(),jobs=allPlans.map(jobView),allRequests=requests(),rs=allRequests.filter(r=>r.status==='draft'||r.status==='waiting');
+ const all=allPlans.flatMap(p=>(p.ratings??[]).map(r=>({...r,step:r.task})));
  const steps=[...new Set(all.map(r=>r.step))].map(step=>{const x=all.filter(r=>r.step===step);return {step,good:x.filter(r=>r.rating==='good').length,ok:x.filter(r=>r.rating==='ok').length,bad:x.filter(r=>r.rating==='bad').length};}).sort((a,b)=>b.good+b.bad-a.good-a.bad);
  const judged=jobs.filter(j=>j.verdict).length;
  // Is it getting better? For each video in order: how many steps were good the first time.
- const trend=plans().slice().reverse().map(p=>{const first=(p.ratings??[]).filter(r=>r.round===0);return {job:p.job,created:p.created,rated:first.length,good:first.filter(r=>r.rating==='good').length};}).filter(x=>x.rated);
+ const trend=allPlans.slice().reverse().map(p=>{const first=(p.ratings??[]).filter(r=>r.round===0);return {job:p.job,created:p.created,rated:first.length,good:first.filter(r=>r.rating==='good').length};}).filter(x=>x.rated);
  // The lessons ratings and picks have scored, best and worst.
  const scored=allKnowledge().filter(k=>k.evidence.some(e=>e.startsWith('rate:')||e.startsWith('pick:'))).map(k=>({id:k.id,title:k.title,status:k.status,wins:k.wins,losses:k.losses,confidence:Math.round(confidence(k)*100)}));
  return {requests:rs.map(r=>({id:r.id,status:r.status,created:r.created,files:r.files.map(f=>({kind:f.kind,name:f.name,bytes:f.bytes,type:mediaOf(f.file),detached:f.detached})),input:r.input,summary:r.input?brief(r).split('\n')[0]:null})),
   trashedUploads:allRequests.flatMap(r=>(r.trashedFiles??[]).map(f=>({request:r.id,trashId:f.trashId,kind:f.kind,name:f.name,bytes:f.bytes}))),
-  jobs,scores:{steps,trend,guesses:predictionRecord(),best:scored.filter(k=>k.wins>k.losses).sort((a,b)=>b.confidence-a.confidence).slice(0,8),worst:scored.filter(k=>k.losses>=k.wins&&k.losses>0).sort((a,b)=>a.confidence-b.confidence).slice(0,8),ratings:all.length,good:all.filter(r=>r.rating==='good').length,bad:all.filter(r=>r.rating==='bad').length,jobs:jobs.length,finished:judged,
-   rules:[...new Map(plans().flatMap(p=>p.feedback).map(f=>[f.rule,f])).values()].slice(-12).map(f=>f.rule)},
+  jobs,scores:{steps,trend,guesses:predictionRecord(allPlans),best:scored.filter(k=>k.wins>k.losses).sort((a,b)=>b.confidence-a.confidence).slice(0,8),worst:scored.filter(k=>k.losses>=k.wins&&k.losses>0).sort((a,b)=>a.confidence-b.confidence).slice(0,8),ratings:all.length,good:all.filter(r=>r.rating==='good').length,bad:all.filter(r=>r.rating==='bad').length,jobs:jobs.length,finished:judged,
+   rules:[...new Map(allPlans.flatMap(p=>p.feedback).map(f=>[f.rule,f])).values()].slice(-12).map(f=>f.rule)},
   reasons:Object.entries(RATE_REASONS).map(([id,r])=>({id,label:r.label})),
-  totals:{waitingForAgent:rs.filter(r=>r.status==='waiting').length+jobs.filter(j=>!j.finished&&j.waitingFor==='agent').length,waitingForYou:jobs.filter(j=>j.waitingFor==='you').length,jobs:jobs.length}};
+  totals:studioTotals(rs,jobs)};
 }

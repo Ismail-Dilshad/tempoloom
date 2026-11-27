@@ -17,19 +17,27 @@ function tokens(){
  const css=fs.readFileSync(path.join(UI,'tokens.css'),'utf8');
  const start=css.indexOf(':root{');
  const block=css.slice(start,css.indexOf('}',start));
- return Object.fromEntries([...block.matchAll(/--([a-z0-9-]+):(#[0-9A-Fa-f]{6})/g)].map(m=>[m[1]!,m[2]!]));
+ const values=new Map([...block.matchAll(/--([\w-]+):\s*(#[\da-f]{6}|var\(--[\w-]+\))(?=\s*;)/gi)].map(match=>[match[1]!,match[2]!]));
+ return function color(name:string,visited=new Set<string>()):string {
+  const value=values.get(name);
+  if(!value||visited.has(name))throw new Error(`Could not resolve color token --${name}`);
+  if(value.startsWith('#'))return value;
+  visited.add(name);
+  return color(value.slice(6,-1),visited);
+ };
 }
 const lum=(h:string)=>{const [r,g,b]=[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255).map(c=>c<=.03928?c/12.92:((c+.055)/1.055)**2.4);return .2126*r!+.7152*g!+.0722*b!;};
 const contrast=(a:string,b:string)=>{const [x,y]=[lum(a),lum(b)].sort((p,q)=>q-p);return (x!+.05)/(y!+.05);};
 
 describe('design tokens',()=>{
  it('read well on dark surfaces',()=>{
-  const t=tokens();
-  for(const bg of ['bg','surface-1','surface-2','surface-3']){
-   for(const fg of ['text','text-2','text-3','accent','bad'])expect(contrast(t[fg]!,t[bg]!),`${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
-   for(const fg of ['good','warn'])expect(contrast(t[fg]!,t[bg]!),`${fg} on ${bg}`).toBeGreaterThanOrEqual(3);
+  const color=tokens();
+  for(const bg of ['bg','surface-1','surface-2','surface-3','surface-inset']){
+   for(const fg of ['text','text-2','text-3','accent','bad'])expect(contrast(color(fg),color(bg)),`${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
+   for(const fg of ['good','warn'])expect(contrast(color(fg),color(bg)),`${fg} on ${bg}`).toBeGreaterThanOrEqual(3);
   }
-  expect(contrast(t['on-accent']!,t['accent-fill']!),'white on a filled blue button').toBeGreaterThanOrEqual(4.5);
+  expect(contrast(color('on-accent'),color('accent-fill')),'label on a filled blue button').toBeGreaterThanOrEqual(4.5);
+  expect(contrast(color('on-bad'),color('bad')),'label on the destructive button').toBeGreaterThanOrEqual(4.5);
  });
  it('are the only place the new shell names colours',()=>{
   for(const f of ['shell.css','shell.js','create.js','learn.js','places.js'])expect(fs.readFileSync(path.join(UI,f),'utf8'),f).not.toMatch(/#[0-9a-fA-F]{6}\b|coral/);

@@ -2,7 +2,6 @@ import path from 'node:path';
 import {roots} from '../engine/config.js';
 import {registerTestFile} from '../engine/test-artifacts.js';
 import {spawn} from 'node:child_process';
-import {createHash} from 'node:crypto';
 import fs from 'node:fs/promises';
 import type {Page} from 'playwright';
 import type {Config} from '../engine/schema.js';
@@ -17,7 +16,7 @@ export async function frames(page:Page|Page[],c:Config,duration:number,file:stri
  if(count<=0)throw new Error('Nothing to render in that range');
  const stats={totalFrames:count,generatedFrames:0,failedFrames:0,captureSeconds:0,pipeWaitSeconds:0,encoderFinalizeSeconds:0,totalSeconds:0,generatedFps:0,peakNodeRssBytes:process.memoryUsage().rss,encoder:encoder.codec,fallback:encoder.fallback,workers:pages.length,consecutiveIdenticalCaptures:0,bytes:0,estimatedOutputBytes:null as number|null};
  const child=spawn(ffmpeg,['-v','error','-n','-f','image2pipe','-vcodec','png','-framerate',String(c.fps),'-i','pipe:0','-an',...encoder.args,'-pix_fmt',c.pixelFormat,'-movflags','+faststart',file],{windowsHide:true,stdio:['pipe','ignore','pipe']});
- let err='',previousHash='',lastProgress=0;
+ let err='',previousFrame:Buffer|undefined,lastProgress=0;
  child.stderr.on('data',b=>err=(err+b).slice(-10000));
  const started=new Promise<void>((resolve,reject)=>{child.once('spawn',()=>resolve());child.once('error',reject);});
  const done=new Promise<void>((resolve,reject)=>{child.on('error',reject);child.on('close',code=>code===0?resolve():reject(new Error('Encoder failed: '+err)));});
@@ -36,12 +35,18 @@ export async function frames(page:Page|Page[],c:Config,duration:number,file:stri
   for(const result of batch){
    if(result.status==='rejected'){stats.failedFrames++;throw result.reason;}
    if(pipeError)throw pipeError;if(child.exitCode!==null)throw new Error('Encoder exited: '+err);
-   const png=result.value,hash=createHash('sha256').update(png).digest('hex');
-   if(hash===previousHash)stats.consecutiveIdenticalCaptures++;previousHash=hash;
+   const png=result.value;
+   if(previousFrame?.equals(png))stats.consecutiveIdenticalCaptures++;
+   previousFrame=png;
    const pipeStart=performance.now();
    if(!child.stdin.write(png)){
-    const drain=new Promise<void>((resolve,reject)=>{const clean=()=>{child.stdin.off('drain',ok);child.stdin.off('error',fail);child.stdin.off('close',closed);};const ok=()=>{clean();resolve();};const fail=(e:Error)=>{clean();reject(e);};const closed=()=>{clean();reject(new Error('Encoder input closed: '+err));};child.stdin.once('drain',ok);child.stdin.once('error',fail);child.stdin.once('close',closed);});
-    await Promise.race([drain,done.then(()=>{throw new Error('Encoder ended early');})]);
+    await new Promise<void>((resolve,reject)=>{
+     const clean=()=>{child.stdin.off('drain',ok);child.stdin.off('error',fail);child.stdin.off('close',closed);};
+     const ok=()=>{clean();resolve();};
+     const fail=(e:Error)=>{clean();reject(e);};
+     const closed=()=>fail(new Error('Encoder input closed: '+err));
+     child.stdin.once('drain',ok);child.stdin.once('error',fail);child.stdin.once('close',closed);
+    });
    }
    stats.pipeWaitSeconds+=(performance.now()-pipeStart)/1000;stats.generatedFrames++;
   }

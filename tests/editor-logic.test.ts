@@ -10,7 +10,8 @@ const ui=path.resolve('src/teach/ui');
 const scripts=[...fs.readFileSync(path.join(ui,'index.html'),'utf8').matchAll(/<script src="\/([^"]+)"><\/script>/g)].map(m=>m[1]!).filter(n=>/^editor/.test(n));
 function sandbox(){
  const noop=()=>{},el=()=>({getContext:()=>null,addEventListener:noop,style:{}});
- const ctx=vm.createContext({console,Blob,TextEncoder,TextDecoder,URL,Intl,setTimeout,clearTimeout,structuredClone,
+ const ctx=vm.createContext({console,Blob,AbortController,TextEncoder,TextDecoder,URL,Intl,setTimeout,clearTimeout,structuredClone,
+  Path2D:class{constructor(readonly data:string){}},
   window:{addEventListener:noop},document:{addEventListener:noop,createElement:el,fonts:{load:async()=>{}},documentElement:{}},navigator:{},
   localStorage:{getItem:()=>null,setItem:noop,removeItem:noop},indexedDB:{},toast:noop,ask:async()=>true,dialog:noop,closeDialog:noop,$:()=>null,
   App:{register:noop},Pop:{open:()=>null,close:noop},I:new Proxy({},{get:()=>''}),esc:(s:string)=>String(s),withKey:(u:string)=>u,requestAnimationFrame:noop,getComputedStyle:()=>({getPropertyValue:()=>''})});
@@ -20,6 +21,156 @@ function sandbox(){
 const get=sandbox();
 type Fn=(...a:never[])=>unknown;
 const f=<T extends Fn>(n:string)=>get<T>(n);
+
+describe('editor actions',()=>{
+ it('preloads nested footage, images, title fonts, and grades before rendering export frames',async()=>{
+  const work=await sandbox()<Promise<{calls:string[];waiting:boolean}>>(`(async()=>{
+   const calls=[];let imageReady,ready=false;
+   document.fonts.load=async(font,text)=>calls.push(font+' '+text);
+   const image={id:'logo',name:'Logo',type:'image'},video={id:'source',name:'Video',type:'video'};
+   const leaf={id:'inner',nest:{tracks:[],clips:[{id:'a',media:'logo'},{id:'b',media:'logo'},
+    {id:'v',media:'source',grade:{lut:{id:'look'}}},{title:{layers:[{type:'text',font:'Fixture Font',text:'Welcome'}]}}]}};
+   const state=Object.assign(Object.create(Ed),{p:{clips:[{id:'outer',nest:{tracks:[],clips:[leaf]}}]},
+    k:()=>.5,mediaOf:c=>c.media==='logo'?image:c.media==='source'?video:undefined,
+    loadLuts:async()=>calls.push('grades'),image:()=>({decode:()=>new Promise(resolve=>{calls.push('image');imageReady=resolve;})}),
+    element(c){calls.push(this._nk+c.id);return {readyState:2,seeking:false};}});
+   const done=state.exportReady().then(()=>{ready=true;});
+   await Promise.resolve();await Promise.resolve();
+   if(!imageReady)throw new Error('Nested image was not decoded');
+   const waiting=!ready;imageReady();await done;
+   return {calls,waiting};
+  })()`);
+  expect(work.waiting).toBe(true);
+  expect(work.calls).toEqual(['grades','image','outer/inner/v','600 20px "Fixture Font", "Tempoloom UI", system-ui, sans-serif Welcome']);
+ });
+ it('projects front, side, and back faces of a 3D box and changes its silhouette with depth',()=>{
+  const faces=get<(x:number,y:number,depth:number)=>{points:number[][];shade:number}[]>('edBoxFaces');
+  expect(faces(0,0,.58).map(face=>face.shade)).toEqual([1]);
+  expect(faces(0,180,.58).map(face=>face.shade)).toEqual([.73]);
+  expect(faces(-18,28,.58)).toHaveLength(3);
+  expect(faces(-18,28,.1)).not.toEqual(faces(-18,28,1));
+ });
+ it('draws OBJ faces back to front and changes their projection with tilt',()=>{
+  const project=get<(mesh:object,x:number,y:number,depth:number)=>{points:number[][];z:number}[]>('edMeshFaces');
+  const mesh={vertices:[[-.2,-.2,.2],[.2,-.2,.2],[0,.2,.2],[-.2,-.2,-.2],[.2,-.2,-.2],[0,.2,-.2]],
+   triangles:[[0,1,2],[3,4,5]]};
+  const front=project(mesh,0,0,1);
+  expect(front.map(face=>face.z)).toEqual([-.20000000000000004,.20000000000000004]);
+  expect(project(mesh,20,65,1)[0]?.points).not.toEqual(front[0]?.points);
+ });
+ it('draws editable vector title layers in canvas coordinates and keeps their selection bounds',()=>{
+  const result=get<{bounds:{x0:number;y0:number;x1:number;y1:number}[];paint:unknown[]}>(`(()=>{
+   const paint=[],g={save(){},restore(){},translate(){},scale(){},fill:(path,rule)=>paint.push([path.data,rule]),
+    stroke:path=>paint.push(path.data)};
+   const path={type:'path',d:'M0,20L90,100Z',x:.5,y:.5,w:.8,h:.5,fill:'#000000',line:1};
+   return {bounds:edDrawTitle(g,{layers:[path]},200,100,1),paint};
+  })()`);
+  expect(result.bounds).toMatchObject([{x0:20,y0:25,x1:180,y1:75}]);
+  expect(result.paint).toEqual([['M0,20L90,100Z','evenodd'],'M0,20L90,100Z']);
+ });
+ it('keeps opted-in tracks aligned after a ripple delete and leaves other tracks alone',()=>{
+  const state=sandbox()<Record<string,number>>(`(()=>{
+   const origin={id:'main'},linked={id:'audio',syncLock:true},unlinked={id:'text'},locked={id:'overlay',syncLock:true,locked:true};
+   const tracks=[origin,linked,unlinked,locked];
+   const removed={id:'cut',track:'main',start:1,dur:2};
+   const clips=[removed,...tracks.map(track=>({id:track.id,track:track.id,start:3,dur:1}))];
+   const editor=Object.assign(Object.create(Ed),{p:{tracks,clips},els:{},picked:()=>[removed],snapshot(){},pick(){},after(){}});
+   editor.rippleRemove();
+   return Object.fromEntries(editor.p.clips.map(clip=>[clip.id,clip.start]));
+  })()`);
+  expect(state).toEqual({main:1,audio:1,text:3,overlay:3});
+ });
+ it('blocks a ripple when a linked clip crosses the edit and deduplicates aligned cuts',()=>{
+  const result=sandbox()<unknown[]>(`(()=>{
+   const tracks=[{id:'main'},{id:'overlay'},{id:'audio',syncLock:true}];
+   const clip={track:'audio',start:2,dur:2},editor={p:{tracks,clips:[clip]}};
+   const edits=[{track:'main',at:1,delta:-2},{track:'overlay',at:1,delta:-2}];
+   const blocked=Ed.syncRipplePlan.call(editor,edits);
+   clip.start=4;
+   return [blocked,Ed.syncRipplePlan.call(editor,edits).get(clip),clip.start];
+  })()`);
+  expect(result).toEqual([null,2,4]);
+ });
+ it('toggles markers by project frame and keeps neighboring markers',()=>{
+  const result=sandbox()<number[][]>(`(()=>{
+   const editor={fps:()=>60,time:1,p:{markers:[]},snapshot(){},after(){}};
+   const toggle=()=>Ed.toggleMarker.call(editor);
+   toggle();editor.time=61/60;toggle();
+   const added=editor.p.markers.map(edMt);
+   toggle();
+   return [added,editor.p.markers.map(edMt)];
+  })()`);
+  expect(result).toEqual([[1,61/60],[1]]);
+ });
+ it('applies transitions only to eligible cuts and skips undo for no changes',()=>{
+  const result=sandbox()<number[]>(`(()=>{
+   const clips=[{id:'first'},{id:'next'},{id:'locked',locked:true}];
+   let snapshots=0;
+   const editor={p:{clips},kindOf:()=> 'video',prevOf:clip=>clip.id!=='first',
+    trackOf:clip=>({locked:clip.locked}),snapshot(){snapshots++;},after(){}};
+   const change=type=>Ed.transAll.call(editor,type,.6);
+   return [change('none'),change('fade'),change('none'),change('none'),snapshots];
+  })()`);
+  expect(result).toEqual([0,1,1,0,2]);
+ });
+ it('suppresses a WAV download when cancelled during the mix',async()=>{
+  const result=await sandbox()<Promise<unknown[]>>(`(async()=>{
+   let downloads=0,finishMix;
+   edSaveFile=()=>{downloads++;};
+   const editor={pause(){},end:()=>1,drawExport(){},async ensureEnvs(){},
+    mixAudio:()=>new Promise(resolve=>{finishMix=resolve;})};
+   const exporting=Ed.exportSound.call(editor,{format:'wav',name:'test'});
+   await Promise.resolve();
+   Ed.cancelExport.call(editor);
+   finishMix(null);
+   await exporting;
+   return [downloads,editor.exporting];
+  })()`);
+  expect(result).toEqual([0,null]);
+ });
+ it('aborts MP3 conversion and suppresses its download',async()=>{
+  const result=await sandbox()<Promise<unknown[]>>(`(async()=>{
+   let downloads=0, signal, finishConversion, beginConversion;
+   const converting=new Promise(resolve=>{beginConversion=resolve;});
+   edSaveFile=()=>{downloads++;};
+   edWav=()=>new Blob();
+   globalThis.fetch=(_url,options)=>{
+    signal=options.signal;
+    beginConversion();
+    return new Promise(resolve=>{finishConversion=resolve;});
+   };
+   const editor={pause(){},end:()=>1,drawExport(){},async ensureEnvs(){},async mixAudio(){}};
+   const exporting=Ed.exportSound.call(editor,{format:'mp3',name:'test'});
+   await converting;
+   Ed.cancelExport.call(editor);
+   finishConversion({ok:true,blob:async()=>new Blob()});
+   await exporting;
+   return [downloads,signal.aborted,editor.exporting];
+  })()`);
+  expect(result).toEqual([0,true,null]);
+ });
+ it('stops capture and prevents the recorder from starting when cancelled before recording',async()=>{
+  const result=await sandbox()<Promise<unknown[]>>(`(async()=>{
+   let startRecording,starts=0,stops=0;
+   globalThis.setTimeout=callback=>{startRecording=callback;return 1;};
+   globalThis.clearTimeout=()=>{};
+   globalThis.MediaStream=class {};
+   globalThis.MediaRecorder=class {
+    static isTypeSupported(){return true;}
+    state='inactive';
+    start(){starts++;}
+   };
+   const capture={getVideoTracks:()=>[],getTracks:()=>[{stop(){stops++;}}]};
+   const editor={dom:{canvas:{captureStream:()=>capture}},base:()=>[480,480],size:()=>[480,480],media:[],
+    pause(){},drawExport(){},audio(){},pick(){},drawTimeline(){},drawProps(){},fit(){},seek(){}};
+   await Ed.exportLive.call(editor,{format:'webm',name:'test',height:480,fps:30});
+   Ed.cancelExport.call(editor);
+   startRecording();
+   return [starts,stops,editor.exporting];
+  })()`);
+  expect(result).toEqual([0,1,null]);
+ });
+});
 
 describe('editor scripts',()=>{
  it('are listed in the page and load without the browser',()=>{expect(scripts.length).toBeGreaterThanOrEqual(2);expect(get<object>('Ed')).toBeTruthy();});

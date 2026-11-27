@@ -133,7 +133,7 @@ const Pop={
  open(anchor,html,o={}){
   if(this.anchor===anchor){this.close(true);return null;}
   this.close();
-  const el=document.createElement('div');el.className='pop';el.setAttribute('role',o.role||'menu');if(o.label)el.setAttribute('aria-label',o.label);
+  const el=document.createElement('div');el.className='pop dropdown-surface';el.setAttribute('role',o.role||'menu');if(o.label)el.setAttribute('aria-label',o.label);
   el.innerHTML=html;$('#pop-slot').append(el);this.el=el;this.anchor=anchor;anchor.setAttribute('aria-expanded','true');
   const r=anchor.getBoundingClientRect(),w=el.offsetWidth,h=el.offsetHeight,below=innerHeight-r.bottom-8,up=o.up||below<h&&r.top>below;
   const left=o.align==='end'?r.right-w:r.left;
@@ -306,6 +306,38 @@ const Shell={
     :`<div class="notif-empty"><span class="notif-icon" aria-hidden="true">${I.bell}</span><b>You're all caught up</b></div>`}
   </div>`,{align:'end',label:'Notifications'});
  },
+ whatsNew(){
+  const h=App.home||{};
+  const v=h.version||'10.5.0';
+  const updates=h.updates||[];
+  const body=`<div class="whats-new-modal">
+   <div class="whats-new-head">
+    <div class="whats-new-title-group">
+     <span class="whats-new-icon" aria-hidden="true">${I.spark}</span>
+     <div>
+      <h2 id="dialog-title">What's New</h2>
+      <p class="muted">Tempoloom updates and release notes</p>
+     </div>
+    </div>
+    <span class="ver-badge">v${esc(v)}</span>
+   </div>
+   <div class="whats-new-list">
+    ${updates.length?updates.map(u=>`<div class="update-card">
+     <div class="update-card-head">
+      <span class="update-ver">v${esc(u.version)}</span>
+      ${u.title?`<b class="update-title">${esc(u.title)}</b>`:''}
+     </div>
+     <ul class="update-items">
+      ${(u.items||u.changes||[]).map(item=>`<li>${esc(item)}</li>`).join('')}
+     </ul>
+    </div>`).join(''):`<p class="muted">You are on the latest version v${esc(v)}.</p>`}
+   </div>
+   <div class="whats-new-foot">
+    <button type="button" class="btn primary" onclick="closeDialog()"><span class="lbl">Got it</span></button>
+   </div>
+  </div>`;
+  dialog(body,{wide:true});
+ },
  start(){
   startTabFills();
   let g=0;
@@ -379,6 +411,7 @@ const Dock={
    body:'<div class="prompt-drawer-start" id="drawer-start"></div>',
    dock:'<div class="prompt-drawer-host"></div>'
   });
+  positionToasts();
   departure?.cancel();
   const input=this.el.querySelector('textarea');
   autoGrow(input);
@@ -395,6 +428,7 @@ const Dock={
  restore(animate=false){
   if(!this.el?.closest('.prompt-drawer-host'))return;
   $('#dock-slot').append(this.el);
+  positionToasts();
   const ex=$('#dock-expand',this.el);
   if(ex){ex.setAttribute('aria-expanded','false');ex.setAttribute('aria-label','Expand prompt');ex.innerHTML=I.expand;}
   const input=this.el.querySelector('textarea');
@@ -404,12 +438,13 @@ const Dock={
  mount(route,arg){
   const want=route==='create'?'create':route==='teach/library'&&!arg?'learn':route==='studio/videos'&&arg?'change':null;
   const slot=$('#dock-slot');
-  if(!want){slot.innerHTML='';this.el=null;this.mode=null;return;}
+  if(!want){slot.innerHTML='';this.el=null;this.mode=null;positionToasts();return;}
   const keep=this.mode===want&&this.el&&this.el.isConnected&&this.arg===arg;
   if(keep){this.kinds[want].refresh?.(this.el);return;}
   this.mode=want;this.arg=arg;
   slot.innerHTML=`<div class="dock-wrap" id="dock-wrap">${this.kinds[want].html(arg)}</div>`;
   this.el=$('#dock-wrap');this.kinds[want].wire(this.el,arg);
+  positionToasts();
  },
  focus(){if(App.route!=='create'&&!(App.route==='teach/library'&&!App.arg)&&!(App.route==='studio/videos'&&App.arg)){location.hash='#/create';setTimeout(()=>Dock.focus(),120);return;}this.el?.querySelector('textarea')?.focus();},
 };

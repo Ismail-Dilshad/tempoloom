@@ -34,6 +34,15 @@ import * as V from '../engine/studio-versions.js';
 import * as H from '../engine/history.js';
 import * as TE from '../editor/text-edit.js';
 import * as BR from '../editor/broll.js';
+import * as Editor from '../editor/shared-projects.js';
+import * as EditorExports from '../editor/shared-exports.js';
+import {planSharedCaptions,transcribeSharedMedia} from '../editor/shared-transcript.js';
+import {planDeviceMockup,planKineticTitle,planProductReveal,planRouteMap,planSharedMotion} from '../editor/shared-motion.js';
+import {parseObjMesh} from '../editor/obj-mesh.js';
+import {planSharedMulticam} from '../editor/shared-multicam.js';
+import {setSharedCover} from '../editor/shared-cover.js';
+import {probeEditorModel,proposeEditorEdit,runEditorModel} from '../editor/editor-agent.js';
+import {cancelEditorModelJob,getEditorModelJob,listEditorModelJobs,startEditorModelJob} from '../editor/editor-model-jobs.js';
 import {languageSchema,type Language} from '../engine/languages.js';
 const LANGS=languageSchema.options;
 
@@ -42,20 +51,19 @@ const MAX_MB=Number(process.env.TEACH_MAX_MB||'2048');
 const runCover=promisify(execFile);
 const uploadKind=z.enum(R.FILE_KINDS);
 const uploadName=z.string().min(1).max(160);
-const UI=new Set(['tokens.css','shell.css','shell.js','create.js','learn.js','brain.js','editor.js','editor-ui.js','editor-sound.js','editor-colour.js','editor-export.js','editor-captions.js','editor-smart.js','editor-files.js','editor-widgets.js','editor-dialogs.js','editor-pitch.js','editor-title.js','editor-edit.js','editor-nest.js','editor-text.js','editor-props.js','editor-input.js','places.js','icons.js','app.css','core.js','taste.js','teach.js','learned.js','studio.js','gallery.js','live.js','settings.js','backup.js','script.js','ideas.js','history.js','text.js','find.js']);
+const UI=new Set(['tokens.css','shell.css','components.css','editor-studio.css','shell.js','create.js','learn.js','brain.js','editor.js','editor-ui.js','editor-media.js','editor-player.js','editor-timeline.js','editor-sound.js','editor-colour.js','editor-export.js','editor-captions.js','editor-smart.js','editor-files.js','editor-widgets.js','editor-dialogs.js','editor-pitch.js','editor-title.js','editor-edit.js','editor-nest.js','editor-text.js','editor-props.js','editor-input.js','places.js','icons.js','app.css','core.js','taste.js','teach.js','learned.js','studio.js','gallery.js','live.js','settings.js','backup.js','script.js','ideas.js','history.js','text.js','find.js']);
 const TYPES:Record<string,string>={'.js':'text/javascript; charset=utf-8','.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.mp4':'video/mp4','.jpg':'image/jpeg','.svg':'image/svg+xml','.ttf':'font/ttf','.json':'application/json; charset=utf-8',
  '.png':'image/png','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.webm':'video/webm','.mov':'video/quicktime','.m4v':'video/mp4','.mp3':'audio/mpeg','.wav':'audio/wav','.m4a':'audio/mp4'};
 class HttpError extends Error{constructor(public status:number,message:string){super(message);}}
 
-export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:Trends.Search}={}){
+export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:Trends.Search;renderOnly?:boolean}={}){
  const key=randomBytes(12).toString('hex');
  const cropping=new Set<string>();
  const published=new Map<string,{folder:string;files:Set<string>}>();
  const linkPreviews=new Map<string,{url:string;expires:number;busy:boolean;choices:{id:string;item:number}[]}>();
  const linkInput=z.object({url:z.string().url(),confirm:z.boolean().default(false),previewToken:z.string().optional(),selection:z.object({id:z.string().min(1),item:z.number().int().positive()}).optional()}).strict();
  // A video left "measuring" by a server that stopped is marked failed, so it can be sent again or removed.
- T.recover();
- await Settings.loadKeys().catch(()=>0);
+ if(!o.renderOnly){T.recover();await Settings.loadKeys().catch(()=>0);}
  const fetcher=o.fetcher??fetch;
  const uploads=new Map<string,{bytes:Uint8Array;expires:number}>();
  let busy=Promise.resolve();
@@ -105,6 +113,14 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
       const given=Buffer.from(String(req.headers['x-teach-key']??url.searchParams.get('k')??'')),want=Buffer.from(key);
    if(given.length!==want.length||!timingSafeEqual(given,want))throw new HttpError(403,'Open the Teach page with the link from the terminal (pnpm tempoloom teach open)');
    res.setHeader('x-content-type-options','nosniff');res.setHeader('referrer-policy','no-referrer');
+   if(o.renderOnly&&p!=='/'&&!(m==='POST'&&(p==='/api/editor/mux'||p==='/api/editor/audio'))&&
+    !(m==='GET'&&/^\/api\/editor\/shared\/[0-9a-f-]+\/archive$/.test(p)))throw new HttpError(404,'Not found');
+   if(o.renderOnly&&m==='GET'&&p==='/'){
+    const html=(await fsp.readFile(path.join(here,'ui','index.html'),'utf8')).replace('<script>App.start();</script>','');
+    res.writeHead(200,{'content-type':TYPES['.html']!,'cache-control':'no-store',
+     'content-security-policy':"default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'"});
+    return void res.end(html);
+   }
 
    if(m==='GET'&&p==='/'){res.setHeader('content-security-policy',"default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: https:; frame-src https://www.youtube-nocookie.com https://www.instagram.com https://www.tiktok.com https://player.vimeo.com; frame-ancestors 'none'");return await file(req,res,path.join(here,'ui','index.html'));}
    if(m==='GET'&&p==='/api/home')return json(res,home());
@@ -118,6 +134,102 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
     if(m==='GET'&&toolRun[2]==='runs')return json(res,{runs:TR.recentRuns(toolRun[1]!)});}
    const rr=/^\/api\/tool-runs\/([a-f0-9]{12})(\/stop)?$/.exec(p);
    if(rr){const TR=await import('./tool-runner.js');try{return json(res,m==='POST'&&rr[2]?TR.stopRun(rr[1]!):TR.getRun(rr[1]!));}catch(e){throw new HttpError(404,(e as Error).message);}}
+   const shared=/^\/api\/editor\/shared\/([0-9a-f-]+)(?:\/(head|archive|media|edit|restore|propose|preview))?$/.exec(p);
+   if(p==='/api/editor/shared'&&m==='GET')return json(res,{projects:Editor.listProjects()});
+   if(p==='/api/editor/share-template'&&m==='POST'){
+    const data=await body(req);
+    return json(res,Editor.registerSharedTextTemplate(Editor.projectId.parse(data.projectId),Editor.revision.parse(data.base),data.template));
+   }
+   if(m==='POST'&&(p==='/api/editor/model-probe'||p==='/api/editor/model-run')){
+    const input=await body(req),controller=new AbortController(),stop=()=>controller.abort();
+    res.once('close',stop);
+    try{
+     const execute=p==='/api/editor/model-probe'?probeEditorModel:runEditorModel;
+     return json(res,await execute(input,{fetch:fetcher,signal:AbortSignal.any([controller.signal,AbortSignal.timeout(60_000)])}));
+    }finally{res.off('close',stop);}
+   }
+   if(p==='/api/editor/model-jobs'){
+    if(m==='GET')return json(res,{jobs:listEditorModelJobs(Editor.projectId.parse(url.searchParams.get('projectId')))});
+    if(m==='POST')return json(res,startEditorModelJob(await body(req)),202);
+   }
+   const modelJob=/^\/api\/editor\/model-jobs\/([0-9a-f-]+)(\/cancel)?$/.exec(p);
+   if(modelJob){
+    const id=Editor.projectId.parse(modelJob[1]);
+    if(m==='GET'&&!modelJob[2])return json(res,getEditorModelJob(id));
+    if(m==='POST'&&modelJob[2])return json(res,cancelEditorModelJob(id));
+   }
+   if(p==='/api/editor/transcribe'&&m==='POST')return json(res,await transcribeSharedMedia(await body(req)));
+   if(p==='/api/editor/captions-plan'&&m==='POST')return json(res,await planSharedCaptions(await body(req)));
+   if(p==='/api/editor/motion-plan'&&m==='POST')return json(res,await planSharedMotion(await body(req)));
+   if(p==='/api/editor/product-reveal'&&m==='POST')return json(res,planProductReveal(await body(req)));
+   if(p==='/api/editor/device-mockup'&&m==='POST')return json(res,planDeviceMockup(await body(req)));
+   if(p==='/api/editor/route-map'&&m==='POST')return json(res,await planRouteMap(await body(req)));
+   if(p==='/api/editor/kinetic-titles'&&m==='POST')return json(res,await planKineticTitle(await body(req)));
+   if(p==='/api/editor/obj'&&m==='POST')return json(res,parseObjMesh(await body(req)));
+   if(p==='/api/editor/multicam-plan'&&m==='POST')return json(res,await planSharedMulticam(await body(req)));
+   if(p==='/api/editor/cover'&&m==='POST')return json(res,await setSharedCover(await body(req)));
+   if(p==='/api/editor/exports'){
+    if(m==='GET')return json(res,{jobs:EditorExports.listEditorExports(Editor.projectId.parse(url.searchParams.get('projectId')))});
+    if(m==='POST')return json(res,EditorExports.startEditorExport(await body(req)),202);
+   }
+   const editorExport=/^\/api\/editor\/exports\/([0-9a-f-]+)(?:\/(cancel|file))?$/.exec(p);
+   if(editorExport){
+    const id=Editor.projectId.parse(editorExport[1]);
+    if(m==='POST'&&editorExport[2]==='cancel')return json(res,EditorExports.cancelEditorExport(id));
+    if(m==='GET'){
+     const job=EditorExports.getEditorExport(id);
+     if(editorExport[2]==='file'){
+      if(!job.file)throw new HttpError(409,'Export is not ready');
+      return await file(req,res,job.file);
+     }
+     if(!editorExport[2])return json(res,job);
+    }
+   }
+   if(m==='POST'&&(p==='/api/editor/shared'||shared?.[2]==='archive'||shared?.[2]==='media')){
+     const base=shared?url.searchParams.get('base'):null;
+     if(shared&&(base===null||!/^\d+$/.test(base)))throw new HttpError(400,'The shared base revision is required');
+     const chunks:Buffer[]=[];let size=0;
+     for await(const chunk of req){
+      size+=(chunk as Buffer).length;
+      if(size>Editor.maxBundleBytes)throw new HttpError(413,'Shared projects can be up to 128 MB');
+      chunks.push(chunk as Buffer);
+     }
+     const bytes=Buffer.concat(chunks);
+     if(shared){
+      const id=Editor.projectId.parse(shared[1]),at=Editor.revision.parse(Number(base));
+      return json(res,shared[2]==='media'?Editor.registerProjectMedia(id,at,bytes):Editor.publishProject(id,at,bytes),201);
+     }
+     return json(res,Editor.shareProject(bytes),201);
+   }
+   if(shared){
+    const id=Editor.projectId.parse(shared[1]),action=shared[2];
+    if(m==='GET'&&!action)return json(res,Editor.inspectProject(id));
+    if(m==='GET'&&action==='head')return json(res,Editor.sharedProjectHead(id));
+    if(m==='GET'&&action==='archive'){
+     const at=url.searchParams.get('revision'),bytes=Editor.downloadProject(id,at===null?undefined:Editor.revision.parse(Number(at)));
+     res.writeHead(200,{'content-type':'application/zip','cache-control':'no-store'});
+     return void res.end(bytes);
+    }
+    if(m==='POST'&&action==='edit'){
+     const data=await body(req);
+     return json(res,Editor.editProject(id,Editor.revision.parse(data.base),data.edits));
+    }
+    if(m==='POST'&&action==='preview'){
+     const data=await body(req),bytes=Editor.previewArchive(id,Editor.revision.parse(data.base),data.edits);
+     res.writeHead(200,{'content-type':'application/zip','cache-control':'no-store'});
+     return void res.end(bytes);
+    }
+    if(m==='POST'&&action==='restore'){
+     const data=await body(req);
+     return json(res,Editor.restoreProject(id,Editor.revision.parse(data.base),Editor.revision.parse(data.restore)));
+    }
+    if(m==='POST'&&action==='propose'){
+     const data=await body(req),cancel=new AbortController(),stop=()=>cancel.abort();
+     res.once('close',stop);
+     try{return json(res,await proposeEditorEdit(id,data,{fetch:fetcher,signal:AbortSignal.any([cancel.signal,AbortSignal.timeout(60_000)])}));}
+     finally{res.off('close',stop);}
+    }
+   }
    // The editor's auto captions: the words said in a video or sound file, with their times (ElevenLabs).
    // Which speech-to-text the editor can use: on this computer (Omnilingual ASR, once set up) and ElevenLabs (with a key).
    if(m==='GET'&&p==='/api/editor/stt'){const L=await import('../engine/local-stt.js'),CL=await import('../engine/caption-learning.js');
@@ -132,6 +244,35 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
      return json(res,{learned,clip,fixes:CL.list().length,clips:CL.clipCount()});}}
    if(m==='POST'&&p==='/api/editor/caption-fixes/remove'){const CL=await import('../engine/caption-learning.js'),b=await body(req);return json(res,{fixes:CL.remove(String(b.lang??''),String(b.from??''))});}
    if(m==='POST'&&p==='/api/editor/caption-fixes/clear'){const CL=await import('../engine/caption-learning.js');return json(res,{fixes:CL.clear()});}
+   if(m==='POST'&&p==='/api/editor/suggest-cuts'){
+    const seconds=z.number().nonnegative().max(86400*7);
+    const input=z.object({
+     instruction:z.string().trim().min(1).max(600),
+     candidates:z.array(z.object({id:z.number().int().nonnegative(),start:seconds,end:seconds,clip:z.string().max(120),context:z.string().max(300)}).strict()).min(1).max(100),
+     notes:z.array(z.object({s:seconds,e:seconds,text:z.string().max(300)}).strict()).max(25)
+    }).strict().safeParse(await body(req));
+    if(!input.success)throw new HttpError(400,'The cut review data is invalid.');
+    const pick=Settings.readSettings().model;
+    if(!pick)throw new HttpError(400,'Choose a model in Settings, Models and keys first.');
+    const {chat,estimate}=await import('../engine/models/chat.js'),{allow,record}=await import('../engine/models/spend.js');
+    const messages=[
+     {role:'system' as const,content:'Review existing silence cut candidates for a video editor. Select only candidate IDs supplied in the data. Follow the editing instructions and respect range notes. Use nearby captions if supplied. Do not infer spoken words or say you heard the audio. For ambiguous cuts, omit them. Return only JSON {"cuts":[{"id":0,"reason":"short reason"}]}. No edit is applied automatically.'},
+     {role:'user' as const,content:JSON.stringify(input.data)}
+    ];
+    const max=1200;
+    const cost=estimate(pick,messages,max);
+    if(cost===null)throw new HttpError(400,'Choose a local model or a model with known pricing to review cuts.');
+    const verdict=allow(cost);
+    if(!verdict.ok)throw new HttpError(400,verdict.why);
+    try{
+     const answer=await chat(pick,messages,[],{max,fetch:fetcher,signal:AbortSignal.timeout(30000)});
+     if(answer.usd)record({usd:answer.usd,what:'Suggest timeline cuts',service:pick.provider});
+     const text=answer.text.slice(answer.text.indexOf('{'),answer.text.lastIndexOf('}')+1);
+     const output=z.object({cuts:z.array(z.object({id:z.number().int(),reason:z.string().min(1).max(250)})).max(100)}).parse(JSON.parse(text));
+     const ids=new Set(input.data.candidates.map(candidate=>candidate.id));
+     return json(res,{cuts:output.cuts.filter(cut=>ids.delete(cut.id))});
+    }catch(error){throw new HttpError(502,'Could not suggest cuts: '+(error as Error).message);}
+   }
    // Sets up captions on this computer: downloads the model once, in the background; GET /api/editor/stt shows progress.
    if(m==='POST'&&p==='/api/editor/stt/setup'){const L=await import('../engine/local-stt.js'),mdl=url.searchParams.get('model')==='300m'?'300m':'1b';
     if(!L.status().runtime)throw new HttpError(400,'The speech runtime is missing; run pnpm install');
@@ -189,18 +330,20 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
     const dir=path.resolve(ROOT,process.env.VIDEO_WORKSPACE||'workspace','cache','editor-export',randomUUID());await fsp.mkdir(dir,{recursive:true});
     const both=path.join(dir,'in.bin'),vid=path.join(dir,'in.ivf'),wav=path.join(dir,'in.wav'),out=path.join(dir,'out.'+format);let size=0;
     const limit=new Transform({transform(c:Buffer,_e,cb){size+=c.length;size>MAX_MB*1048576?cb(new HttpError(413,`The video is over ${MAX_MB} MB`)):cb(null,c);}});
+    const mux=new AbortController(),cancelMux=()=>{if(!res.writableFinished)mux.abort();};
+    res.once('close',cancelMux);
     try{
      await pipeline(req,limit,fs.createWriteStream(both));if(size<=vBytes+44)throw new HttpError(400,'The upload is incomplete');
      await pipeline(fs.createReadStream(both,{start:0,end:vBytes-1}),fs.createWriteStream(vid));
      await pipeline(fs.createReadStream(both,{start:vBytes}),fs.createWriteStream(wav));await fsp.rm(both,{force:true});
      // GIF: one palette made for this video (better colours than the web palette), looping, no sound
-     if(format==='gif')await promisify(execFile)(ffmpeg,['-y','-hide_banner','-loglevel','error','-i',vid,'-vf',`fps=${fps},split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4`,'-loop','0',out],{maxBuffer:1<<24,windowsHide:true});
+     if(format==='gif')await promisify(execFile)(ffmpeg,['-y','-hide_banner','-loglevel','error','-i',vid,'-vf',`fps=${fps},split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4`,'-loop','0',out],{maxBuffer:1<<24,windowsHide:true,signal:mux.signal});
      else{const codec=format==='mp4'?['-c:v','libx264','-preset','veryfast','-crf',crf,'-pix_fmt','yuv420p','-r',String(fps),'-c:a','aac','-b:a','192k','-movflags','+faststart']:['-c:v','copy','-c:a','libopus','-b:a','160k'];
-      await promisify(execFile)(ffmpeg,['-y','-hide_banner','-loglevel','error','-i',vid,'-i',wav,'-map','0:v:0','-map','1:a:0',...codec,out],{maxBuffer:1<<24,windowsHide:true});}
+      await promisify(execFile)(ffmpeg,['-y','-hide_banner','-loglevel','error','-i',vid,'-i',wav,'-map','0:v:0','-map','1:a:0',...codec,out],{maxBuffer:1<<24,windowsHide:true,signal:mux.signal});}
      const st=await fsp.stat(out);res.writeHead(200,{'content-type':format==='mp4'?'video/mp4':format==='gif'?'image/gif':'video/webm','content-length':String(st.size),'cache-control':'no-store'});
      await pipeline(fs.createReadStream(out),res);
     }catch(e){if(!res.headersSent)throw e instanceof HttpError?e:new HttpError(500,'Could not make the video: '+(e as Error).message.slice(0,200));}
-    finally{await fsp.rm(dir,{recursive:true,force:true}).catch(()=>{});}
+    finally{res.off('close',cancelMux);await fsp.rm(dir,{recursive:true,force:true}).catch(()=>{});}
     return;
    }
    // Sound-only export: the editor's WAV mix as an MP3 (ffmpeg, LAME, high VBR quality).
@@ -623,7 +766,7 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
    }
    throw new HttpError(404,'Not found');
   }catch(e){
-   const status=e instanceof HttpError?e.status:/^No (taught video|lesson|request|studio job|taste profile|text edit)/.test((e as Error).message)?404:400;
+   const status=e instanceof HttpError||e instanceof Editor.EditorProjectError?e.status:/^No (taught video|lesson|request|studio job|taste profile|text edit)/.test((e as Error).message)?404:400;
    if(!res.headersSent)json(res,{error:(e as Error).message},status);else res.end();
   }
  });
@@ -634,6 +777,6 @@ export async function serve(o:{port?:number;fetcher?:typeof fetch;trendSearch?:T
   tryPort(o.port??4747,20);
  });
  // A weekly backup of what the studio learned, made quietly when the app opens (the four newest are kept).
- setTimeout(()=>{try{Backup.autoBackup();}catch{/* never stops the app */}},4000).unref();
+ if(!o.renderOnly)setTimeout(()=>{try{Backup.autoBackup();}catch{/* never stops the app */}},4000).unref();
  return {url:`http://127.0.0.1:${port}/?k=${key}`,port,key,idle:()=>busy,close:()=>new Promise<void>(r=>{server.closeAllConnections();server.close(()=>r());})};
 }

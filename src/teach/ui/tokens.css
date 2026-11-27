@@ -9,18 +9,16 @@
  --divider:color-mix(in srgb,var(--line) 48%,transparent);
  color-scheme:dark;
  /* colour */
- --business-control:rgb(255 255 255 / 5%);--business-hover:rgb(255 255 255 / 9%);--chrome:#161b22;--bg:#151a21;--surface-1:#1c222b;--surface-2:#1c222b;--surface-3:#29313c;
- --line:#333c48;--line-strong:#3A4256;
+ --business-control:rgb(255 255 255 / 5%);--business-hover:rgb(255 255 255 / 9%);--bg:#1c1c1c;--chrome:var(--bg);--surface-1:#252525;--surface-2:var(--surface-1);--surface-3:#303030;
+ --surface-inset:#202020;--surface-hover:#393939;
+ --line:#3a3a3a;--line-strong:#565656;
  --text:#EEF2FA;--text-2:#A3ADC2;--text-3:#a8b1bf;
  --accent:#659eff;--accent-hover:#6FA3FF;--accent-press:#3A78E8;--accent-soft:rgb(76 141 255/.16);--on-accent:#FFFFFF;
  --accent-fill:#2F6BE0;--accent-fill-hover:#2B66DA;--accent-fill-press:#2558C4;
  --good:#4FD1A5;--warn:#F2C14E;--bad:#FF7A7A;
  --good-soft:rgb(79 209 165/.14);--warn-soft:rgb(242 193 78/.14);--bad-soft:rgb(255 122 122/.14);
  --on-good:#06281C;--on-warn:#2E2203;--on-bad:#2E0A0A;
- --scrim:rgb(5 7 12/.6);
- /* notifications (Sileo) */
- --toast-fill:#F2F2F2;--toast-text:#1A1A1A;--toast-desc:#575757;--toast-good:#15803D;--toast-bad:#C2272D;--toast-info:#1F5FD6;
- --spring:linear(0,.002 .6%,.007 1.2%,.015 1.8%,.026 2.4%,.041 3.1%,.06 3.8%,.108 5.3%,.157 6.6%,.214 8%,.467 13.7%,.577 16.3%,.631 17.7%,.682 19.1%,.73 20.5%,.771 21.8%,.808 23.1%,.844 24.5%,.874 25.8%,.903 27.2%,.928 28.6%,.952 30.1%,.972 31.6%,.988 33.1%,1.01 35.7%,1.025 38.5%,1.034 41.6%,1.038 45%,1.035 50.1%,1.012 64.2%,1.003 73%,.999 83.7%,1);
+ --scrim:rgb(0 0 0 / 64%);
  --shadow-pop:0 8px 24px rgb(0 0 0/.4);--shadow-float:0 16px 48px rgb(0 0 0/.5);
  /* type */
  --font-ui:'Tempoloom UI',system-ui,-apple-system,'Segoe UI',sans-serif;
@@ -37,7 +35,10 @@
  /* spacing (4-point scale) */
  --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;--space-10:40px;--space-12:48px;--space-16:64px;
  /* radius */
- --radius-xs:6px;--radius-sm:12px;--radius-md:18px;--radius-lg:20px;--radius-xl:24px;--radius-full:999px;
+ --radius-control:0px;--radius-surface:8px;--radius-menu:6px;
+ --control-height:36px;--control-compact-height:32px;--control-font-size:13px;
+ --control-icon-size:16px;
+ --radius-xs:var(--radius-menu);--radius-sm:var(--radius-menu);--radius-md:var(--radius-surface);--radius-lg:var(--radius-surface);--radius-xl:var(--radius-surface);--radius-full:999px;
  /* motion */
  --dur-fast:120ms;--dur-base:180ms;--dur-slow:260ms;--ease:cubic-bezier(.2,0,0,1);
  /* layout */

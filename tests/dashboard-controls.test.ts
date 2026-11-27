@@ -38,7 +38,7 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
    if(url.pathname==='/api/state')return route.fulfill({json:{videos:[],topics:[],can:{maxMB:2048,speech:false}}});
    if(url.pathname==='/logo.svg')return route.fulfill({body:await fs.readFile('assets/brand/logo/svg/tempoloom-wordmark-for-dark.svg'),contentType:'image/svg+xml'});
    const name=url.pathname==='/'?'index.html':path.basename(url.pathname);
-   if(!['index.html','tokens.css','app.css','shell.css','core.js','shell.js','icons.js','create.js','learn.js','brain.js','editor.js','editor-ui.js','editor-sound.js','editor-colour.js','editor-export.js','editor-captions.js','editor-smart.js','editor-files.js','editor-widgets.js','editor-pitch.js','editor-title.js','editor-edit.js','editor-nest.js','editor-text.js','editor-props.js','editor-input.js','editor-dialogs.js','places.js','teach.js','studio.js','settings.js'].includes(name))return route.fulfill({status:204});
+   if(!['index.html','tokens.css','app.css','shell.css','components.css','editor-studio.css','core.js','shell.js','icons.js','create.js','learn.js','brain.js','editor.js','editor-ui.js','editor-media.js','editor-player.js','editor-timeline.js','editor-sound.js','editor-colour.js','editor-export.js','editor-captions.js','editor-smart.js','editor-files.js','editor-widgets.js','editor-pitch.js','editor-title.js','editor-edit.js','editor-nest.js','editor-text.js','editor-props.js','editor-input.js','editor-dialogs.js','places.js','teach.js','studio.js','settings.js'].includes(name))return route.fulfill({status:204});
    return route.fulfill({body:await fs.readFile(path.resolve('src/teach/ui',name)),contentType:name.endsWith('.js')?'text/javascript':name.endsWith('.css')?'text/css':'text/html'});
   });
   await page.goto('http://dashboard.test/#/studio/new');
@@ -48,6 +48,10 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
   expect(await page.locator('.logo-mark').getAttribute('src')).toContain('/logo.svg');
   const colorScheme=()=>page.evaluate(()=>getComputedStyle(document.documentElement).colorScheme);
   expect(await colorScheme()).toBe('dark');
+  const shellBackgrounds=await page.locator('body, #app, #app > .rail, #app > .topbar').evaluateAll(elements=>elements.map(el=>{
+   const style=getComputedStyle(el);return [style.backgroundColor,style.backgroundImage];
+  }));
+  expect(shellBackgrounds).toEqual(Array.from({length:4},()=>['rgb(28, 28, 28)','none']));
   const logoSize=await page.locator('.logo-mark').boundingBox();
   await page.locator('#rail-bell').waitFor();
   await page.locator('#rail-settings').click();
@@ -67,9 +71,22 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
   expect(footer!.y+footer!.height).toBeCloseTo(1000,0);
   // The rail: four places (Projects lives on Create) in order, Trash and Collapse at its foot.
   expect(await page.locator('.rail-body .navlink .lbl').allInnerTexts()).toEqual(['Studio','Editor','Brain']);
+  const activePlace=page.locator('.rail-body .navlink[aria-current=page]');
+  const railButtonStyle=()=>activePlace.evaluate(el=>{
+   const style=getComputedStyle(el);return [style.borderRadius,style.height,style.boxShadow];
+  });
+  expect(await railButtonStyle()).toEqual(['0px','36px','none']);
+  expect(await page.locator('#dock').evaluate(el=>getComputedStyle(el).borderRadius)).toBe('8px');
+  expect(await page.locator('#dock-kind').evaluate(el=>getComputedStyle(el).height)).toBe('32px');
+  expect(await page.locator('#dock .dock-text').evaluate(el=>{
+   const style=getComputedStyle(el);return [style.backgroundColor,style.borderTopWidth];
+  })).toEqual(['rgba(0, 0, 0, 0)','0px']);
+  const brainIcon=page.locator('.rail-body a[href="#/brain"]');
+  await brainIcon.hover();
+  await expect.poll(()=>brainIcon.evaluate(el=>getComputedStyle(el).backgroundColor)).toBe('rgb(48, 48, 48)');
   await page.getByRole('button',{name:'Collapse',exact:true}).click();
   expect(await page.locator('#app').getAttribute('data-rail')).toBe('collapsed');
-  const brainIcon=page.locator('.rail-body a[href="#/brain"]');
+  expect(await railButtonStyle()).toEqual(['0px','36px','none']);
   await brainIcon.hover();
   await page.locator('#dashboard-tooltip.visible',{hasText:'Brain'}).waitFor();
   await page.keyboard.press('Escape');
@@ -93,6 +110,7 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
   await page.getByRole('button',{name:'Use a reference',exact:true}).click();
   const files=page.getByRole('dialog',{name:'Add files'});
   await files.getByRole('heading',{name:'No reference yet'}).waitFor();
+  expect(await files.evaluate(el=>getComputedStyle(el).borderRadius)).toBe('8px');
   const [upload]=await Promise.all([
    page.waitForEvent('filechooser'),
    files.getByRole('button',{name:'Upload files'}).click()
@@ -111,7 +129,17 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
   await page.getByRole('button',{name:'Expand prompt'}).click();
   await page.getByRole('heading',{name:'Edit prompt'}).waitFor();
   const expandedPrompt=page.locator('#panel #dock-text');
+  expect(await page.locator('#panel').evaluate(el=>getComputedStyle(el).backgroundColor)).toBe('rgb(37, 37, 37)');
+  expect(await page.locator('#panel #dock').evaluate(el=>getComputedStyle(el).borderRadius)).toBe('8px');
   expect(await expandedPrompt.inputValue()).toBe('A complete original script.');
+  for (const focused of [false,true]) {
+   if (focused) await expandedPrompt.focus();
+   else await expandedPrompt.blur();
+   expect(await expandedPrompt.evaluate(el=>{
+    const style=getComputedStyle(el);
+    return [style.backgroundColor,style.borderTopWidth,style.boxShadow];
+   })).toEqual(['rgba(0, 0, 0, 0)','0px','none']);
+  }
   const footageMode=page.locator('#panel .prompt-mode',{hasText:'Edit my footage'});
   await footageMode.click();
   expect(await footageMode.getAttribute('aria-pressed')).toBe('true');
@@ -136,7 +164,7 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
    return {radius:css.borderTopLeftRadius,color:css.borderTopColor,width:css.borderTopWidth};
   });
   const restingBorder=await readBorder();
-  expect(restingBorder.radius).toBe('999px');
+  expect(restingBorder.radius).toBe('0px');
   expect(restingBorder.width).toBe('1px');
   await referenceStyle.hover();
   await referenceStyle.evaluate(el=>Promise.all(el.getAnimations().map(animation=>animation.finished)));
@@ -184,6 +212,18 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
   expect(await page.locator('#dock-kind').innerText()).toContain('Edit my footage');
   // On Create, Ctrl+K goes to the page's search first; pressed again there it opens the command menu.
   await page.keyboard.press('Control+k');expect(await page.evaluate(()=>document.activeElement?.id)).toBe('create-search');
+  const searchBox = page.locator('.create-find-box');
+  const searchFilter = page.locator('.find-filter');
+  expect(await searchBox.evaluate(el=>getComputedStyle(el).borderRadius)).toBe('0px');
+  expect((await searchBox.boundingBox())!.height).toBe((await searchFilter.boundingBox())!.height);
+  const surfaceColor = (el: Element) => getComputedStyle(el).backgroundColor;
+  expect(await searchBox.evaluate(surfaceColor)).toBe('rgb(48, 48, 48)');
+  expect(await searchFilter.evaluate(surfaceColor)).toBe(await searchBox.evaluate(surfaceColor));
+  await searchFilter.click();
+  expect(await page.getByRole('menu',{name:'Show',exact:true}).evaluate(surfaceColor)).toBe('rgb(48, 48, 48)');
+  await page.keyboard.press('Escape');
+  await page.locator('#create-search').focus();
+  expect(await page.locator('[data-group=projects]').first().evaluate(el=>getComputedStyle(el).borderRadius)).toBe('8px');
   await page.keyboard.press('Control+k');await page.getByRole('textbox',{name:/Search places/}).fill('trash');
   await page.keyboard.press('Enter');await expect.poll(()=>new URL(page.url()).hash).toBe('#/trash');
   await page.evaluate(()=>{location.hash='/create';});await page.locator('#dock-text').waitFor();
@@ -248,6 +288,19 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
   await page.evaluate(()=>{location.hash='/trash';});
   const more=page.getByRole('button',{name:'More for Waiting example',exact:true});
   await more.click();await page.getByRole('button',{name:'Delete forever'}).click();
+  const confirmation = page.getByRole('dialog').filter({has:page.getByRole('button',{name:'Delete job',exact:true})});
+  const confirmHeading = confirmation.locator('.confirm-heading');
+  const close = confirmHeading.getByRole('button',{name:'Close dialog'});
+  const closeBounds = (await close.boundingBox())!;
+  const headerBounds = (await confirmHeading.boundingBox())!;
+  const iconBounds = (await confirmHeading.locator('.confirm-badge').boundingBox())!;
+  expect(closeBounds.y - headerBounds.y).toBeCloseTo(10, 0);
+  expect(headerBounds.x + headerBounds.width - (closeBounds.x + closeBounds.width)).toBeCloseTo(10, 0);
+  expect(iconBounds.x + iconBounds.width / 2).toBeCloseTo(headerBounds.x + headerBounds.width / 2, 0);
+  await close.click();
+  expect(await confirmation.count()).toBe(0);
+  expect(await more.count()).toBe(1);
+  await more.click();await page.getByRole('button',{name:'Delete forever'}).click();
   await page.getByRole('button',{name:'Cancel',exact:true}).click();
   expect(await more.count()).toBe(1);
   expect(new URL(page.url()).hash).toBe('#/trash');
@@ -260,33 +313,30 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
   expect(await page.locator('.toast').count()).toBe(0);
   await page.evaluate("(async()=>{const refresh=App.refresh;App.refresh=async()=>{};try{await act(async()=>{},'Saved');}finally{App.refresh=refresh;}})()");
   expect(await page.locator('.toast').count()).toBe(0);
-  // Notifications in the Sileo style: a pill at the top centre that springs open into a body.
+  // Notifications stack in the lower-right corner.
   await page.evaluate(()=>{document.querySelector('#toasts')!.replaceChildren();(window as any).toast('Changes saved');});
   const notification=page.locator('.toast').filter({hasText:'Changes saved'});
   const bounds=await notification.boundingBox();
   expect(bounds).not.toBeNull();
-  expect(bounds!.y).toBeLessThan(40);
-  expect(Math.abs(bounds!.x+bounds!.width/2-195)).toBeLessThan(2);
+  const toastViewport=page.viewportSize()!;
+  expect(bounds!.y+bounds!.height).toBeCloseTo(toastViewport.height-16,0);
+  expect(bounds!.x+bounds!.width).toBeCloseTo(toastViewport.width-16,0);
   expect(bounds!.width).toBeLessThanOrEqual(358);
   expect(await notification.locator('button').count()).toBe(0);
   expect(await notification.getAttribute('role')).toBe('status');
-  expect(await notification.locator('.toast-title').innerText()).toBe('Done');
-  expect(await notification.locator('svg filter feColorMatrix').count()).toBe(1); // the gooey join
+  expect(await notification.locator('.toast-message').innerText()).toBe('Changes saved');
+  expect(await notification.evaluate(el=>getComputedStyle(el).borderRadius)).toBe('8px');
   await notification.focus();await page.keyboard.press('Escape');
   await notification.waitFor({state:'detached'});
   await page.emulateMedia({reducedMotion:'no-preference'});
   await page.evaluate(()=>{(window as any).toast('Your video brief has been saved and is ready for the studio.');});
-  const expanding=page.locator('.toast').first();
-  expect((await expanding.boundingBox())!.height).toBeLessThan(48); // a pill first
-  await expect.poll(()=>expanding.getAttribute('data-open')).toBe('true');
-  await expect.poll(async()=>(await expanding.boundingBox())!.height).toBeGreaterThanOrEqual(90); // then it opens
-  expect(await expanding.locator('p').isVisible()).toBe(true);
-  expect(await expanding.locator('.toast-shape rect').first().evaluate(el=>getComputedStyle(el).fill)).toBe('rgb(242, 242, 242)');
+  const messageToast=page.locator('.toast').first();
+  expect(await messageToast.locator('p').isVisible()).toBe(true);
+  expect(await messageToast.evaluate(el=>getComputedStyle(el).backgroundColor)).toBe('rgb(48, 48, 48)');
   if(process.env.DASHBOARD_SCREENSHOTS)await page.screenshot({path:'workspace/cache/dashboard-review/toast-dark.png'});
-  await expanding.focus();await page.keyboard.press('Escape');
-  await expect.poll(()=>expanding.getAttribute('data-leaving')).toBe('true');
-  await expanding.waitFor({state:'detached'});
-  // Several at once: newest on top, 12 px apart, each dismissed on its own.
+  await messageToast.focus();await page.keyboard.press('Escape');
+  await messageToast.waitFor({state:'detached'});
+  // Older notifications stack above newer ones, each dismissed on its own.
   await page.evaluate(()=>{
    document.querySelector('#toasts')!.replaceChildren();
    (window as any).toast('First stacked message');
@@ -294,28 +344,32 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
    (window as any).toast('Third stacked message');
   });
   await page.mouse.move(10,500);
-  await expect.poll(()=>page.locator('.toast[data-open=true]').count()).toBe(3);
+  await expect.poll(()=>page.locator('.toast').count()).toBe(3);
   await page.waitForTimeout(700);
   const second=page.locator('.toast').filter({hasText:'Second stacked message'}),newest=page.locator('.toast').filter({hasText:'Third stacked message'});
   const nb=(await newest.boundingBox())!,sb=(await second.boundingBox())!;
-  expect(sb.y-(nb.y+nb.height)).toBeCloseTo(12,0);
+  expect(nb.y-(sb.y+sb.height)).toBeCloseTo(8,0);
   if(process.env.DASHBOARD_SCREENSHOTS)await page.screenshot({path:'workspace/cache/dashboard-review/toast-stack.png'});
   await newest.dispatchEvent('keydown',{key:'Escape'});
   await page.waitForFunction(()=>document.querySelectorAll('.toast').length===2);
   await page.waitForTimeout(700);
-  expect((await second.boundingBox())!.y).toBeLessThan(sb.y);
+  expect((await second.boundingBox())!.y).toBeGreaterThan(sb.y);
   // An error says so, and the same message twice shows once.
   await page.evaluate(()=>{document.querySelector('#toasts')!.replaceChildren();});
   await page.evaluate(()=>{(window as any).toast('Cannot save this change',true);(window as any).toast('Cannot save this change',true);});
   expect(await page.locator('.toast').count()).toBe(1);
   expect(await page.locator('.toast').innerText()).toContain('Cannot save this change');
   expect(await page.locator('.toast').getAttribute('role')).toBe('alert');
-  expect(await page.locator('.toast .toast-title').innerText()).toBe('Something went wrong');
+  expect(await page.locator('.toast').getAttribute('data-state')).toBe('error');
   await page.evaluate(()=>{document.querySelector('#toasts')!.replaceChildren();});
   await page.evaluate(()=>{(window as any).dialog('<h2>Animated options</h2><label for="animated-select">Choose style</label><select id="animated-select"><option>Soft</option><option>Rounded</option></select>');});
   const animatedSelect=page.getByRole('combobox',{name:/Choose style/});
+  expect(await animatedSelect.evaluate(el=>{
+   const style=getComputedStyle(el);return [style.borderRadius,style.backgroundColor];
+  })).toEqual(['0px','rgb(32, 32, 32)']);
   await animatedSelect.click();
   const animatedMenu=page.getByRole('listbox');
+  expect(await animatedMenu.evaluate(el=>getComputedStyle(el).borderRadius)).toBe('6px');
   expect(await animatedMenu.evaluate(el=>el.getAnimations().length)).toBeGreaterThan(0);
   await animatedMenu.evaluate(async el=>{await Promise.all(el.getAnimations().map(a=>a.finished));});
   await page.keyboard.press('Escape');
@@ -323,7 +377,7 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
   expect(await page.getByRole('listbox').count()).toBe(0);
   expect(await page.locator('.select-menu[aria-hidden=true]').count()).toBe(1);
   await page.locator('.select-menu').waitFor({state:'detached'});
-  await page.evaluate(()=>{(window as any).closeDialog();});
+  await page.getByRole('button',{name:'Close dialog',exact:true}).click();
   await page.emulateMedia({reducedMotion:'reduce'});
   await page.mouse.move(10,500);
   await page.evaluate(()=>{(window as any).toast('Expires independently');(window as any).toast('Take your time reading');});
@@ -332,7 +386,6 @@ it.skipIf(process.env.RUN_BROWSER_TESTS!=='1')('dashboard controls preserve form
   await paused.hover(); // held open while you read it
   await page.waitForTimeout(5500);
   expect(await paused.isVisible()).toBe(true);
-  expect(await paused.getAttribute('data-open')).toBe('true');
   expect(await page.locator('.toast').filter({hasText:'Expires independently'}).count()).toBe(0);
   await page.mouse.move(10,500);
   await page.waitForTimeout(1600);
